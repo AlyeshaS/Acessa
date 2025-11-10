@@ -1,9 +1,12 @@
+import { useNavigate } from "react-router-dom";
 export default function UploadBar({
   value,
   onChange,
   onUploadClick,
   onAnalyzeClick,
 }) {
+  const navigate = useNavigate();
+
   return (
     <div className="upload-row">
       {/* Left icon button (upload) */}
@@ -43,7 +46,7 @@ export default function UploadBar({
       <button
         type="button"
         className="btn-icon btn-analyze"
-        onClick={onAnalyzeClick}
+        onClick={() => navigate("/search")}
         aria-label="Analyze"
         title="Analyze"
       >
