@@ -16,6 +16,23 @@
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
+
+html,
+body {
+  height: 100%; /* full page height context */
+  margin: 0;
+  overflow: hidden; /* prevent scrolling */
+}
+
+.main-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Divider */
 .v-divider {
   width: 3px;
@@ -95,9 +112,13 @@
 .btn-icon svg path {
   transition: fill 0.2s ease, stroke 0.2s ease;
 }
-/* Optional: layout tweaks you already had */
-.title {
-  margin-bottom: 16px;
+
+.title-complete {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-content: center;
+  align-items: center;
 }
 .body-area {
   display: grid;
@@ -161,6 +182,81 @@
   font-weight: 600;
   letter-spacing: 0.2px;
   /* background-color: #7c8da0; */
+}
+
+/* Complete page */
+.back-button {
+  margin-top: 20px;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  background-color: transparent;
+  color: var(--color-accent);
+  padding-right: 5% !important;
+}
+.back-button:hover {
+  text-decoration: underline;
+  cursor: pointer;
+}
+.card-body {
+  display: grid;
+  padding-left: 5%;
+  padding-right: 5%;
+  margin-top: 5%;
+  gap: 20px;
+}
+.scroll-container {
+  flex: 1 1 auto;
+  min-height: 0; /* CRITICAL */
+  overflow-y: auto; /* the only scroller */
+  overflow-x: hidden;
+}
+.scores {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: var(--white);
+  padding: 20px;
+}
+
+.hci-report {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: var(--white);
+  padding: 20px;
+}
+
+.next-steps {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: var(--white);
+  padding: 20px;
+}
+.score-body {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: var(--color-accent);
+  color: var(--white);
+  text-align: center;
+  padding: 1rem 0;
+  box-shadow: 0 -1px 5px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+footer h2 {
+  font-weight: 400;
 }
 
 /* Small screens */

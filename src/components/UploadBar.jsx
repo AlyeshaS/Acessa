@@ -46,7 +46,7 @@ export default function UploadBar({
       <button
         type="button"
         className="btn-icon btn-analyze"
-        onClick={() => navigate("/search")}
+        onClick={() => navigate("/complete")}
         aria-label="Analyze"
         title="Analyze"
       >
