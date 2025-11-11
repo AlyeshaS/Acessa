@@ -17,13 +17,6 @@
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
-html,
-body {
-  height: 100%; /* full page height context */
-  margin: 0;
-  overflow: hidden; /* prevent scrolling */
-}
-
 .main-container {
   display: flex;
   flex-direction: column;
@@ -113,12 +106,15 @@ body {
   transition: fill 0.2s ease, stroke 0.2s ease;
 }
 
-.title-complete {
+.navbar {
+  position: sticky;
+  top: 0px;
+  background-color: var(--background);
+  z-index: 10;
   display: flex;
-  flex-direction: column;
   justify-content: center;
-  align-content: center;
   align-items: center;
+  padding: 20px;
 }
 .body-area {
   display: grid;
@@ -186,7 +182,8 @@ body {
 
 /* Complete page */
 .back-button {
-  margin-top: 20px;
+  position: absolute;
+  left: 20px;
   font-size: 18px;
   display: flex;
   align-items: center;
@@ -199,17 +196,11 @@ body {
   cursor: pointer;
 }
 .card-body {
-  display: grid;
-  padding-left: 5%;
-  padding-right: 5%;
-  margin-top: 5%;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
-}
-.scroll-container {
-  flex: 1 1 auto;
-  min-height: 0; /* CRITICAL */
-  overflow-y: auto; /* the only scroller */
-  overflow-x: hidden;
+  padding: 0 5%;
+  margin: 20px 0 100px 0;
 }
 .scores {
   margin-top: 20px;
@@ -244,21 +235,26 @@ body {
 }
 footer {
   position: fixed;
-  bottom: 0;
   left: 0;
-  width: 100%;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
   background: var(--color-accent);
   color: var(--white);
-  text-align: center;
-  padding: 1rem 0;
-  box-shadow: 0 -1px 5px rgba(0, 0, 0, 0.1);
-  z-index: 100;
+  height: 60px;
 }
 
 footer h2 {
   font-weight: 400;
 }
 
+main {
+  /* or the wrapper above .card-body */
+  padding-bottom: 68px; /* same as footer height */
+}
 /* Small screens */
 @media (max-width: 640px) {
   .action-bar {
