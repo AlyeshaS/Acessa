@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useState } from "react";
 import "./styles/App.css";
 import "./styles/index.css";
@@ -5,7 +6,15 @@ import UploadBar from "./components/UploadBar.jsx";
 import { useNavigate } from "react-router-dom";
 
 function App() {
-  const [count, setCount] = useState(0);
+  const [url, setUrl] = useState("");
+  const navigate = useNavigate();
+
+  const handleAnalyzeClick = () => {
+    if (!url.trim()) return;
+
+    // Just navigate and pass the URL; the /complete page will do the analysis
+    navigate("/complete", { state: { url: url.trim() } });
+  };
 
   return (
     <>
@@ -14,17 +23,22 @@ function App() {
           <h1>Welcome to Acessa!</h1>
           <p className="subheader">Design Smarter. Design Accessible</p>
         </div>
+
         <div className="body-area">
           <h2>Upload document:</h2>
           <p className="subheader">File type: PDF, PNG or Figma </p>
+
           <div className="enter-area">
             <UploadBar
-            // value={url}
-            // onChange={(e) => setUrl(e.target.value)}
-            // onUploadClick={() => console.log("upload")}
-            // onAnalyzeClick={() => console.log("analyze", url)}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onUploadClick={() => {
+                console.log("upload clicked");
+              }}
+              onAnalyzeClick={handleAnalyzeClick}
             />
           </div>
+
           <div className="cards">
             <h2>What Acessa does:</h2>
             <div className="feature-grid">
@@ -36,17 +50,17 @@ function App() {
                     version="1.1"
                     id="Layer_1"
                     xmlns="http://www.w3.org/2000/svg"
-                    xmlns:xlink="http://www.w3.org/1999/xlink"
+                    xmlnsXlink="http://www.w3.org/1999/xlink"
                     viewBox="0 0 92 92"
-                    enable-background="new 0 0 92 92"
-                    xml:space="preserve"
+                    enableBackground="new 0 0 92 92"
+                    xmlSpace="preserve"
                     stroke="#7C8DA0"
                   >
-                    <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                     <g
                       id="SVGRepo_tracerCarrier"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     ></g>
                     <g id="SVGRepo_iconCarrier">
                       <path
@@ -62,7 +76,6 @@ function App() {
               {/* HCI Report */}
               <article className="feature-card">
                 <div className="feature-illustration" aria-hidden="true">
-                  {/* Document + pencil */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="256"
@@ -121,8 +134,6 @@ function App() {
               {/* Next Steps */}
               <article className="feature-card">
                 <div className="feature-illustration" aria-hidden="true">
-                  {/* Bars + flag */}
-
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="256"
@@ -134,7 +145,6 @@ function App() {
                     <g transform="translate(1.4066 1.4066) scale(2.81)">
                       <path
                         d="M 87.993 38.683 c 0.782 0 1.477 -0.439 1.812 -1.146 c 0.335 -0.708 0.235 -1.523 -0.261 -2.129 l -5.508 -6.73 l 5.508 -6.724 c 0.496 -0.605 0.596 -1.421 0.261 -2.129 c -0.335 -0.707 -1.029 -1.146 -1.812 -1.146 H 69.602 v -1.023 c 0 -0.552 -0.447 -1 -1 -1 s -1 0.448 -1 1 v 2.023 v 18.005 v 10.295 H 54.086 h -9.425 V 34.162 c 2.596 -0.523 4.557 -2.821 4.557 -5.568 c 0 -3.133 -2.549 -5.681 -5.681 -5.681 c -3.133 0 -5.681 2.548 -5.681 5.681 c 0 2.834 2.088 5.183 4.805 5.606 v 13.778 H 27.543 h -9.872 V 34.162 c 2.596 -0.523 4.557 -2.821 4.557 -5.568 c 0 -3.133 -2.548 -5.681 -5.681 -5.681 c -3.132 0 -5.681 2.548 -5.681 5.681 c 0 2.834 2.088 5.183 4.805 5.606 v 13.778 H 1 c -0.375 0 -0.718 0.209 -0.889 0.542 c -0.171 0.333 -0.143 0.734 0.075 1.039 L 8.11 60.662 L 0.186 71.765 c -0.218 0.305 -0.247 0.706 -0.075 1.039 C 0.283 73.137 0.626 73.346 1 73.346 h 26.543 h 26.543 h 26.543 c 0.323 0 0.626 -0.156 0.814 -0.419 l 8.338 -11.684 c 0.247 -0.348 0.247 -0.814 0 -1.162 l -8.338 -11.685 c -0.188 -0.263 -0.491 -0.419 -0.814 -0.419 H 69.602 v -9.295 H 87.993 z M 39.856 28.593 c 0 -2.03 1.651 -3.681 3.681 -3.681 s 3.681 1.651 3.681 3.681 c 0 2.03 -1.651 3.681 -3.681 3.681 S 39.856 30.623 39.856 28.593 z M 12.866 28.593 c 0 -2.03 1.651 -3.681 3.681 -3.681 c 2.03 0 3.681 1.651 3.681 3.681 c 0 2.03 -1.651 3.681 -3.681 3.681 C 14.518 32.274 12.866 30.623 12.866 28.593 z M 53.57 71.346 H 29.485 l 7.21 -10.103 c 0.248 -0.348 0.248 -0.814 0 -1.162 l -7.21 -10.103 H 53.57 l 7.625 10.685 L 53.57 71.346 z M 10.152 61.243 c 0.248 -0.348 0.248 -0.814 0 -1.162 l -7.21 -10.103 h 24.086 l 7.624 10.685 l -7.624 10.685 H 2.942 L 10.152 61.243 z M 87.738 60.662 l -7.624 10.685 H 56.029 l 7.21 -10.103 c 0.247 -0.348 0.247 -0.814 0 -1.162 l -7.21 -10.103 h 24.085 L 87.738 60.662 z M 87.997 20.686 l -5.509 6.725 c -0.601 0.736 -0.601 1.804 0.001 2.541 l 5.513 6.731 c 0 0 -0.003 0 -0.009 0 H 69.602 V 20.678 L 87.997 20.686 z"
-                        /* original inline style converted to props */
                         fill="rgb(124,141,160)"
                         fillRule="nonzero"
                         opacity="1"

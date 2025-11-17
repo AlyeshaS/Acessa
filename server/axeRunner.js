@@ -7,7 +7,11 @@ export async function runAxeOnUrl(url) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  await page.goto(url, { waitUntil: "networkidle" });
+  // Give the page more time to load on first run
+  await page.goto(url, {
+    waitUntil: "networkidle",
+    timeout: 45000, // 45s instead of default 30s
+  });
 
   await page.addScriptTag({ content: axeSource });
 
@@ -23,4 +27,23 @@ export async function runAxeOnUrl(url) {
 
   await browser.close();
   return axeResults;
+}
+
+export async function runAxeOnUrlSafe(url, retries = 1) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await runAxeOnUrl(url);
+    } catch (err) {
+      lastError = err;
+      console.warn(`[AXE] Scan failed on attempt ${attempt + 1}:`, err.message);
+
+      if (attempt === retries) {
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError || new Error("Unknown AXE error");
 }
