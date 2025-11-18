@@ -3,7 +3,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -11,8 +11,7 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /**
  * Fetch the page content using Playwright
@@ -23,7 +22,7 @@ async function fetchPageContent(url) {
   const page = await browser.newPage();
 
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
+    await page.goto(url, { waitUntil: "networkidle", timeout: 450000 });
 
     // Grab full HTML and visible text
     const html = await page.content();
@@ -138,11 +137,12 @@ ${safeText}
  */
 async function callAi(prompt) {
   console.log("[WCAG] Calling Gemini AI...");
-  const result = await model.generateContent({
+  const result = await ai.models.generateContent({
+    model: "gemini-2.0-flash",
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 
-  let text = result.response.text().trim();
+  let text = result.text.trim();
   console.log("[WCAG] Raw Gemini response:", text);
 
   // Strip markdown fences if Gemini adds them

@@ -228,6 +228,10 @@
   background: var(--white);
   padding: 20px;
 }
+
+.next-steps li {
+  margin-left: 20px;
+}
 .score-body {
   display: flex;
   flex-direction: row;
