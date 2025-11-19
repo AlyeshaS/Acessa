@@ -86,6 +86,37 @@ function Complete() {
   const overallSummary = ai.overallSummary || "";
   const hciText = ai.hciSummary || overallSummary;
 
+  // NEW — Category scores from Gemini
+  const categoryScores = ai.categoryScores || {};
+
+  const perceivableScore =
+    typeof categoryScores.Perceivable === "number"
+      ? categoryScores.Perceivable
+      : null;
+
+  const operableScore =
+    typeof categoryScores.Operable === "number"
+      ? categoryScores.Operable
+      : null;
+
+  const understandableScore =
+    typeof categoryScores.Understandable === "number"
+      ? categoryScores.Understandable
+      : null;
+
+  const robustScore =
+    typeof categoryScores.Robust === "number" ? categoryScores.Robust : null;
+
+  const levelScores = ai.levelScores || {};
+
+  const levelAScore = typeof levelScores.A === "number" ? levelScores.A : null;
+
+  const levelAAScore =
+    typeof levelScores.AA === "number" ? levelScores.AA : null;
+
+  const levelAAAScore =
+    typeof levelScores.AAA === "number" ? levelScores.AAA : null;
+
   const severityCounts = groups.reduce(
     (acc, g) => {
       const sev = (g.severity || "").toLowerCase();
@@ -177,6 +208,61 @@ function Complete() {
                     <p>
                       WCAG Accessibility Score: <strong>{score}</strong> / 100
                     </p>
+                  )}
+
+                  {/* New: WCAG category percentage scores */}
+                  {(perceivableScore !== null ||
+                    operableScore !== null ||
+                    understandableScore !== null ||
+                    robustScore !== null) && (
+                    <div className="category-scores">
+                      <p className="subheader">
+                        Category Scores (WCAG 2.2 – POUR)
+                      </p>
+                      {perceivableScore !== null && (
+                        <p>
+                          Perceivable: <strong>{perceivableScore}</strong>%
+                        </p>
+                      )}
+                      {operableScore !== null && (
+                        <p>
+                          Operable: <strong>{operableScore}</strong>%
+                        </p>
+                      )}
+                      {understandableScore !== null && (
+                        <p>
+                          Understandable: <strong>{understandableScore}</strong>
+                          %
+                        </p>
+                      )}
+                      {robustScore !== null && (
+                        <p>
+                          Robust: <strong>{robustScore}</strong>%
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {(levelAScore !== null ||
+                    levelAAScore !== null ||
+                    levelAAAScore !== null) && (
+                    <div className="level-scores">
+                      <p className="subheader">Conformance Levels</p>
+                      {levelAScore !== null && (
+                        <p>
+                          Level A: <strong>{levelAScore}</strong>%
+                        </p>
+                      )}
+                      {levelAAScore !== null && (
+                        <p>
+                          Level AA: <strong>{levelAAScore}</strong>%
+                        </p>
+                      )}
+                      {levelAAAScore !== null && (
+                        <p>
+                          Level AAA: <strong>{levelAAAScore}</strong>%
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   <p>Total Issues: {totalIssues}</p>

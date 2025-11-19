@@ -52,9 +52,11 @@ function buildPrompt(pageData) {
   return `
 You are an Accessibility & HCI Evaluation Engine.
 
-Your job is to analyze the provided website content using ONLY the official WCAG 2.2 guidelines.
+Your job is to analyze the provided website content using ONLY the official WCAG 2.2 guidelines and AODA requirements.
 Do NOT invent or assume guidelines that do not exist.
 If you are unsure whether a specific success criterion applies, mark it as "uncertain" instead of guessing.
+
+Treat AODA as requiring at least WCAG 2.0 Level AA conformance. WCAG 2.2 extends these requirements; you MUST include relevant WCAG 2.2 AA criteria when evaluating accessibility for AODA.
 
 You will receive extracted HTML and visible text from a single web page.
 
@@ -75,20 +77,41 @@ TASKS:
 
    Only use criteria that exist in WCAG 2.2.
    Do NOT make up WCAG numbers or names.
+   When relevant, indicate if the issue causes failure of Level A, AA, or AAA.
 
 2) Scoring (0–100)
-   Compute an overall accessibility score from 0–100 based ONLY on:
+   Compute a total accessibility percentage score from 0–100.
+   The score must be based ONLY on:
    - Number of violations
    - Severity (High = 3 points, Medium = 2, Low = 1)
    - Repetition / frequency
-   Score meaning:
+   - Impact on essential tasks and AODA compliance
+
+   You MUST score the page using:
+   - Official WCAG 2.2 success criteria
+   - AODA requirements (treat WCAG 2.0 Level AA as a mandatory minimum)
+   If AODA requires something that WCAG 2.2 does not explicitly cover, still consider it when scoring.
+
+   Compute internal percentage scores (0–100) for the four WCAG principles:
+   - Perceivable
+   - Operable
+   - Understandable
+   - Robust
+
+   Also compute percentage scores (0–100) for conformance levels:
+   - A
+   - AA
+   - AAA
+
+   These principle scores and level scores must influence the overall score.
+   Use these interpretations:
    - 90–100: Excellent accessibility
    - 70–89: Good, minor fixes needed
    - 40–69: Significant accessibility issues
    - 0–39: Poor accessibility
 
 3) HCI / UX Summary
-   Provide a 3–5 sentence human-centered design assessment focused on:
+   Provide as many sentences as needed in order to provide a proper human-centered design assessment focused on:
    - Layout clarity
    - Interaction patterns
    - Learnability
@@ -111,6 +134,17 @@ The JSON MUST match this schema exactly:
 {
   "score": Number,
   "overallSummary": "string",
+  "categoryScores": {
+    "Perceivable": Number,
+    "Operable": Number,
+    "Understandable": Number,
+    "Robust": Number
+  },
+  "levelScores": {
+    "A": Number,
+    "AA": Number,
+    "AAA": Number
+  },
   "groups": [
     {
       "wcagCriterion": "string",
@@ -123,6 +157,7 @@ The JSON MUST match this schema exactly:
   "hciSummary": "string",
   "nextSteps": ["string", "string", "string"]
 }
+
 
 Here is the page HTML (truncated):
 ${safeHtml}
