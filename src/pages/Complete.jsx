@@ -13,6 +13,17 @@ function Complete() {
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
 
+  // Loading step messages to inform the user what is happening
+  const loadingSteps = [
+    "Fetching your webpage…",
+    "Running automated accessibility checks…",
+    "Checking WCAG 2.2 and AODA requirements…",
+    "Analyzing HCI and UX patterns…",
+    "Building your accessibility report…",
+  ];
+
+  const [loadingStep, setLoadingStep] = useState(loadingSteps[0]);
+
   // AbortController stored in a ref so we can cancel on Back
   const abortRef = useRef(null);
 
@@ -71,6 +82,21 @@ function Complete() {
     };
   }, [url]);
 
+  // Rotate loading step messages while we are loading
+  useEffect(() => {
+    if (!loading) return; // only run while loading is true
+
+    let index = 0;
+    setLoadingStep(loadingSteps[0]);
+
+    const interval = setInterval(() => {
+      index = (index + 1) % loadingSteps.length;
+      setLoadingStep(loadingSteps[index]);
+    }, 2200); // change every ~2.2s
+
+    return () => clearInterval(interval);
+  }, [loading, loadingSteps]);
+
   const handleBack = () => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -78,15 +104,41 @@ function Complete() {
     navigate("/");
   };
 
-  // Safely unwrap aiAnalysis JSON
-  const ai = analysis?.aiAnalysis || {};
+  // Safely unwrap aiAnalysis JSON (fallback to root if needed)
+  const ai = analysis?.aiAnalysis ?? analysis ?? {};
 
   const score = typeof ai.score === "number" ? ai.score : null;
-  const groups = Array.isArray(ai.groups) ? ai.groups : [];
+  let groups = Array.isArray(ai.groups) ? ai.groups : [];
   const overallSummary = ai.overallSummary || "";
   const hciText = ai.hciSummary || overallSummary;
 
-  // NEW — Category scores from Gemini
+  // Sort by WCAG criterion number (e.g., "1.4.3", "2.1.1", "1.3.5")
+  groups = groups.slice().sort((a, b) => {
+    const getNum = (str) => {
+      if (!str) return "";
+      // Extract leading number pattern like 1.4.3, 2.1.1, 1.3.10
+      const match = String(str)
+        .trim()
+        .match(/^\d+(?:\.\d+)*/);
+      return match ? match[0] : "";
+    };
+
+    const aNum = getNum(a.wcagCriterion);
+    const bNum = getNum(b.wcagCriterion);
+
+    const aParts = aNum.split(".").map((n) => (Number.isNaN(+n) ? 0 : +n));
+    const bParts = bNum.split(".").map((n) => (Number.isNaN(+n) ? 0 : +n));
+
+    const len = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < len; i++) {
+      const av = aParts[i] ?? 0;
+      const bv = bParts[i] ?? 0;
+      if (av !== bv) return av - bv;
+    }
+    return 0;
+  });
+
+  // Category scores from Gemini
   const categoryScores = ai.categoryScores || {};
 
   const perceivableScore =
@@ -107,15 +159,25 @@ function Complete() {
   const robustScore =
     typeof categoryScores.Robust === "number" ? categoryScores.Robust : null;
 
+  // Conformance level scores
   const levelScores = ai.levelScores || {};
 
   const levelAScore = typeof levelScores.A === "number" ? levelScores.A : null;
-
   const levelAAScore =
     typeof levelScores.AA === "number" ? levelScores.AA : null;
-
   const levelAAAScore =
     typeof levelScores.AAA === "number" ? levelScores.AAA : null;
+
+  // Optional: breakdown objects (if you add them to the prompt later)
+  const categoryBreakdown =
+    ai.categoryBreakdown && typeof ai.categoryBreakdown === "object"
+      ? ai.categoryBreakdown
+      : null;
+
+  const levelBreakdown =
+    ai.levelBreakdown && typeof ai.levelBreakdown === "object"
+      ? ai.levelBreakdown
+      : null;
 
   const severityCounts = groups.reduce(
     (acc, g) => {
@@ -173,6 +235,7 @@ function Complete() {
               Running WCAG 2.2 + HCI analysis for:
               <br />
               <strong>{url}</strong>
+              <p className="loading-step-text">{loadingStep}</p>
             </p>
           </div>
         )}
@@ -210,7 +273,7 @@ function Complete() {
                     </p>
                   )}
 
-                  {/* New: WCAG category percentage scores */}
+                  {/* WCAG category percentage scores */}
                   {(perceivableScore !== null ||
                     operableScore !== null ||
                     understandableScore !== null ||
@@ -242,6 +305,27 @@ function Complete() {
                       )}
                     </div>
                   )}
+
+                  {/* Optional: Category breakdown details if you add them later */}
+                  {categoryBreakdown && (
+                    <div className="category-breakdown">
+                      <h3>Category Breakdown</h3>
+                      {Object.entries(categoryBreakdown).map(
+                        ([cat, details]) => (
+                          <div key={cat} className="category-breakdown-section">
+                            <strong>{cat}</strong>
+                            <ul>
+                              {Array.isArray(details) &&
+                                details.map((item, i) => (
+                                  <li key={i}>{item}</li>
+                                ))}
+                            </ul>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
                   {(levelAScore !== null ||
                     levelAAScore !== null ||
                     levelAAAScore !== null) && (
@@ -265,10 +349,65 @@ function Complete() {
                     </div>
                   )}
 
+                  {/* Optional: Level breakdown details if you add them later */}
+                  {levelBreakdown && (
+                    <div className="level-breakdown">
+                      <h3>WCAG Level Breakdown</h3>
+                      {Object.entries(levelBreakdown).map(([lvl, details]) => (
+                        <div key={lvl} className="level-breakdown-section">
+                          <strong>Level {lvl}</strong>
+                          <ul>
+                            {Array.isArray(details) &&
+                              details.map((item, i) => <li key={i}>{item}</li>)}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <p>Total Issues: {totalIssues}</p>
                   <p>High Severity: {severityCounts.high}</p>
                   <p>Medium Severity: {severityCounts.medium}</p>
                   <p>Low Severity: {severityCounts.low}</p>
+
+                  {/* 🔥 NEW: Detailed WCAG issues list */}
+                  {groups.length > 0 && (
+                    <div className="issues-list">
+                      <h3>WCAG Issues (Detailed)</h3>
+                      {groups.map((g, idx) => (
+                        <div key={idx} className="issue-item">
+                          <p>
+                            <strong>
+                              {g.wcagCriterion || "Unspecified criterion"}
+                            </strong>{" "}
+                            {g.severity && (
+                              <>
+                                • <span>{g.severity} severity</span>
+                              </>
+                            )}
+                            {typeof g.count === "number" && (
+                              <>
+                                {" "}
+                                • approx. {g.count} occurrence
+                                {g.count === 1 ? "" : "s"}
+                              </>
+                            )}
+                          </p>
+                          {g.problem && (
+                            <p className="issue-problem">
+                              <strong>Problem:</strong> {g.problem}
+                            </p>
+                          )}
+                          {g.recommendation && (
+                            <p className="issue-recommendation">
+                              <strong>Recommendation:</strong>{" "}
+                              {g.recommendation}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
