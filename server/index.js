@@ -141,7 +141,7 @@ Write this as a dense, insight-rich narrative (not bullet points).
 
 Length and structure requirements (IMPORTANT):
 - Write AT LEAST 4–6 substantial paragraphs.
-- Aim for roughly 500 words total.
+- Aim for roughly 500 words total. Must be detailed and nuanced, nothing vague or generic.
 - Each paragraph should focus on a specific theme (e.g., one on layout, one on interaction patterns, one on cognitive load, etc.).
 - Refer to concrete examples from the page (e.g., “the large hero banner at the top…”, “the navigation menu with multiple dropdown items…”) instead of generic statements.
 

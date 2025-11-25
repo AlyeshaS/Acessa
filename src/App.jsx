@@ -2,7 +2,7 @@
 import { useState } from "react";
 import "./styles/App.css";
 import "./styles/index.css";
-import UploadBar from "./components/UploadBar.jsx";
+import UploadBar from "./components/uploadBar.jsx";
 import { useNavigate } from "react-router-dom";
 
 function App() {
@@ -14,7 +14,6 @@ function App() {
 
     let trimmed = input.trim();
 
-    // If they typed "example.com" → turn it into https://example.com
     if (!/^https?:\/\//i.test(trimmed)) {
       trimmed = "https://" + trimmed;
     }

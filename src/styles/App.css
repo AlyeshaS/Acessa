@@ -241,7 +241,7 @@
   margin-left: 20px;
 }
 .score-body {
-  display: flex;
+  /* display: flex; */
   flex-direction: row;
   gap: 10px;
 }
@@ -267,6 +267,250 @@ main {
   /* or the wrapper above .card-body */
   padding-bottom: 68px; /* same as footer height */
 }
+
+/* Overall score row */
+.overall-score {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin: 1rem 0 2rem;
+  flex-wrap: wrap;
+}
+
+.overall-score-text {
+  min-width: 160px;
+}
+
+.overall-score-number {
+  font-size: 1.3rem;
+  margin: 0.25rem 0;
+}
+
+.overall-score-hint {
+  font-size: 0.85rem;
+  color: #7c8da0;
+}
+
+/* Circle styles */
+.score-circle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-circle-track {
+  fill: none;
+  stroke: #eef1f8;
+}
+
+.score-circle-progress {
+  fill: none;
+  stroke: #7c8da0;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 0.5s ease-out;
+}
+
+.score-circle-text {
+  font-size: 1.2rem;
+  font-weight: 600;
+  fill: #3f4d5a;
+}
+
+.score-circle-label {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: #7c8da0;
+}
+
+/* Category cards */
+.category-section {
+  margin-top: 1.5rem;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.category-card {
+  border-radius: 12px;
+  border: 1px solid #e1e4ed;
+  padding: 0.75rem 0.9rem 0.9rem;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.category-card:focus {
+  outline: 2px solid #7c8da0;
+  outline-offset: 2px;
+}
+
+.category-header {
+  width: 100%;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0;
+}
+
+.category-header-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.category-title {
+  font-weight: 600;
+}
+
+.category-score-label {
+  font-size: 0.85rem;
+  color: #7c8da0;
+}
+
+.chevron {
+  font-size: 0.9rem;
+  transition: transform 0.2s ease;
+}
+
+.chevron-open {
+  transform: rotate(180deg);
+}
+
+.category-circle-wrapper {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* Make the cards feel clickable + animated */
+.category-card {
+  border-radius: 12px;
+  border: 1px solid #e1e4ed;
+  padding: 0.75rem 0.9rem 0.9rem;
+  background: #ffffff;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.category-card:hover {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+  border-color: #cbd2e5;
+  background-color: #f9fbff;
+}
+
+.category-card:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+}
+
+.category-card:focus {
+  outline: 2px solid #7c8da0;
+  outline-offset: 2px;
+}
+
+/* Header + chevron animation */
+.category-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chevron {
+  font-size: 0.9rem;
+  transition: transform 0.22s ease;
+}
+
+.chevron-open {
+  transform: rotate(180deg);
+}
+
+/* Slide/fade animation when the dropdown opens */
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.category-details-open {
+  animation: dropdownIn 0.22s ease-out;
+}
+
+/* Optional: softer spacing between issue paragraphs */
+.issue-item {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: #f5f7fb;
+  transition: background-color 0.2s ease;
+}
+
+.issue-item:hover {
+  background-color: #edf1fb;
+}
+
+.category-details-intro {
+  font-size: 0.85rem;
+  color: #7c8da0;
+  margin-bottom: 0.35rem;
+}
+
+.issue-item {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: #f5f7fb;
+}
+
+.issue-problem,
+.issue-recommendation {
+  margin-top: 15px;
+  font-size: 0.9rem;
+}
+
+.no-issues {
+  font-size: 0.85rem;
+  color: #7c8da0;
+}
+
+/* Loading step text */
+.loading-step-text {
+  margin-top: 12px;
+  font-size: 0.95rem;
+  color: #7c8da0;
+  opacity: 0.9;
+}
+
+.level-scores {
+  margin-top: 1.5rem;
+}
+
+.level-explanations {
+  margin-top: 0.75rem; /* spacing after Level AAA % */
+  font-size: 0.85rem;
+  color: #7c8da0;
+}
+
+.level-explanations p + p {
+  margin-top: 0.35rem;
+}
+
 /* Small screens */
 @media (max-width: 640px) {
   .action-bar {
