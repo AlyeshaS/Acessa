@@ -10,7 +10,7 @@ export default function UploadBar({
       <input
         type="url"
         className="url-pill"
-        placeholder="Enter URL (Figma or Website)"
+        placeholder="Enter URL"
         value={value}
         onChange={onChange}
         aria-label="URL to analyze"

@@ -9,11 +9,25 @@ function App() {
   const [url, setUrl] = useState("");
   const navigate = useNavigate();
 
-  const handleAnalyzeClick = () => {
-    if (!url.trim()) return;
+  function normalizeUrl(input) {
+    if (!input) return "";
 
-    // Just navigate and pass the URL; the /complete page will do the analysis
-    navigate("/complete", { state: { url: url.trim() } });
+    let trimmed = input.trim();
+
+    // If they typed "example.com" → turn it into https://example.com
+    if (!/^https?:\/\//i.test(trimmed)) {
+      trimmed = "https://" + trimmed;
+    }
+
+    return trimmed;
+  }
+
+  const handleAnalyzeClick = () => {
+    if (!url) return;
+
+    const fixedUrl = normalizeUrl(url);
+
+    navigate("/complete", { state: { url: fixedUrl } });
   };
 
   return (
@@ -26,7 +40,7 @@ function App() {
 
         <div className="body-area">
           <h2>Upload document:</h2>
-          <p className="subheader">File type: PDF, PNG or Figma </p>
+          <p className="subheader">Please upload your website </p>
 
           <div className="enter-area">
             <UploadBar
