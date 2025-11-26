@@ -531,40 +531,53 @@ function Complete() {
                     levelAAAScore !== null) && (
                     <div className="level-scores">
                       <p className="subheader">Conformance Levels</p>
+
+                      {/* Level A */}
                       {levelAScore !== null && (
-                        <p>
-                          Level A: <strong>{levelAScore}</strong>%
-                        </p>
+                        <div className="level-row">
+                          <p>
+                            Level A: <strong>{levelAScore}</strong>%
+                          </p>
+                          <span
+                            className="info-icon"
+                            data-tooltip="Level A requirements are the most basic accessibility rules. If these fail, some users with disabilities may not be able to use the site at all."
+                          >
+                            ⓘ
+                          </span>
+                        </div>
                       )}
+
+                      {/* Level AA */}
                       {levelAAScore !== null && (
-                        <p>
-                          Level AA: <strong>{levelAAScore}</strong>%
-                        </p>
+                        <div className="level-row">
+                          <p>
+                            Level AA: <strong>{levelAAScore}</strong>%
+                          </p>
+                          <span
+                            className="info-icon"
+                            data-tooltip="Level AA is the industry standard and required by AODA. It includes important usability requirements such as colour contrast, predictable navigation, and error identification."
+                          >
+                            ⓘ
+                          </span>
+                        </div>
                       )}
+
+                      {/* Level AAA */}
                       {levelAAAScore !== null && (
-                        <p>
-                          Level AAA: <strong>{levelAAAScore}</strong>%
-                        </p>
+                        <div className="level-row">
+                          <p>
+                            Level AAA: <strong>{levelAAAScore}</strong>%
+                          </p>
+                          <span
+                            className="info-icon"
+                            data-tooltip="Level AAA is the highest standard and includes advanced accessibility enhancements. It is not required by law and is often optional."
+                          >
+                            ⓘ
+                          </span>
+                        </div>
                       )}
-                      <div className="level-explanations">
-                        <p>
-                          <strong>Level A</strong> – The most basic, critical
-                          accessibility requirements. If these fail, many users
-                          with disabilities may not be able to use the site at
-                          all.
-                        </p>
-                        <p>
-                          <strong>Level AA</strong> – The industry-standard
-                          target (and the minimum required by AODA). Addresses a
-                          wider range of barriers, including colour contrast and
-                          predictable navigation.
-                        </p>
-                        <p>
-                          <strong>Level AAA</strong> – The highest level. These
-                          are advanced improvements that make the experience
-                          very accessible, but are not usually required by law.
-                        </p>
-                      </div>
+
+                      <div className="level-explanations-spacer"></div>
                     </div>
                   )}
 

@@ -511,6 +511,79 @@ main {
   margin-top: 0.35rem;
 }
 
+/* Align each row */
+.level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+/* Info icon */
+.info-icon {
+  font-size: 0.85rem;
+  background: #eef1f8;
+  color: #627285;
+  border-radius: 50%;
+  padding: 2px 6px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.info-icon:hover {
+  background: #dfe5ef;
+}
+
+/* Tooltip bubble */
+.info-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  left: 110%;
+  transform: translateY(-50%);
+  width: 220px;
+  padding: 8px 10px;
+  background: #2e3742;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.2rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* Tooltip arrow */
+.info-icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 103%;
+  transform: translateY(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent #2e3742 transparent transparent;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* Show tooltip on hover */
+.info-icon:hover::after,
+.info-icon:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Spacing below explanations */
+.level-explanations-spacer {
+  height: 1rem;
+}
+
 /* Small screens */
 @media (max-width: 640px) {
   .action-bar {

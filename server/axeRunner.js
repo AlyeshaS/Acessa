@@ -15,14 +15,27 @@ export async function runAxeOnUrl(url) {
 
   await page.addScriptTag({ content: axeSource });
 
-  const axeResults = await page.evaluate(async () => {
-    // @ts-ignore
-    return await axe.run({
-      runOnly: {
-        type: "tag",
-        values: ["wcag2a", "wcag2aa", "wcag21aa"],
-      },
-    });
+  const axeResults = await runAxeOnPage(page); // however you’re doing this
+
+  // Turn axe violations into "groups-style" objects
+  const axeGroups = axeResults.violations.map((v) => {
+    // Try to grab the WCAG id and name from axe metadata if available
+    const wcagCriterion =
+      (v.tags && v.tags.find((t) => t.startsWith("wcag"))) ||
+      v.id ||
+      "Unknown WCAG criterion";
+
+    return {
+      wcagCriterion,
+      severity:
+        (v.impact || "medium").charAt(0).toUpperCase() +
+        (v.impact || "medium").slice(1),
+      count: v.nodes ? v.nodes.length : 1,
+      problem: v.description || v.help || "Axe reported a WCAG violation.",
+      recommendation: v.helpUrl
+        ? `Fix this issue following: ${v.helpUrl}`
+        : v.help || "Update the markup to satisfy this WCAG criterion.",
+    };
   });
 
   await browser.close();

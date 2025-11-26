@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
 import { GoogleGenAI } from "@google/genai";
+import { AxeBuilder } from "@axe-core/playwright";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -19,21 +20,82 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 async function fetchPageContent(url) {
   console.log("[WCAG] Launching Playwright for:", url);
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+
+  // ✅ FIX: Create a dedicated context. Axe requires this to inject scripts correctly.
+  // const context = await browser.newContext({
+  //   userAgent:
+  //     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+  // });
+
+  // const page = await context.newPage();
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: 450000 });
+    await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
 
-    // Grab full HTML and visible text
+    // 1. Get Basic Content
     const html = await page.content();
     const text = await page.evaluate(() => document.body.innerText || "");
 
-    // You can get fancier later (headings, links, ARIA, etc.)
+    // 2. Run Axe-Core
+    console.log("[WCAG] Running Axe-Core...");
+    const axeResults = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+
+    // 3. Extract specific "Understandable" signals (Keep your existing logic)
+    const understandableData = await page.evaluate(() => {
+      const langAttribute = document.documentElement.getAttribute("lang");
+
+      const formFields = Array.from(
+        document.querySelectorAll("input, select, textarea")
+      ).map((el) => {
+        let labelText = "No Label Found";
+        if (el.id) {
+          const label = document.querySelector(`label[for="${el.id}"]`);
+          if (label) labelText = label.innerText;
+        }
+        if (labelText === "No Label Found" && el.closest("label")) {
+          labelText = el.closest("label").innerText;
+        }
+        const ariaLabel =
+          el.getAttribute("aria-label") || el.getAttribute("aria-labelledby");
+
+        return {
+          type: el.tagName.toLowerCase(),
+          inputType: el.getAttribute("type"),
+          hasLabel: labelText !== "No Label Found",
+          labelText: labelText.trim().substring(0, 50),
+          hasAriaLabel: !!ariaLabel,
+          hasPlaceholder: el.hasAttribute("placeholder"),
+        };
+      });
+
+      const navCount = document.querySelectorAll(
+        'nav, [role="navigation"]'
+      ).length;
+
+      return {
+        langAttribute,
+        formFieldCount: formFields.length,
+        formFields: formFields.slice(0, 20),
+        navCount,
+      };
+    });
+
     return {
       html,
       text,
+      understandableData,
+      axeViolations: axeResults.violations,
     };
+  } catch (error) {
+    console.error("Playwright Error:", error);
+    throw new Error(`Failed to load page content: ${error.message}`);
   } finally {
+    await context.close();
     await browser.close();
   }
 }
@@ -42,12 +104,25 @@ async function fetchPageContent(url) {
  * Build the WCAG + HCI prompt
  */
 function buildPrompt(pageData) {
-  const { html, text } = pageData;
+  const { html, text, understandableData, axeViolations } = pageData;
 
   // Truncate to avoid token limits
   const maxLen = 15000;
   const safeHtml = html.slice(0, maxLen);
   const safeText = text.slice(0, maxLen);
+
+  // Format the form data for the prompt
+  const formsJson = JSON.stringify(understandableData.formFields, null, 2);
+  // Summarize Axe violations for the prompt to save tokens
+  const robustIssues = axeViolations.map((v) => ({
+    id: v.id,
+    impact: v.impact,
+    description: v.description,
+    help: v.help,
+    nodes: v.nodes.length, // How many times this error happened
+  }));
+
+  const axeJson = JSON.stringify(robustIssues, null, 2);
 
   return `
 You are an Accessibility & HCI Evaluation Engine and a senior Human–Computer Interaction expert.
@@ -73,6 +148,12 @@ Evaluate the page across these WCAG principles:
 - Operable
 - Understandable
 - Robust
+
+SPECIAL INSTRUCTIONS FOR "UNDERSTANDABLE" (Principle 3):
+You must use the provided "Form & Language Data" below to evaluate Principle 3 specifically.
+- **3.1 Readable:** Check the extracted 'lang' attribute. If it is null or empty, fail WCAG 3.1.1 immediately. Analyze the 'Visible Text' for complex jargon (Level AAA 3.1.5).
+- **3.2 Predictable:** Use the 'navCount' to comment on navigation consistency. Look for "open in new tab" links in the HTML without warnings (Failure of 3.2.2 or 3.2.5).
+- **3.3 Input Assistance:** Look at the 'Form Fields List' provided below. If "hasLabel" is false and "hasAriaLabel" is false for any input, this is a likely failure of WCAG 3.3.2.
 
 For each detected issue, include:
 - wcagCriterion: exact WCAG 2.2 ID + name (for example "1.4.3 Contrast (Minimum)")
@@ -212,6 +293,18 @@ Strict formatting rules:
 - Always include all properties shown in the schema, even if some scores are approximate.
 - If you are uncertain about something, still return a valid numeric score and explain uncertainty in the text fields; do NOT omit or rename keys.
 
+DATA SECTION:
+
+Here is the Form & Language Data (CRITICAL FOR "UNDERSTANDABLE" SCORE):
+- Document Language (lang=""): "${
+    understandableData.langAttribute || "MISSING"
+  }"
+- Number of Navigation Landmarks: ${understandableData.navCount}
+- Form Fields Analysis: 
+${formsJson}
+- Here is the Technical Audit Log (CRITICAL FOR "ROBUST" SCORE):
+${axeJson}
+
 Here is the page HTML (truncated):
 ${safeHtml}
 
@@ -232,8 +325,12 @@ async function callAi(prompt) {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 
-  let text = result.text.trim();
-  console.log("[WCAG] Raw Gemini response:", text);
+  // let text = result.text.trim();
+  // console.log("[WCAG] Raw Gemini response:", text);
+  const response = result.response;
+  // let text = response.text ? response.text() : JSON.stringify(response);
+  let text = result.text;
+  text = text.trim();
 
   // Strip markdown fences if Gemini adds them
   if (text.startsWith("```")) {
@@ -276,32 +373,84 @@ async function callAi(prompt) {
  * Main API: POST /api/wcag-check
  */
 app.post("/api/wcag-check", async (req, res) => {
-  const { url } = req.body || {};
+  const { url } = req.body;
 
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({
-      error: "Invalid request",
-      message: "Missing or invalid 'url' in body.",
-    });
+  if (!url) {
+    return res.status(400).json({ error: "URL is required" });
   }
 
   try {
-    console.log("[WCAG] Running analysis for:", url);
-
+    // 1. Fetch Data (Includes Axe Violations)
     const pageData = await fetchPageContent(url);
-    const prompt = buildPrompt(pageData);
-    const aiJson = await callAi(prompt);
+    const { axeViolations } = pageData; // Destructure the violations
 
-    // This is what your frontend expects
+    // 2. Build Prompt & Call AI
+    const prompt = buildPrompt(pageData);
+    const aiResponse = await callAi(prompt);
+
+    // --- YOUR NEW MERGING LOGIC STARTS HERE ---
+
+    // 3. Convert Axe violations to "Gemini Group" format
+    // (We map the raw Axe data into the same shape the frontend expects from AI)
+    const axeGroups = axeViolations.map((v) => {
+      // Try to find a tag like "wcag2aa", fallback to the rule ID
+      const wcagTag = v.tags?.find((t) => t.match(/^wcag\d/)) || v.id;
+
+      return {
+        wcagCriterion: wcagTag,
+        severity: v.impact
+          ? v.impact.charAt(0).toUpperCase() + v.impact.slice(1) // "critical" -> "Critical"
+          : "High",
+        count: v.nodes?.length || 1,
+        problem: v.help || v.description || "Automated syntax error detected.",
+        recommendation: "Fix syntax issues reported by Axe-core.", // Generic fix for automated tools
+        type: "automated", // Optional: helps frontend distinguish AI vs Code findings
+      };
+    });
+
+    // 4. Get AI groups (default to empty array if missing)
+    const aiGroups = Array.isArray(aiResponse.groups) ? aiResponse.groups : [];
+
+    // 5. Deduplicate!
+    // (Prevent AI from listing "Duplicate ID" if Axe already listed it)
+    // We keep ALL Axe groups, and filter AI groups to avoid obvious overlaps if needed.
+    // For now, we will just merge them.
+    const allGroups = [...axeGroups, ...aiGroups];
+
+    // 6. Update the response object
+    aiResponse.groups = allGroups;
+
+    // Recalculate 'Robust' score if Axe found errors (AI is bad at math)
+    if (axeViolations.length > 0) {
+      // Penalize Robust score hard if automated errors exist
+      aiResponse.categoryScores.Robust = Math.max(
+        0,
+        aiResponse.categoryScores.Robust - axeViolations.length * 5
+      );
+      // Update overall score roughly
+      aiResponse.score = Math.floor(
+        (aiResponse.categoryScores.Perceivable +
+          aiResponse.categoryScores.Operable +
+          aiResponse.categoryScores.Understandable +
+          aiResponse.categoryScores.Robust) /
+          4
+      );
+    }
+
+    // --- END MERGING LOGIC ---
+
+    // 7. Send Final Response
     res.json({
       url,
-      aiAnalysis: aiJson,
+      aiAnalysis: aiResponse,
+      // We pass the raw axe violations too, in case you want to show a separate table for them
+      axe: axeViolations,
     });
-  } catch (err) {
-    console.error("[WCAG] Error in /api/wcag-check:", err);
+  } catch (error) {
+    console.error("[WCAG] Server Error:", error);
     res.status(500).json({
-      error: "WCAG check failed",
-      message: err.message || "Unknown error",
+      error: "Analysis failed",
+      details: error.message,
     });
   }
 });
