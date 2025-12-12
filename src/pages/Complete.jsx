@@ -1,4 +1,3 @@
-// src/pages/Complete.jsx
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
@@ -63,24 +62,202 @@ const LOADING_STEPS = [
   "Building your accessibility report…",
 ];
 
+/**
+ * Shows live Playwright browser feed as it checks the page
+ */
+function AnalysisPlayer({ result, onComplete, onImageLoad }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const steps = result?.steps || [];
+  const screenshot = result?.screenshot;
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    if (steps.length === 0) return;
+
+    // Advance through steps as they arrive
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => {
+        if (prev >= steps.length - 1) {
+          return prev; // wait for more steps
+        }
+        return prev + 1;
+      });
+    }, 800); // slower pace to see each check
+
+    return () => clearInterval(interval);
+  }, [steps.length]);
+
+  // Detect when animation is complete
+  useEffect(() => {
+    if (steps.length === 0) return;
+
+    const timeout = setTimeout(() => {
+      if (currentIndex >= steps.length - 1 && onComplete) {
+        onComplete();
+      }
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [currentIndex, steps.length, onComplete]);
+
+  const currentStep = steps[currentIndex];
+  const currentScreenshot = currentStep?.screenshot || screenshot;
+  const offsetX = currentStep?.offsetX || 0;
+  const offsetY = currentStep?.offsetY || 0;
+  const [scale, setScale] = useState(1);
+
+  const handleImgLoad = (e) => {
+    try {
+      const img = e.target;
+      const natural = img.naturalWidth || 1280;
+      const clientW = img.clientWidth || natural;
+      const s = clientW / natural;
+      setScale(s || 1);
+      if (typeof onImageLoad === "function") onImageLoad();
+    } catch (err) {
+      setScale(1);
+    }
+  };
+
+  const scaled = (val) => Math.round((val || 0) * (scale || 1));
+
+  return (
+    <div className="analysis-player-single">
+      {/* Live browser view */}
+      <div
+        className="analysis-image-wrapper"
+        style={{
+          position: "relative",
+          maxWidth: "600px",
+          margin: "0 auto",
+          borderRadius: "14px",
+          overflow: "hidden",
+          border: "2px solid #189B97",
+          background: "rgba(15,23,42,0.8)",
+          boxShadow: "0 4px 20px rgba(24,155,151,0.3)",
+        }}
+      >
+        {/* Single screenshot with client-side overlays */}
+        <img
+          ref={imgRef}
+          src={currentScreenshot}
+          alt="Live Playwright browser view"
+          className="analysis-screenshot"
+          style={{
+            width: "100%",
+            height: "auto",
+            display: "block",
+          }}
+          onLoad={handleImgLoad}
+        />
+
+        {/* Draw click circle overlay */}
+        {currentStep?.type === "click" && (
+          <div
+            style={{
+              position: "absolute",
+              left: scaled(currentStep.x - offsetX) - Math.round(18 * scale),
+              top: scaled(currentStep.y - offsetY) - Math.round(18 * scale),
+              width: Math.round(36 * scale),
+              height: Math.round(36 * scale),
+              borderRadius: "50%",
+              border: `${Math.max(3, Math.round(5 * scale))}px solid #E6892C`,
+              boxShadow: `0 0 ${Math.round(25 * scale)}px rgba(230,137,44,0.8)`,
+              background: "rgba(230,137,44,0.2)",
+              pointerEvents: "none",
+              zIndex: 5,
+            }}
+          />
+        )}
+
+        {/* Draw highlight box overlay */}
+        {currentStep?.type === "highlight" && (
+          <div
+            style={{
+              position: "absolute",
+              left: scaled(currentStep.x - offsetX),
+              top: scaled(currentStep.y - offsetY),
+              width: scaled(currentStep.width),
+              height: scaled(currentStep.height),
+              borderRadius: "8px",
+              border: `${Math.max(3, Math.round(4 * scale))}px solid #189B97`,
+              boxShadow: `0 0 0 ${Math.round(
+                8 * scale
+              )}px rgba(24,155,151,0.25)`,
+              background: "rgba(24,155,151,0.15)",
+              pointerEvents: "none",
+              zIndex: 4,
+            }}
+          />
+        )}
+
+        {/* Status overlay showing what's being checked */}
+        <div
+          className="analysis-status-overlay"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: "12px 16px",
+            background:
+              "linear-gradient(to top, rgba(15,23,42,0.95), rgba(15,23,42,0.85), transparent)",
+            color: "#e5e7eb",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "#189B97", marginBottom: 4 }}>
+            🔍 Live Accessibility Scan
+          </div>
+          <div>{currentStep?.label || "Preparing scan..."}</div>
+          <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: 4 }}>
+            Step {Math.min(currentIndex + 1, steps.length)} of{" "}
+            {steps.length || "..."}
+          </div>
+        </div>
+      </div>
+
+      <p
+        style={{
+          marginTop: "12px",
+          fontSize: "12px",
+          textAlign: "center",
+          color: "#9ca3af",
+          fontStyle: "italic",
+        }}
+      >
+        Watching Playwright check accessibility in real-time
+      </p>
+    </div>
+  );
+}
 function Complete() {
   const navigate = useNavigate();
   const location = useLocation();
   const url = location.state?.url;
 
-  const [loading, setLoading] = useState(true);
-  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true); // network / initial state
+  const [analysis, setAnalysis] = useState(null); // full backend response
   const [error, setError] = useState(null);
 
-  // Loading step messages to inform the user what is happening
-  const loadingSteps = [
-    "Fetching your webpage…",
-    "Running automated accessibility checks…",
-    "Checking WCAG 2.2 and AODA requirements…",
-    "Analyzing HCI and UX patterns…",
-    "Building your accessibility report…",
-  ];
-  const [loadingStep, setLoadingStep] = useState(LOADING_STEPS[0]);
+  const [progress, setProgress] = useState(0);
+  const [screenshotProgress, setScreenshotProgress] = useState(0);
+  const [animationDone, setAnimationDone] = useState(false);
+
+  // NEW: "animation" state – we show AnalysisPlayer while this is true
+  const [animating, setAnimating] = useState(false);
+  const [previewResult, setPreviewResult] = useState(null); // { screenshot, steps }
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [pendingResult, setPendingResult] = useState(null);
+
+  // NEW: Visual segments with images and comments (merged from Visual page)
+  const [segments, setSegments] = useState([]);
+  const [pendingSegments, setPendingSegments] = useState([]);
+
+  // NEW: Violation screenshots with interactive feedback
+  const [violationScreenshots, setViolationScreenshots] = useState([]);
+  const [selectedViolation, setSelectedViolation] = useState(null);
 
   // Which categories are expanded in the UI
   const [expandedCategories, setExpandedCategories] = useState({
@@ -108,36 +285,208 @@ function Complete() {
       try {
         setLoading(true);
         setError(null);
+        setAnimating(false);
+        setAnimationDone(false);
+        setPreviewResult(null);
 
-        const res = await fetch("http://localhost:4000/api/wcag-check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-          signal,
+        // Open an EventSource stream to receive an immediate preview and
+        // then the full AI result when it's ready. This ensures the UI
+        // can animate Playwright actions immediately while the server
+        // runs Axe and calls Gemini.
+        const streamUrl = `http://localhost:4000/api/wcag-check-stream?url=${encodeURIComponent(
+          url
+        )}`;
+
+        const evt = new EventSource(streamUrl);
+
+        evt.addEventListener("preview", (e) => {
+          try {
+            const payload = JSON.parse(e.data || "{}");
+            if (payload.screenshot) {
+              setPreviewResult({
+                screenshot: payload.screenshot,
+                steps: Array.isArray(payload.steps) ? payload.steps : [],
+              });
+              // wait for image to load before starting animation
+              setImageLoaded(false);
+              setAnimating(false);
+            }
+          } catch (err) {
+            console.error("[Complete] preview parse", err);
+          }
         });
 
-        if (signal.aborted) return;
+        // NEW: Listen for live step events as Axe finds real violations
+        evt.addEventListener("step", (e) => {
+          try {
+            const step = JSON.parse(e.data || "{}");
+            setPreviewResult((prev) => {
+              const base = prev || { screenshot: null, steps: [] };
+              const nextSteps = [...(base.steps || []), step];
+              const nextScreenshot = step.screenshot || base.screenshot;
+              return {
+                ...base,
+                screenshot: nextScreenshot,
+                steps: nextSteps,
+              };
+            });
+          } catch (err) {
+            console.error("[Complete] step parse", err);
+          }
+        });
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || data.error || "Request failed");
-        }
+        evt.addEventListener("axe", (e) => {
+          // optional: could show counts or update progress
+        });
 
-        const data = await res.json();
-        if (!signal.aborted) {
-          setAnalysis(data);
-        }
+        evt.addEventListener("ai", (e) => {
+          // ai status event
+        });
+
+        evt.addEventListener("result", (e) => {
+          try {
+            const payload = JSON.parse(e.data || "{}");
+            // defer applying final analysis until the animation completes
+            setPendingResult(payload);
+            // Store violation screenshots if provided
+            if (
+              payload.violationScreenshots &&
+              Array.isArray(payload.violationScreenshots)
+            ) {
+              setViolationScreenshots(payload.violationScreenshots);
+            }
+            // Don't overwrite the live steps - they've already been streamed and are animating
+            // The payload.steps are redundant since we already received them as individual "step" events
+            if (payload.screenshot) {
+              // Update screenshot if it changed, but don't reset steps array
+              setPreviewResult((prev) => ({
+                ...prev,
+                screenshot: payload.screenshot,
+              }));
+              setAnimating(true);
+            }
+            // keep loading true; when AnalysisPlayer calls onComplete we'll
+            // apply pendingResult and stop animating.
+          } catch (err) {
+            console.error("[Complete] result parse", err);
+          }
+        });
+
+        evt.addEventListener("done", () => {
+          // keep loading true until animation completes and consumes pendingResult
+          try {
+            evt.close();
+          } catch (err) {}
+
+          // NEW: After HTML analysis stream completes, start visual segment capture
+          // This runs in parallel and will populate segments for display after animation
+          try {
+            const visualStreamUrl = `http://localhost:4000/api/wcag-visual-stream?url=${encodeURIComponent(
+              url
+            )}`;
+            const visualEvt = new EventSource(visualStreamUrl);
+
+            visualEvt.addEventListener("preview", (e) => {
+              // Visual preview already shown from HTML stream, skip
+            });
+
+            visualEvt.addEventListener("segment", (e) => {
+              try {
+                const payload = JSON.parse(e.data || "{}");
+                setPendingSegments((prev) => {
+                  const copy = [...prev];
+                  copy[payload.index] = {
+                    screenshot: payload.screenshot,
+                    clip: payload.clip,
+                    description: "Capturing segment...",
+                  };
+                  return copy;
+                });
+              } catch (err) {
+                console.error("[Complete] segment parse", err);
+              }
+            });
+
+            visualEvt.addEventListener("segmentAnalysis", (e) => {
+              try {
+                const payload = JSON.parse(e.data || "{}");
+                setPendingSegments((prev) => {
+                  const copy = [...prev];
+                  const existing = copy[payload.index] || {};
+                  existing.aiAnalysis = payload.aiAnalysis || null;
+                  existing.description = payload.aiAnalysis
+                    ? payload.aiAnalysis.overallSummary ||
+                      payload.aiAnalysis.hciSummary ||
+                      ""
+                    : payload.error ||
+                      existing.description ||
+                      "Analysis unavailable";
+                  copy[payload.index] = existing;
+                  return copy;
+                });
+              } catch (err) {
+                console.error("[Complete] segmentAnalysis parse", err);
+              }
+            });
+
+            visualEvt.addEventListener("result", (e) => {
+              try {
+                const payload = JSON.parse(e.data || "{}");
+                // Store segments from visual analysis for display after animation
+                if (Array.isArray(payload.breakdown)) {
+                  setPendingSegments(payload.breakdown);
+                }
+              } catch (err) {
+                console.error("[Complete] visual result parse", err);
+              }
+            });
+
+            visualEvt.addEventListener("done", () => {
+              try {
+                visualEvt.close();
+              } catch (err) {}
+            });
+
+            visualEvt.onerror = (err) => {
+              console.error("[Complete] Visual SSE error", err);
+              try {
+                visualEvt.close();
+              } catch (e) {}
+            };
+
+            signal.addEventListener("abort", () => {
+              try {
+                visualEvt.close();
+              } catch (e) {}
+            });
+          } catch (visualErr) {
+            console.error(
+              "[Complete] Failed to start visual stream:",
+              visualErr
+            );
+          }
+        });
+
+        evt.onerror = (err) => {
+          console.error("[Complete] SSE error", err);
+          setError("Streaming connection failed");
+          setLoading(false);
+          try {
+            evt.close();
+          } catch (e) {}
+        };
+
+        // cleanup on abort
+        signal.addEventListener("abort", () => {
+          try {
+            evt.close();
+          } catch (e) {}
+        });
       } catch (err) {
-        if (err.name === "AbortError") {
-          console.log("[Complete] Request aborted");
-          return;
-        }
+        if (err.name === "AbortError") return;
         console.error(err);
         setError(err.message || "Something went wrong while analyzing.");
-      } finally {
-        if (!signal.aborted) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     };
 
@@ -148,20 +497,102 @@ function Complete() {
     };
   }, [url]);
 
-  // Rotate loading messages while loading
+  // Animate loading progress while loading/animating
   useEffect(() => {
-    if (!loading) return;
+    let interval = null;
 
-    let index = 0;
-    setLoadingStep(LOADING_STEPS[0]);
+    // Do not advance progress until the first image is loaded
+    if (loading && imageLoaded) {
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          const inc = 3 + Math.floor(Math.random() * 6);
 
-    const interval = setInterval(() => {
-      index = (index + 1) % LOADING_STEPS.length;
-      setLoadingStep(LOADING_STEPS[index]);
-    }, 2200);
+          // Phase targets
+          let target = 25; // building steps / grabbing preview
+          if (!imageLoaded) {
+            target = 25;
+          } else if (animating) {
+            target = 90; // showing live steps
+          } else if (animationDone && analysis) {
+            target = 100; // steps done + Gemini finished
+          } else if (animationDone && !analysis) {
+            target = 90; // waiting on Gemini after steps are done
+          }
 
-    return () => clearInterval(interval);
-  }, [loading]);
+          const next = prev < target ? Math.min(target, prev + inc) : prev;
+          return Math.max(prev, next); // never decrease
+        });
+      }, 700);
+    }
+
+    // Keep progress at 0 while waiting for the first image
+    if (loading && !imageLoaded) {
+      setProgress(0);
+    }
+
+    if (!loading && !animating) {
+      setProgress(100);
+      const t = setTimeout(() => setProgress(0), 800);
+      return () => {
+        clearTimeout(t);
+        if (interval) clearInterval(interval);
+      };
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading, animating, imageLoaded, animationDone, analysis]);
+
+  // Animate screenshot fetching progress before the first image arrives
+  useEffect(() => {
+    let interval = null;
+
+    if (loading && !imageLoaded) {
+      setScreenshotProgress(0);
+      interval = setInterval(() => {
+        setScreenshotProgress((prev) => {
+          const inc = 10 + Math.floor(Math.random() * 8);
+          if (prev >= 90) return prev;
+          return Math.min(90, prev + inc);
+        });
+      }, 400);
+    }
+
+    if (imageLoaded) {
+      setScreenshotProgress(100);
+      if (interval) clearInterval(interval);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading, imageLoaded]);
+
+  // Once animation is done, if a pending result arrived earlier, apply it
+  useEffect(() => {
+    if (animationDone && pendingResult) {
+      const payload = pendingResult;
+      setAnalysis(
+        payload.aiAnalysis
+          ? { ...payload.aiAnalysis, url: payload.url }
+          : payload
+      );
+      setPendingResult(null);
+      if (pendingSegments.length > 0) {
+        setSegments(pendingSegments);
+      }
+    }
+  }, [animationDone, pendingResult, pendingSegments]);
+
+  // When animation is done and analysis is available, finish progress and exit loading
+  useEffect(() => {
+    if (animationDone && analysis && loading) {
+      setProgress(100);
+      const t = setTimeout(() => setLoading(false), 600);
+      return () => clearTimeout(t);
+    }
+  }, [animationDone, analysis, loading]);
 
   const handleBack = () => {
     if (abortRef.current) {
@@ -181,6 +612,11 @@ function Complete() {
 
   // Category scores from Gemini
   const categoryScores = ai.categoryScores || {};
+  const categoryExplanations = ai.categoryExplanations || {};
+  const scoreBreakdown = ai.scoreBreakdown || {};
+
+  // Score details state
+  const [showScoreDetails, setShowScoreDetails] = useState(false);
 
   const perceivableScore =
     typeof categoryScores.Perceivable === "number"
@@ -238,10 +674,11 @@ function Complete() {
   const hciParagraphs =
     typeof hciText === "string"
       ? hciText
-          .split(/\n{2,}|\r?\n/) // split on double or single newlines
+          .split(/\n{2,}|\r?\n/)
           .map((p) => p.trim())
           .filter(Boolean)
       : [];
+
   // Map WCAG criterion to principle
   const getPrincipleFromCriterion = (criterion) => {
     if (!criterion) return null;
@@ -311,7 +748,7 @@ function Complete() {
         Operable: false,
         Understandable: false,
         Robust: false,
-        [name]: !isOpen, // if it was open, close it; if closed, open it
+        [name]: !isOpen,
       };
     });
   };
@@ -348,20 +785,9 @@ function Complete() {
       </div>
 
       <div className="card-body">
-        {/* Loading state */}
-        {loading && (
-          <div className="hci-report">
-            <h2>Analyzing...</h2>
-            <p className="subheader">
-              Running WCAG 2.2 + HCI analysis for:
-              <br />
-              <strong>{url}</strong>
-            </p>
-            <p className="loading-step-text">{loadingStep}</p>
-          </div>
-        )}
+        {/* NETWORK LOADING STATE (before we even have screenshot/steps) */}
 
-        {/* Error state */}
+        {/* ERROR STATE */}
         {!loading && error && (
           <div className="hci-report">
             <h2>Something went wrong</h2>
@@ -369,8 +795,104 @@ function Complete() {
           </div>
         )}
 
-        {/* Results state */}
-        {!loading && !error && analysis && (
+        {(loading || animating) && !error && (
+          <div className="hci-report">
+            <h2>Analyzing...</h2>
+            <p className="subheader">
+              Running WCAG 2.2 + HCI analysis for:
+              <br />
+              <strong>{analysis?.url || url}</strong>
+            </p>
+
+            {/* Show "Grabbing landing page" before image loads */}
+            {!imageLoaded && (
+              <p
+                className="loading-status-text"
+                style={{
+                  fontSize: "14px",
+                  color: "#94a3b8",
+                  marginTop: "12px",
+                  fontStyle: "italic",
+                }}
+              >
+                Grabbing landing page...
+              </p>
+            )}
+
+            {/* Progress bar and percentage */}
+            {!imageLoaded && (
+              <>
+                <div
+                  className="loading-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={screenshotProgress}
+                >
+                  <div
+                    className="loading-bar-fill"
+                    style={{ width: `${screenshotProgress}%` }}
+                  />
+                </div>
+                <p className="loading-bar-text">
+                  Fetching page snapshot… {screenshotProgress}%
+                </p>
+              </>
+            )}
+
+            {imageLoaded && (
+              <>
+                <div
+                  className="loading-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress}
+                >
+                  <div
+                    className="loading-bar-fill"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="loading-bar-text">Analyzing… {progress}%</p>
+              </>
+            )}
+
+            {/* As soon as we have screenshot + steps, show the animation under the text */}
+            {previewResult && (
+              <div className="mt-6">
+                <AnalysisPlayer
+                  result={previewResult}
+                  onImageLoad={() => {
+                    setImageLoaded(true);
+                    setAnimating(true);
+                  }}
+                  onComplete={() => {
+                    // finish animating; if we have a pending result apply it
+                    setAnimating(false);
+                    setAnimationDone(true);
+                    if (pendingResult) {
+                      const payload = pendingResult;
+                      setAnalysis(
+                        payload.aiAnalysis
+                          ? { ...payload.aiAnalysis, url: payload.url }
+                          : payload
+                      );
+                      setPendingResult(null);
+                    }
+                    // Apply visual segments if available
+                    if (pendingSegments.length > 0) {
+                      setSegments(pendingSegments);
+                    }
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RESULTS STATE (after animation finishes OR if no preview was returned) */}
+        {!loading && !error && !animating && analysis && (
           <>
             <div className="scores">
               <h2>Scores</h2>
@@ -401,6 +923,156 @@ function Complete() {
                           Higher scores indicate better alignment with WCAG 2.2
                           and AODA.
                         </p>
+
+                        {/* Expandable Score Details */}
+                        <button
+                          onClick={() => setShowScoreDetails(!showScoreDetails)}
+                          style={{
+                            marginTop: 12,
+                            background: "none",
+                            border: "1px solid #189B97",
+                            color: "#189B97",
+                            padding: "8px 12px",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            transition: "all 0.2s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = "#189B97";
+                            e.target.style.color = "white";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = "none";
+                            e.target.style.color = "#189B97";
+                          }}
+                        >
+                          {showScoreDetails ? "Hide" : "Show"} Score Details
+                        </button>
+
+                        {showScoreDetails && scoreBreakdown && (
+                          <div
+                            style={{
+                              marginTop: 16,
+                              padding: 16,
+                              background: "#f9f9f9",
+                              borderRadius: 8,
+                              border: "1px solid #e0e0e0",
+                            }}
+                          >
+                            <h4
+                              style={{
+                                margin: "0 0 12px 0",
+                                fontSize: "13px",
+                                color: "#189B97",
+                              }}
+                            >
+                              Score Calculation Breakdown
+                            </h4>
+
+                            <div
+                              style={{ fontSize: "12px", lineHeight: "1.8" }}
+                            >
+                              {scoreBreakdown.highCount !== undefined && (
+                                <div>
+                                  <strong>Severity Distribution:</strong>
+                                  <div style={{ marginLeft: 16, marginTop: 8 }}>
+                                    <div style={{ marginBottom: 6 }}>
+                                      🔴 <strong>High Severity:</strong>{" "}
+                                      {scoreBreakdown.highCount} violation
+                                      {scoreBreakdown.highCount !== 1
+                                        ? "s"
+                                        : ""}{" "}
+                                      ({scoreBreakdown.highCount * 3} points)
+                                    </div>
+                                    <div style={{ marginBottom: 6 }}>
+                                      🟠 <strong>Medium Severity:</strong>{" "}
+                                      {scoreBreakdown.mediumCount} violation
+                                      {scoreBreakdown.mediumCount !== 1
+                                        ? "s"
+                                        : ""}{" "}
+                                      ({scoreBreakdown.mediumCount * 2} points)
+                                    </div>
+                                    <div style={{ marginBottom: 6 }}>
+                                      🟡 <strong>Low Severity:</strong>{" "}
+                                      {scoreBreakdown.lowCount} violation
+                                      {scoreBreakdown.lowCount !== 1
+                                        ? "s"
+                                        : ""}{" "}
+                                      ({scoreBreakdown.lowCount * 1} point
+                                      {scoreBreakdown.lowCount !== 1 ? "s" : ""}
+                                      )
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {scoreBreakdown.deductedPoints !== undefined && (
+                                <div
+                                  style={{
+                                    marginTop: 12,
+                                    paddingTop: 12,
+                                    borderTop: "1px solid #ddd",
+                                  }}
+                                >
+                                  <strong>Points Calculation:</strong>
+                                  <div style={{ marginLeft: 16, marginTop: 8 }}>
+                                    <div style={{ marginBottom: 4 }}>
+                                      Deducted:{" "}
+                                      <strong>
+                                        {scoreBreakdown.deductedPoints}
+                                      </strong>{" "}
+                                      points
+                                    </div>
+                                    <div style={{ marginBottom: 4 }}>
+                                      Maximum Possible:{" "}
+                                      <strong>
+                                        {scoreBreakdown.maxPossiblePoints}
+                                      </strong>{" "}
+                                      points
+                                    </div>
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        padding: 8,
+                                        background: "#e8f5f4",
+                                        borderRadius: 4,
+                                      }}
+                                    >
+                                      Final Score: (
+                                      {scoreBreakdown.maxPossiblePoints} -{" "}
+                                      {scoreBreakdown.deductedPoints}) ÷{" "}
+                                      {scoreBreakdown.maxPossiblePoints} × 100 ={" "}
+                                      <strong>{score}%</strong>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {scoreBreakdown.explanation && (
+                                <div
+                                  style={{
+                                    marginTop: 12,
+                                    paddingTop: 12,
+                                    borderTop: "1px solid #ddd",
+                                  }}
+                                >
+                                  <strong>Summary:</strong>
+                                  <p
+                                    style={{
+                                      margin: "8px 0 0 0",
+                                      fontStyle: "italic",
+                                      color: "#555",
+                                    }}
+                                  >
+                                    {scoreBreakdown.explanation}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -463,6 +1135,31 @@ function Complete() {
                               {/* Dropdown content */}
                               {expandedCategories[cat.key] && (
                                 <div className="category-details category-details-open">
+                                  {categoryExplanations[cat.key] && (
+                                    <div
+                                      style={{
+                                        background: "#f5f5f5",
+                                        padding: "12px",
+                                        borderRadius: "8px",
+                                        marginBottom: "12px",
+                                        fontSize: "13px",
+                                        lineHeight: "1.6",
+                                        borderLeft: "4px solid #189B97",
+                                      }}
+                                    >
+                                      <strong style={{ color: "#189B97" }}>
+                                        Why this score:
+                                      </strong>
+                                      <p
+                                        style={{
+                                          margin: "8px 0 0 0",
+                                          whiteSpace: "pre-wrap",
+                                        }}
+                                      >
+                                        {categoryExplanations[cat.key]}
+                                      </p>
+                                    </div>
+                                  )}
                                   <p className="category-details-intro">
                                     WCAG issues related to{" "}
                                     {cat.key.toLowerCase()}:
@@ -610,6 +1307,235 @@ function Complete() {
                 </ul>
               )}
             </div>
+
+            {/* NEW: Violation Screenshots with Interactive Feedback */}
+            {violationScreenshots && violationScreenshots.length > 0 && (
+              <div className="hci-report">
+                <h2>Visual Accessibility Feedback</h2>
+                <p className="subheader" style={{ marginBottom: 16 }}>
+                  Click on the info buttons to see detailed feedback on specific
+                  accessibility issues
+                </p>
+
+                {violationScreenshots.map((vs, idx) => {
+                  const violation = vs.violations?.[0];
+                  const bounds = vs.bounds || {};
+                  const severityColor = {
+                    1: "#FFA500", // Low - Orange
+                    2: "#FF6B6B", // Medium - Red
+                    3: "#CC0000", // High - Dark Red
+                  }[
+                    violation?.impact === "critical" ||
+                    violation?.impact === "serious"
+                      ? 3
+                      : violation?.impact === "moderate"
+                      ? 2
+                      : 1
+                  ];
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        marginBottom: 24,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        border: "1px solid #ddd",
+                      }}
+                    >
+                      <div
+                        style={{ position: "relative", background: "#f0f0f0" }}
+                      >
+                        <img
+                          src={vs.screenshot}
+                          alt={`violation-${idx}`}
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            display: "block",
+                          }}
+                        />
+
+                        {/* Interactive info button positioned at violation location */}
+                        {bounds.x !== undefined && bounds.y !== undefined && (
+                          <button
+                            onClick={() => setSelectedViolation(vs)}
+                            style={{
+                              position: "absolute",
+                              left: `${bounds.x}px`,
+                              top: `${bounds.y}px`,
+                              width: "40px",
+                              height: "40px",
+                              borderRadius: "50%",
+                              background: severityColor,
+                              border: "3px solid white",
+                              color: "white",
+                              fontSize: "20px",
+                              fontWeight: "bold",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                              zIndex: 10,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              transition: "transform 0.2s",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.transform = "scale(1.2)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.transform = "scale(1)";
+                            }}
+                            title={`${
+                              violation?.id || "Issue"
+                            } - Click for details`}
+                          >
+                            ⓘ
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Detailed feedback panel */}
+                      {selectedViolation === vs && (
+                        <div
+                          style={{
+                            padding: 16,
+                            background: "#f9f9f9",
+                            borderTop: `4px solid ${severityColor}`,
+                          }}
+                        >
+                          <div style={{ marginBottom: 12 }}>
+                            <strong
+                              style={{ fontSize: "14px", color: "#189B97" }}
+                            >
+                              {vs.wcagCriterion ||
+                                violation?.id ||
+                                "Accessibility Issue"}
+                            </strong>
+                            <span
+                              style={{
+                                marginLeft: 12,
+                                display: "inline-block",
+                                background: severityColor,
+                                color: "white",
+                                padding: "4px 12px",
+                                borderRadius: "4px",
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {violation?.impact?.toUpperCase() || "MEDIUM"}
+                            </span>
+                          </div>
+
+                          {violation?.description && (
+                            <div style={{ marginBottom: 12 }}>
+                              <p
+                                style={{
+                                  margin: "0 0 4px 0",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  color: "#666",
+                                }}
+                              >
+                                What's Wrong:
+                              </p>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: "13px",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                {violation.description}
+                              </p>
+                            </div>
+                          )}
+
+                          {violation?.help && (
+                            <div>
+                              <p
+                                style={{
+                                  margin: "0 0 4px 0",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  color: "#666",
+                                }}
+                              >
+                                How to Fix:
+                              </p>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: "13px",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                {violation.help}
+                              </p>
+                            </div>
+                          )}
+
+                          {violation?.nodes && violation.nodes[0]?.html && (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                paddingTop: 12,
+                                borderTop: "1px solid #ddd",
+                              }}
+                            >
+                              <p
+                                style={{
+                                  margin: "0 0 4px 0",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  color: "#666",
+                                }}
+                              >
+                                Affected Element:
+                              </p>
+                              <code
+                                style={{
+                                  display: "block",
+                                  background: "#f0f0f0",
+                                  padding: 8,
+                                  borderRadius: 4,
+                                  fontSize: "11px",
+                                  overflow: "auto",
+                                  maxHeight: "100px",
+                                  color: "#333",
+                                }}
+                              >
+                                {violation.nodes[0].html}
+                              </code>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() => setSelectedViolation(null)}
+                            style={{
+                              marginTop: 12,
+                              padding: "8px 16px",
+                              background: "#189B97",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Close
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Visual Segments section removed to fix empty JSX block */}
           </>
         )}
       </div>
