@@ -315,7 +315,7 @@ async function captureViolationScreenshots(page, axeViolations) {
           } (selector: ${target})`
         );
 
-        // Try to get bounding box
+        // Try to get bounding box for the primary node
         const bounds = await page.evaluate((selector) => {
           try {
             const el = document.querySelector(selector);
@@ -336,6 +336,58 @@ async function captureViolationScreenshots(page, axeViolations) {
             return null;
           }
         }, target);
+
+        // Collect visible node bounds to overlay multiple issue markers
+        // Build a unique list of selectors for all nodes tied to this violation
+        const markerSelectors = [];
+        const seenSelectors = new Set();
+        violation.nodes
+          .map((n) => (n.target ? n.target.join(" ") : ""))
+          .filter(Boolean)
+          .forEach((sel) => {
+            if (!seenSelectors.has(sel)) {
+              seenSelectors.add(sel);
+              markerSelectors.push(sel);
+            }
+          });
+
+        const markers = await page.evaluate((selectors) => {
+          const viewportW = window.innerWidth || 0;
+          const viewportH = window.innerHeight || 0;
+
+          return selectors
+            .map((selector) => {
+              try {
+                const el = document.querySelector(selector);
+                if (!el) return null;
+
+                const rect = el.getBoundingClientRect();
+                if (!rect || rect.width === 0 || rect.height === 0) return null;
+
+                const inViewport =
+                  rect.x + rect.width > 0 &&
+                  rect.y + rect.height > 0 &&
+                  rect.x < viewportW &&
+                  rect.y < viewportH;
+
+                if (!inViewport) return null;
+
+                return {
+                  x: Math.round(rect.x),
+                  y: Math.round(rect.y),
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  selector,
+                };
+              } catch (e) {
+                console.log(
+                  `[WCAG] Marker error for ${selector}: ${e.message}`
+                );
+                return null;
+              }
+            })
+            .filter(Boolean);
+        }, markerSelectors);
 
         await page.waitForTimeout(150);
 
@@ -365,6 +417,7 @@ async function captureViolationScreenshots(page, axeViolations) {
           )}`,
           violations: [violation],
           bounds: bounds || { x: 0, y: 0, width: 0, height: 0 },
+          markers: markers || [],
           violationType: violation.id,
           wcagCriterion:
             violation.tags?.find((t) => t.match(/^wcag\d/)) || violation.id,
@@ -448,8 +501,8 @@ For each detected issue, include:
 - wcagCriterion: exact WCAG 2.2 ID + name (for example "1.4.3 Contrast (Minimum)")
 - severity: "High" | "Medium" | "Low"
 - count: approximate number of occurrences (integer)
-- problem: short, concrete explanation of what is wrong, in plain language
-- recommendation: short, specific, developer-friendly fix in plain language
+- problem: short, concrete explanation of what is wrong, written for non-developers; describe the visible symptom and the user impact (no code, no selectors)
+- recommendation: short, specific fix in plain language (what to change in UX/content/contrast rather than code details)
 
 Requirements:
 - Only use criteria that exist in WCAG 2.2.
