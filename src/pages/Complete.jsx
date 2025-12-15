@@ -1369,6 +1369,17 @@ function Complete() {
                       // Pull AI feedback from visual segment analysis for this area
                       const getAiFeedback = (marker) => {
                         if (
+                          vs &&
+                          vs.aiFeedback &&
+                          (vs.aiFeedback.summary ||
+                            vs.aiFeedback.recommendation)
+                        ) {
+                          return {
+                            summary: vs.aiFeedback.summary || "",
+                            recommendation: vs.aiFeedback.recommendation || "",
+                          };
+                        }
+                        if (
                           !marker ||
                           !Array.isArray(segments) ||
                           segments.length === 0
@@ -1445,10 +1456,9 @@ function Complete() {
 
                             {/* Interactive info button(s) positioned over each detected problem */}
                             {markers.map((marker, markerIdx) => {
-                              const centerX =
-                                (marker?.x || 0) + (marker?.width || 0) / 2;
-                              const centerY =
-                                (marker?.y || 0) + (marker?.height || 0) / 2;
+                              const topLeftX = marker?.x || 0;
+                              const topLeftY = marker?.y || 0;
+                              const markerWidth = marker?.width || 0;
 
                               return (
                                 <button
@@ -1456,8 +1466,8 @@ function Complete() {
                                   onClick={() => openLightbox(marker)}
                                   style={{
                                     position: "absolute",
-                                    left: `${centerX - 20}px`,
-                                    top: `${centerY - 20}px`,
+                                    left: `${topLeftX + markerWidth - 20}px`,
+                                    top: `${topLeftY - 20}px`,
                                     width: "40px",
                                     height: "40px",
                                     borderRadius: "50%",
@@ -1544,12 +1554,14 @@ function Complete() {
                                     lineHeight: 1.5,
                                   }}
                                 >
-                                  {lightbox?.aiFeedback?.summary ||
+                                  {vs?.aiFeedback?.summary ||
+                                    lightbox?.aiFeedback?.summary ||
                                     violation?.help ||
                                     violation?.description ||
                                     "This area may be hard to use or understand. The feedback is based on WCAG visual checks (contrast, spacing, labels)."}
                                 </p>
-                                {lightbox?.aiFeedback?.recommendation && (
+                                {(vs?.aiFeedback?.recommendation ||
+                                  lightbox?.aiFeedback?.recommendation) && (
                                   <p
                                     style={{
                                       margin: "8px 0 0 0",
@@ -1558,7 +1570,8 @@ function Complete() {
                                     }}
                                   >
                                     <strong>Suggested fix:</strong>{" "}
-                                    {lightbox.aiFeedback.recommendation}
+                                    {vs?.aiFeedback?.recommendation ||
+                                      lightbox.aiFeedback.recommendation}
                                   </p>
                                 )}
                               </div>
