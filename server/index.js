@@ -15,6 +15,107 @@ app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Relaxed JSON extraction and cleanup for AI responses
+function parseJsonRelaxed(rawText, fallbackShape = null) {
+  try {
+    if (!rawText || typeof rawText !== "string") throw new Error("empty");
+    let text = rawText.trim();
+
+    // Strip fences if present
+    if (text.startsWith("```")) {
+      text = text.replace(/^```json/i, "");
+      text = text.replace(/^```/, "");
+      text = text.replace(/```$/, "");
+      text = text.trim();
+    }
+
+    // Replace smart quotes and problematic unicode
+    text = text
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u00A0]/g, " ");
+
+    // Try to extract first JSON object by bracket balancing
+    let startIdx = text.indexOf("{");
+    if (startIdx === -1) throw new Error("no-brace");
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          endIdx = i;
+          break;
+        }
+      }
+    }
+    if (endIdx === -1) throw new Error("no-end-brace");
+    let jsonStr = text.slice(startIdx, endIdx + 1);
+
+    // Escape raw newlines inside string literals
+    jsonStr = jsonStr.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m) => {
+      const inner = m.slice(1, -1).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+      return `"${inner}"`;
+    });
+
+    // Remove trailing commas
+    jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
+
+    // Remove comments if any
+    jsonStr = jsonStr
+      .replace(/\/+\/[^]*\n/g, "\n")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Fix unquoted keys (basic): add quotes around keys preceding colon
+    jsonStr = jsonStr.replace(
+      /([,{]\s*)([A-Za-z_][A-Za-z0-9_\-]*)(\s*:\s*)/g,
+      (m, p1, key, p3) => `${p1}"${key}"${p3}`
+    );
+
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error("[WCAG] Relaxed parse failed:", err.message);
+    if (fallbackShape) return fallbackShape;
+    throw err;
+  }
+}
+
+// Fallback schema to prevent crashes when AI JSON cannot be parsed
+function buildFallbackSchema() {
+  return {
+    score: 0,
+    scoreBreakdown: {
+      highCount: 0,
+      mediumCount: 0,
+      lowCount: 0,
+      totalViolations: 0,
+      maxPossiblePoints: 234,
+      deductedPoints: 0,
+      explanation: "No valid AI JSON; using safe defaults.",
+    },
+    overallSummary:
+      "Accessibility analysis could not be parsed. Showing minimal fallback.",
+    categoryScores: {
+      Perceivable: 0,
+      Operable: 0,
+      Understandable: 0,
+      Robust: 0,
+    },
+    categoryExplanations: {
+      Perceivable: "No violations parsed.",
+      Operable: "No violations parsed.",
+      Understandable: "No violations parsed.",
+      Robust: "No violations parsed.",
+    },
+    levelScores: { A: 0, AA: 0, AAA: 0 },
+    groups: [],
+    hciSummary: "",
+    nextSteps: [],
+  };
+}
+
 /**
  * Fetch the page content using Playwright
  */
@@ -711,47 +812,17 @@ async function callAi(prompt) {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 
-  // let text = result.text.trim();
-  // console.log("[WCAG] Raw Gemini response:", text);
-  const response = result.response;
-  // let text = response.text ? response.text() : JSON.stringify(response);
-  let text = result.text;
-  text = text.trim();
-
-  // Strip markdown fences if Gemini adds them
-  if (text.startsWith("```")) {
-    text = text.replace(/^```json/i, "");
-    text = text.replace(/^```/, "");
-    text = text.replace(/```$/, "");
-    text = text.trim();
-  }
-
-  // Try to extract first { ... } JSON object
-  const match = text.match(/\{[\s\S]*\}$/);
-  if (!match) {
-    console.error("[WCAG] No JSON object found in AI response");
-    throw new Error("AI did not return a valid JSON object.");
-  }
-
-  let jsonStr = match[0];
-
-  jsonStr = jsonStr.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-    const inner = match
-      .slice(1, -1) // remove outer quotes
-      .replace(/\r/g, "\\r")
-      .replace(/\n/g, "\\n");
-    return `"${inner}"`;
-  });
-
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
-
+  const rawText =
+    result && typeof result.text === "string"
+      ? result.text
+      : result && result.response && typeof result.response.text === "function"
+      ? await result.response.text()
+      : "";
   try {
-    const parsed = JSON.parse(jsonStr);
-    return parsed;
+    return parseJsonRelaxed(rawText, buildFallbackSchema());
   } catch (err) {
-    console.error("[WCAG] Failed to parse Gemini JSON:", err);
-    console.error("[WCAG] Cleaned JSON string was:", jsonStr);
-    throw new Error("AI returned invalid JSON.");
+    console.error("[WCAG] callAi parse error", err.message);
+    return buildFallbackSchema();
   }
 }
 
@@ -776,53 +847,23 @@ async function callAiWithInlineData(
     ],
   });
 
-  // Attempt to extract text from result similarly to callAi
-  let text = "";
+  // Attempt to extract text and parse via relaxed parser
+  let rawText = "";
   try {
-    if (typeof result.text === "string") {
-      text = result.text;
-    } else if (result.response && typeof result.response.text === "function") {
-      text = (await result.response.text()) || "";
-    } else {
-      text = JSON.stringify(result);
-    }
+    if (typeof result.text === "string") rawText = result.text;
+    else if (result.response && typeof result.response.text === "function")
+      rawText = (await result.response.text()) || "";
+    else rawText = JSON.stringify(result);
   } catch (err) {
-    console.error("[WCAG] Error extracting text from Gemini response:", err);
-    text = JSON.stringify(result);
+    console.error("[WCAG] Error extracting inline AI text:", err.message);
+    rawText = JSON.stringify(result);
   }
-
-  text = text.trim();
-
-  // Strip markdown fences if Gemini adds them
-  if (text.startsWith("```")) {
-    text = text.replace(/^```json/i, "");
-    text = text.replace(/^```/, "");
-    text = text.replace(/```$/, "");
-    text = text.trim();
-  }
-
-  const match = text.match(/\{[\s\S]*\}$/);
-  if (!match) {
-    console.error("[WCAG] No JSON object found in AI response (inline data)");
-    throw new Error("AI did not return a valid JSON object.");
-  }
-
-  let jsonStr = match[0];
-
-  jsonStr = jsonStr.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m) => {
-    const inner = m.slice(1, -1).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-    return `"${inner}"`;
-  });
-
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
 
   try {
-    const parsed = JSON.parse(jsonStr);
-    return parsed;
+    return parseJsonRelaxed(rawText, buildFallbackSchema());
   } catch (err) {
-    console.error("[WCAG] Failed to parse Gemini JSON (inline):", err);
-    console.error("[WCAG] Cleaned JSON string was:", jsonStr.slice(0, 2000));
-    throw new Error("AI returned invalid JSON.");
+    console.error("[WCAG] callAiWithInlineData parse error", err.message);
+    return buildFallbackSchema();
   }
 }
 
@@ -1653,3 +1694,233 @@ app.listen(PORT, () => {
 });
 
 app.use("/api/analyze", analyzeRouter);
+
+/**
+ * NEW: Lightweight site crawl and aggregate analysis
+ * POST /api/wcag-crawl
+ * Body: { url: string, maxPages?: number, breakpoints?: number[] }
+ * - Discovers internal links from the start URL
+ * - Analyzes up to maxPages using existing HTML + visual analysis
+ * - Aggregates per-page scores and recurring WCAG groups
+ */
+app.post("/api/wcag-crawl", async (req, res) => {
+  const { url, maxPages = 5, breakpoints = [1280] } = req.body || {};
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "URL is required" });
+  }
+
+  // Helper: Normalize and filter internal links
+  const getInternalLinks = (baseUrl, hrefs) => {
+    try {
+      const origin = new URL(baseUrl).origin;
+      const out = new Set();
+      for (const h of hrefs) {
+        if (!h || typeof h !== "string") continue;
+        let abs;
+        try {
+          abs = new URL(h, baseUrl).href;
+        } catch {
+          continue;
+        }
+        if (!abs.startsWith(origin)) continue; // internal only
+        // Deduplicate, strip fragments
+        try {
+          const u = new URL(abs);
+          u.hash = "";
+          out.add(u.href);
+        } catch {}
+      }
+      return Array.from(out);
+    } catch {
+      return [];
+    }
+  };
+
+  // Helper: Extract links from a page
+  async function discoverLinks(targetUrl) {
+    const browser = await chromium.launch();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const links = [];
+    try {
+      await page.goto(targetUrl, { waitUntil: "networkidle", timeout: 120000 });
+      const hrefs = await page.evaluate(() =>
+        Array.from(document.querySelectorAll("a[href]")).map((a) =>
+          a.getAttribute("href")
+        )
+      );
+      links.push(...getInternalLinks(targetUrl, hrefs));
+    } catch (e) {
+      console.warn("[Crawl] discoverLinks error", e.message);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+    return links;
+  }
+
+  // Helper: Run existing HTML + visual analysis for one page
+  async function analyzePage(targetUrl) {
+    try {
+      const pageData = await fetchPageContent(targetUrl);
+      const prompt = buildPrompt(pageData);
+      let aiResponse = null;
+      try {
+        aiResponse = await callAi(prompt);
+      } catch (e) {
+        console.warn("[Crawl] AI text analysis failed", e.message);
+      }
+
+      // Visual segments (single breakpoint per call)
+      const browser = await chromium.launch();
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.goto(targetUrl, { waitUntil: "networkidle", timeout: 120000 });
+      const pageHeight = await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        )
+      );
+      const pageWidth = 1280;
+      const numSegments = Math.min(
+        3,
+        Math.max(1, Math.ceil(pageHeight / 1000))
+      );
+      const segmentResults = [];
+      for (let i = 0; i < numSegments; i++) {
+        const y = Math.floor((i * pageHeight) / numSegments);
+        const h = Math.floor(pageHeight / numSegments);
+        const segHeight = Math.min(h, pageHeight - y, 900);
+        try {
+          await page.evaluate((yy) => window.scrollTo(0, yy), y);
+          await page.waitForTimeout(200);
+          const targetHeight = Math.max(400, segHeight);
+          await page.setViewportSize({
+            width: pageWidth,
+            height: targetHeight,
+          });
+          const buf = await page.screenshot({
+            type: "jpeg",
+            quality: 65,
+            fullPage: false,
+          });
+          const b64 = buf.toString("base64");
+          const segPrompt = `You are an Accessibility & HCI Evaluation Engine. Analyze the following screenshot segment and return the JSON schema with groups, summaries, and nextSteps.`;
+          try {
+            const aiRes = await callAiWithInlineData(
+              segPrompt,
+              b64,
+              "image/jpeg"
+            );
+            segmentResults.push({
+              screenshot: `data:image/jpeg;base64,${b64}`,
+              aiAnalysis: aiRes,
+            });
+          } catch (e) {
+            segmentResults.push({
+              screenshot: `data:image/jpeg;base64,${b64}`,
+              error: e.message,
+            });
+          }
+        } catch (segErr) {
+          console.warn("[Crawl] segment error", segErr.message);
+        }
+      }
+      await context.close();
+      await browser.close();
+
+      // Stitch visual results
+      const stitched = {
+        score: null,
+        groups: [],
+        hciSummary: [],
+        nextSteps: [],
+      };
+      for (const s of segmentResults) {
+        const a = s.aiAnalysis;
+        if (!a) continue;
+        if (typeof a.score === "number")
+          stitched.score = (stitched.score || 0) + a.score;
+        if (Array.isArray(a.groups)) stitched.groups.push(...a.groups);
+        if (a.hciSummary) stitched.hciSummary.push(a.hciSummary);
+        if (Array.isArray(a.nextSteps)) stitched.nextSteps.push(...a.nextSteps);
+      }
+      const validScores = segmentResults.filter(
+        (s) => s.aiAnalysis && typeof s.aiAnalysis.score === "number"
+      ).length;
+      if (validScores > 0)
+        stitched.score = Math.round((stitched.score || 0) / validScores);
+
+      return {
+        url: targetUrl,
+        htmlAnalysis: aiResponse || null,
+        visualScore: typeof stitched.score === "number" ? stitched.score : 0,
+        visualGroups: stitched.groups,
+      };
+    } catch (err) {
+      console.warn("[Crawl] analyzePage failed", targetUrl, err.message);
+      return { url: targetUrl, error: err.message };
+    }
+  }
+
+  try {
+    // Discover internal links and limit to maxPages
+    const discovered = await discoverLinks(url);
+    const queue = [url, ...discovered.filter((u) => u !== url)].slice(
+      0,
+      maxPages
+    );
+
+    const results = [];
+    for (const u of queue) {
+      const r = await analyzePage(u);
+      results.push(r);
+    }
+
+    // Aggregate recurring WCAG criteria
+    const criterionCount = new Map();
+    for (const r of results) {
+      const groups = r.htmlAnalysis?.groups || r.visualGroups || [];
+      for (const g of groups) {
+        const key = g?.wcagCriterion || g?.id;
+        if (!key) continue;
+        criterionCount.set(key, (criterionCount.get(key) || 0) + 1);
+      }
+    }
+    const recurring = Array.from(criterionCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([wcagCriterion, pagesAffected]) => ({
+        wcagCriterion,
+        pagesAffected,
+      }))
+      .slice(0, 15);
+
+    const siteScore = Math.round(
+      results
+        .map((r) => {
+          const htmlScore = r.htmlAnalysis?.score;
+          const visualScore = r.visualScore;
+          const vals = [htmlScore, visualScore].filter(
+            (v) => typeof v === "number"
+          );
+          if (vals.length === 0) return null;
+          return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        })
+        .filter((v) => typeof v === "number")
+        .reduce((a, b, i, arr) => a + b / arr.length, 0)
+    );
+
+    res.json({
+      startUrl: url,
+      pagesAnalyzed: results.length,
+      results,
+      recurringCriteria: recurring,
+      siteScore: Number.isFinite(siteScore) ? siteScore : 0,
+    });
+  } catch (err) {
+    console.error("[Crawl] Endpoint error", err);
+    res.status(500).json({ error: "Crawl failed", message: err.message });
+  }
+});

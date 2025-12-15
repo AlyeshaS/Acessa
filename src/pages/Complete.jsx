@@ -433,9 +433,22 @@ function Complete() {
             visualEvt.addEventListener("result", (e) => {
               try {
                 const payload = JSON.parse(e.data || "{}");
-                // Store segments from visual analysis for display after animation
+                // Merge breakdown into existing pending segments, preserving clip and aiAnalysis
                 if (Array.isArray(payload.breakdown)) {
-                  setPendingSegments(payload.breakdown);
+                  setPendingSegments((prev) => {
+                    const next = [...prev];
+                    payload.breakdown.forEach((item, i) => {
+                      const existing = next[i] || {};
+                      next[i] = {
+                        screenshot: item.screenshot || existing.screenshot,
+                        clip: existing.clip || item.clip || null,
+                        aiAnalysis: existing.aiAnalysis || null,
+                        description:
+                          item.description || existing.description || "",
+                      };
+                    });
+                    return next;
+                  });
                 }
               } catch (err) {
                 console.error("[Complete] visual result parse", err);
@@ -1314,208 +1327,263 @@ function Complete() {
               <div className="hci-report">
                 <h2>Visual Accessibility Feedback</h2>
                 <p className="subheader" style={{ marginBottom: 16 }}>
-                  Click on the info buttons to see detailed feedback on specific
-                  accessibility issues
+                  Click the issue buttons to see non-technical, WCAG-based
+                  feedback for each screenshot.
                 </p>
                 <div className="violation-scroll">
-                  {violationScreenshots.map((vs, idx) => {
-                    const violation = vs.violations?.[0];
-                    const bounds = vs.bounds || {};
-                    const validMarkers = (
-                      Array.isArray(vs.markers) ? vs.markers : []
-                    ).filter(
-                      (m) =>
-                        Number.isFinite(m?.x) &&
-                        Number.isFinite(m?.y) &&
-                        m?.width !== undefined &&
-                        m?.height !== undefined
-                    );
+                  {violationScreenshots
+                    .filter(
+                      (vs) =>
+                        Array.isArray(vs?.violations) &&
+                        vs.violations.length > 0 &&
+                        Array.isArray(vs?.markers) &&
+                        vs.markers.length > 0
+                    )
+                    .map((vs, idx) => {
+                      const violation = vs.violations?.[0];
+                      const bounds = vs.bounds || {};
+                      const validMarkers = (
+                        Array.isArray(vs.markers) ? vs.markers : []
+                      ).filter(
+                        (m) =>
+                          Number.isFinite(m?.x) &&
+                          Number.isFinite(m?.y) &&
+                          m?.width !== undefined &&
+                          m?.height !== undefined
+                      );
 
-                    const markers =
-                      validMarkers.length > 0
-                        ? validMarkers
-                        : [
-                            {
-                              x: Number.isFinite(bounds.x) ? bounds.x : 24,
-                              y: Number.isFinite(bounds.y) ? bounds.y : 24,
-                              width: Number.isFinite(bounds.width)
-                                ? bounds.width || 48
-                                : 48,
-                              height: Number.isFinite(bounds.height)
-                                ? bounds.height || 48
-                                : 48,
-                              fallback: true,
-                            },
-                          ];
-                    const severityColor = {
-                      1: "#FFA500", // Low - Orange
-                      2: "#FF6B6B", // Medium - Red
-                      3: "#CC0000", // High - Dark Red
-                    }[
-                      violation?.impact === "critical" ||
-                      violation?.impact === "serious"
-                        ? 3
-                        : violation?.impact === "moderate"
-                        ? 2
-                        : 1
-                    ];
+                      const markers = validMarkers;
+                      const severityColor = {
+                        1: "#FFA500", // Low - Orange
+                        2: "#FF6B6B", // Medium - Red
+                        3: "#CC0000", // High - Dark Red
+                      }[
+                        violation?.impact === "critical" ||
+                        violation?.impact === "serious"
+                          ? 3
+                          : violation?.impact === "moderate"
+                          ? 2
+                          : 1
+                      ];
 
-                    const openLightbox = (marker) => {
-                      setLightbox({
-                        screenshot: vs.screenshot,
-                        violation: violation || vs,
-                        marker: marker || markers[0],
-                        severityColor,
-                      });
-                      setSelectedViolation(vs);
-                    };
+                      // Pull AI feedback from visual segment analysis for this area
+                      const getAiFeedback = (marker) => {
+                        if (
+                          !marker ||
+                          !Array.isArray(segments) ||
+                          segments.length === 0
+                        ) {
+                          return null;
+                        }
+                        const centerY =
+                          (marker?.y || 0) + (marker?.height || 0) / 2;
+                        const candidate = segments.find((seg) => {
+                          const clip = seg?.clip;
+                          return (
+                            clip &&
+                            centerY >= clip.y &&
+                            centerY <= clip.y + clip.height
+                          );
+                        });
+                        const aiAnalysis = candidate?.aiAnalysis;
+                        if (!aiAnalysis) return null;
 
-                    return (
-                      <div key={idx} className="violation-card">
-                        <div
-                          style={{
-                            position: "relative",
-                            background: "#f0f0f0",
-                          }}
-                        >
-                          <button
-                            className="violation-fullscreen"
-                            type="button"
-                            aria-label="Open screenshot fullscreen"
-                            onClick={() => openLightbox(markers[0])}
-                          >
-                            ⤢
-                          </button>
-                          <img src={vs.screenshot} alt={`violation-${idx}`} />
+                        // Try to match WCAG criterion for more specific guidance
+                        const wcagKey = vs.wcagCriterion || violation?.id;
+                        let matched = null;
+                        if (Array.isArray(aiAnalysis.groups)) {
+                          matched = aiAnalysis.groups.find(
+                            (g) =>
+                              g?.wcagCriterion === wcagKey ||
+                              g?.wcagCriterion?.includes(wcagKey || "")
+                          );
+                        }
+                        const summary =
+                          matched?.problem ||
+                          aiAnalysis.overallSummary ||
+                          aiAnalysis.hciSummary ||
+                          "";
+                        const recommendation =
+                          matched?.recommendation ||
+                          (Array.isArray(aiAnalysis.nextSteps)
+                            ? aiAnalysis.nextSteps[0]
+                            : "");
+                        return { summary, recommendation };
+                      };
 
-                          {/* Interactive info button(s) positioned over each detected problem */}
-                          {markers.map((marker, markerIdx) => {
-                            const centerX =
-                              (marker?.x || 0) + (marker?.width || 0) / 2;
-                            const centerY =
-                              (marker?.y || 0) + (marker?.height || 0) / 2;
+                      const openLightbox = (marker) => {
+                        const aiFeedback = getAiFeedback(marker || markers[0]);
+                        setLightbox({
+                          screenshot: vs.screenshot,
+                          violation: violation || vs,
+                          marker: marker || markers[0],
+                          severityColor,
+                          aiFeedback,
+                        });
+                        setSelectedViolation(vs);
+                      };
 
-                            return (
-                              <button
-                                key={marker.selector || markerIdx}
-                                onClick={() => openLightbox(marker)}
-                                style={{
-                                  position: "absolute",
-                                  left: `${centerX - 20}px`,
-                                  top: `${centerY - 20}px`,
-                                  width: "40px",
-                                  height: "40px",
-                                  borderRadius: "50%",
-                                  background: severityColor,
-                                  border: "3px solid white",
-                                  color: "white",
-                                  fontSize: "20px",
-                                  fontWeight: "bold",
-                                  cursor: "pointer",
-                                  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-                                  zIndex: 10,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  transition: "transform 0.2s",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.transform = "scale(1.2)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.transform = "scale(1)";
-                                }}
-                                title={`${
-                                  violation?.id || "Issue"
-                                } - Click for details`}
-                                aria-label={`Show details for issue ${
-                                  violation?.id || "Issue"
-                                }`}
-                              >
-                                ⓘ
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Detailed feedback panel */}
-                        {selectedViolation === vs && (
+                      return (
+                        <div key={idx} className="violation-card">
                           <div
                             style={{
-                              padding: 16,
-                              background: "#f9f9f9",
-                              borderTop: `4px solid ${severityColor}`,
+                              position: "relative",
+                              background: "#f0f0f0",
                             }}
                           >
-                            <div style={{ marginBottom: 12 }}>
-                              <strong
-                                style={{ fontSize: "14px", color: "#189B97" }}
-                              >
-                                {vs.wcagCriterion ||
-                                  violation?.id ||
-                                  "Accessibility Issue"}
-                              </strong>
-                              <span
-                                style={{
-                                  marginLeft: 12,
-                                  display: "inline-block",
-                                  background: severityColor,
-                                  color: "white",
-                                  padding: "4px 12px",
-                                  borderRadius: "4px",
-                                  fontSize: "12px",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                {violation?.impact?.toUpperCase() || "MEDIUM"}
-                              </span>
-                            </div>
-
-                            <div style={{ marginBottom: 12 }}>
-                              <p
-                                style={{
-                                  margin: "0 0 4px 0",
-                                  fontSize: "12px",
-                                  fontWeight: 600,
-                                  color: "#666",
-                                }}
-                              >
-                                Visual concern spotted:
-                              </p>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: "13px",
-                                  lineHeight: 1.5,
-                                }}
-                              >
-                                {violation?.description ||
-                                  violation?.help ||
-                                  "Potential visual accessibility issue detected in this area."}
-                              </p>
-                            </div>
-
+                            {/* Single expand button per screenshot to fullscreen */}
                             <button
-                              onClick={() => setSelectedViolation(null)}
+                              className="violation-fullscreen"
+                              type="button"
+                              aria-label="Expand screenshot and view accessibility feedback"
+                              title="Expand"
+                              onClick={() => openLightbox(markers[0])}
+                            >
+                              ⤢
+                            </button>
+                            <img src={vs.screenshot} alt={`violation-${idx}`} />
+
+                            {/* Interactive info button(s) positioned over each detected problem */}
+                            {markers.map((marker, markerIdx) => {
+                              const centerX =
+                                (marker?.x || 0) + (marker?.width || 0) / 2;
+                              const centerY =
+                                (marker?.y || 0) + (marker?.height || 0) / 2;
+
+                              return (
+                                <button
+                                  key={marker.selector || markerIdx}
+                                  onClick={() => openLightbox(marker)}
+                                  style={{
+                                    position: "absolute",
+                                    left: `${centerX - 20}px`,
+                                    top: `${centerY - 20}px`,
+                                    width: "40px",
+                                    height: "40px",
+                                    borderRadius: "50%",
+                                    background: severityColor,
+                                    border: "3px solid white",
+                                    color: "white",
+                                    fontSize: "20px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                    boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                                    zIndex: 10,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    transition: "transform 0.2s",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.transform = "scale(1.2)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.transform = "scale(1)";
+                                  }}
+                                  title={`${
+                                    violation?.id || "Issue"
+                                  } - Click for details`}
+                                  aria-label={`Show details for issue ${
+                                    violation?.id || "Issue"
+                                  }`}
+                                >
+                                  ⓘ
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Detailed feedback panel */}
+                          {selectedViolation === vs && (
+                            <div
                               style={{
-                                marginTop: 4,
-                                padding: "8px 16px",
-                                background: "#189B97",
-                                color: "white",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: "12px",
-                                fontWeight: 600,
+                                padding: 16,
+                                background: "#f9f9f9",
+                                borderTop: `4px solid ${severityColor}`,
                               }}
                             >
-                              Close
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                              <div style={{ marginBottom: 12 }}>
+                                <strong
+                                  style={{ fontSize: "14px", color: "#189B97" }}
+                                >
+                                  {vs.wcagCriterion ||
+                                    violation?.id ||
+                                    "Accessibility Issue"}
+                                </strong>
+                                <span
+                                  style={{
+                                    marginLeft: 12,
+                                    display: "inline-block",
+                                    background: severityColor,
+                                    color: "white",
+                                    padding: "4px 12px",
+                                    borderRadius: "4px",
+                                    fontSize: "12px",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  {violation?.impact?.toUpperCase() || "MEDIUM"}
+                                </span>
+                              </div>
+
+                              <div style={{ marginBottom: 12 }}>
+                                <p
+                                  style={{
+                                    margin: "0 0 4px 0",
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    color: "#666",
+                                  }}
+                                >
+                                  What this means for users:
+                                </p>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontSize: "13px",
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  {lightbox?.aiFeedback?.summary ||
+                                    violation?.help ||
+                                    violation?.description ||
+                                    "This area may be hard to use or understand. The feedback is based on WCAG visual checks (contrast, spacing, labels)."}
+                                </p>
+                                {lightbox?.aiFeedback?.recommendation && (
+                                  <p
+                                    style={{
+                                      margin: "8px 0 0 0",
+                                      fontSize: "13px",
+                                      lineHeight: 1.5,
+                                    }}
+                                  >
+                                    <strong>Suggested fix:</strong>{" "}
+                                    {lightbox.aiFeedback.recommendation}
+                                  </p>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => setSelectedViolation(null)}
+                                style={{
+                                  marginTop: 4,
+                                  padding: "8px 16px",
+                                  background: "#189B97",
+                                  color: "white",
+                                  border: "none",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Close
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
@@ -1532,6 +1600,26 @@ function Complete() {
                     type="button"
                     aria-label="Close fullscreen view"
                     onClick={() => setLightbox(null)}
+                    style={{
+                      position: "absolute",
+                      top: 12,
+                      right: 12,
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      background: "rgba(0,0,0,0.6)",
+                      color: "#fff",
+                      border: "2px solid #fff",
+                      fontSize: 24,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      zIndex: 1000,
+                      boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
+                    }}
                   >
                     ×
                   </button>
@@ -1559,10 +1647,17 @@ function Complete() {
                           "Accessibility Issue"}
                       </h3>
                       <p className="lightbox-text">
-                        {lightbox.violation?.description ||
+                        {lightbox?.aiFeedback?.summary ||
                           lightbox.violation?.help ||
-                          "Potential visual accessibility issue detected in this area."}
+                          lightbox.violation?.description ||
+                          "This area shows a visual concern that may affect user understanding or ease of use."}
                       </p>
+                      {lightbox?.aiFeedback?.recommendation && (
+                        <p className="lightbox-text" style={{ marginTop: 8 }}>
+                          <strong>Suggested fix:</strong>{" "}
+                          {lightbox.aiFeedback.recommendation}
+                        </p>
+                      )}
                     </aside>
                   </div>
                 </div>
