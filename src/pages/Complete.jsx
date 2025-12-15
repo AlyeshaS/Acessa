@@ -1327,8 +1327,8 @@ function Complete() {
               <div className="hci-report">
                 <h2>Visual Accessibility Feedback</h2>
                 <p className="subheader" style={{ marginBottom: 16 }}>
-                  Click the issue buttons to see non-technical, WCAG-based
-                  feedback for each screenshot.
+                  Click the expand button (⤢) on each screenshot to view
+                  detailed accessibility feedback.
                 </p>
                 <div className="violation-scroll">
                   {violationScreenshots
@@ -1453,147 +1453,7 @@ function Complete() {
                               ⤢
                             </button>
                             <img src={vs.screenshot} alt={`violation-${idx}`} />
-
-                            {/* Interactive info button(s) positioned over each detected problem */}
-                            {markers.map((marker, markerIdx) => {
-                              const topLeftX = marker?.x || 0;
-                              const topLeftY = marker?.y || 0;
-                              const markerWidth = marker?.width || 0;
-
-                              return (
-                                <button
-                                  key={marker.selector || markerIdx}
-                                  onClick={() => openLightbox(marker)}
-                                  style={{
-                                    position: "absolute",
-                                    left: `${topLeftX + markerWidth - 20}px`,
-                                    top: `${topLeftY - 20}px`,
-                                    width: "40px",
-                                    height: "40px",
-                                    borderRadius: "50%",
-                                    background: severityColor,
-                                    border: "3px solid white",
-                                    color: "white",
-                                    fontSize: "20px",
-                                    fontWeight: "bold",
-                                    cursor: "pointer",
-                                    boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-                                    zIndex: 10,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    transition: "transform 0.2s",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.target.style.transform = "scale(1.2)";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.target.style.transform = "scale(1)";
-                                  }}
-                                  title={`${
-                                    violation?.id || "Issue"
-                                  } - Click for details`}
-                                  aria-label={`Show details for issue ${
-                                    violation?.id || "Issue"
-                                  }`}
-                                >
-                                  ⓘ
-                                </button>
-                              );
-                            })}
                           </div>
-
-                          {/* Detailed feedback panel */}
-                          {selectedViolation === vs && (
-                            <div
-                              style={{
-                                padding: 16,
-                                background: "#f9f9f9",
-                                borderTop: `4px solid ${severityColor}`,
-                              }}
-                            >
-                              <div style={{ marginBottom: 12 }}>
-                                <strong
-                                  style={{ fontSize: "14px", color: "#189B97" }}
-                                >
-                                  {vs.wcagCriterion ||
-                                    violation?.id ||
-                                    "Accessibility Issue"}
-                                </strong>
-                                <span
-                                  style={{
-                                    marginLeft: 12,
-                                    display: "inline-block",
-                                    background: severityColor,
-                                    color: "white",
-                                    padding: "4px 12px",
-                                    borderRadius: "4px",
-                                    fontSize: "12px",
-                                    fontWeight: "bold",
-                                  }}
-                                >
-                                  {violation?.impact?.toUpperCase() || "MEDIUM"}
-                                </span>
-                              </div>
-
-                              <div style={{ marginBottom: 12 }}>
-                                <p
-                                  style={{
-                                    margin: "0 0 4px 0",
-                                    fontSize: "12px",
-                                    fontWeight: 600,
-                                    color: "#666",
-                                  }}
-                                >
-                                  What this means for users:
-                                </p>
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontSize: "13px",
-                                    lineHeight: 1.5,
-                                  }}
-                                >
-                                  {vs?.aiFeedback?.summary ||
-                                    lightbox?.aiFeedback?.summary ||
-                                    violation?.help ||
-                                    violation?.description ||
-                                    "This area may be hard to use or understand. The feedback is based on WCAG visual checks (contrast, spacing, labels)."}
-                                </p>
-                                {(vs?.aiFeedback?.recommendation ||
-                                  lightbox?.aiFeedback?.recommendation) && (
-                                  <p
-                                    style={{
-                                      margin: "8px 0 0 0",
-                                      fontSize: "13px",
-                                      lineHeight: 1.5,
-                                    }}
-                                  >
-                                    <strong>Suggested fix:</strong>{" "}
-                                    {vs?.aiFeedback?.recommendation ||
-                                      lightbox.aiFeedback.recommendation}
-                                  </p>
-                                )}
-                              </div>
-
-                              <button
-                                onClick={() => setSelectedViolation(null)}
-                                style={{
-                                  marginTop: 4,
-                                  padding: "8px 16px",
-                                  background: "#189B97",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: 4,
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Close
-                              </button>
-                            </div>
-                          )}
                         </div>
                       );
                     })}

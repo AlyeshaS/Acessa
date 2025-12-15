@@ -1611,15 +1611,40 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
     // Capture violation-focused screenshots (up to 5)
     sendEvent("progress", { message: "Capturing violation screenshots..." });
-    const violationScreenshots = await captureViolationScreenshots(
+    const rawViolationScreenshots = await captureViolationScreenshots(
       page,
       axeResults.violations
     );
+
+    // Deduplicate screenshots by comparing image data (sample multiple positions)
+    const screenshotMap = new Map();
+    for (const vs of rawViolationScreenshots) {
+      const img = vs.screenshot || "";
+      // Create hash from length + samples at 25%, 50%, 75% positions to catch actual image differences
+      const len = img.length;
+      const hash = `${len}-${img.slice(
+        Math.floor(len * 0.25),
+        Math.floor(len * 0.25) + 100
+      )}-${img.slice(Math.floor(len * 0.75), Math.floor(len * 0.75) + 100)}`;
+
+      if (screenshotMap.has(hash)) {
+        const existing = screenshotMap.get(hash);
+        existing.violations.push(...vs.violations);
+        existing.markers.push(...vs.markers);
+      } else {
+        screenshotMap.set(hash, vs);
+      }
+    }
+    const violationScreenshots = Array.from(screenshotMap.values()).slice(0, 5);
+
     sendEvent("progress", {
-      message: `Captured ${violationScreenshots.length} violation screenshots`,
+      message: `Captured ${violationScreenshots.length} unique violation screenshots`,
     });
 
-    // For each captured screenshot, ask AI for non-developer visual feedback
+    // Track mentioned problems to avoid repetition
+    const mentionedProblems = [];
+
+    // For each unique screenshot, ask AI for non-developer visual feedback
     for (let i = 0; i < Math.min(violationScreenshots.length, 5); i++) {
       const vs = violationScreenshots[i];
       try {
@@ -1628,18 +1653,29 @@ app.get("/api/wcag-check-stream", async (req, res) => {
           typeof dataUrl === "string" && dataUrl.includes(",")
             ? dataUrl.split(",")[1]
             : dataUrl;
-        const v = vs.violations && vs.violations[0];
-        const wcagId = (vs.wcagCriterion || v?.id || "").toString();
+        const violations = vs.violations || [];
+        const wcagIds = violations
+          .map((v) => vs.wcagCriterion || v?.id || "")
+          .filter(Boolean)
+          .join(", ");
 
-        const prompt = `You are an accessibility coach writing for non-developers. Look at the screenshot and explain the most important accessibility concern visible in this specific area, using simple language. Focus on what a user experiences (e.g., hard-to-read text, low contrast, small tap areas, unclear labels, poor spacing, missing visible focus). Avoid code or selectors.
+        const avoidClause =
+          mentionedProblems.length > 0
+            ? `\n\nIMPORTANT: You have already mentioned these problems in previous screenshots: ${mentionedProblems.join(
+                ", "
+              )}. Focus on a DIFFERENT accessibility issue visible in THIS screenshot. Do not repeat the same concern.`
+            : "";
+
+        const prompt = `You are an accessibility coach writing for non-developers. Look at the screenshot and explain the most important accessibility concern visible in this specific area, using simple language. Focus on what a user experiences (e.g., hard-to-read text, low contrast, small tap areas, unclear labels, poor spacing, missing visible focus). Avoid code or selectors.${avoidClause}
 
 Return only this JSON:
 {
   "summary": "1–2 sentences describing the user-facing problem in plain language",
-  "recommendation": "1–2 sentences with a concrete, non-technical fix a content designer or UI designer could apply"
+  "recommendation": "1–2 sentences with a concrete, non-technical fix a content designer or UI designer could apply",
+  "problemCategory": "A short keyword/phrase for the type of problem (e.g., 'contrast', 'tap target size', 'label clarity')"
 }
 
-If relevant, align the advice with WCAG ${wcagId} but do not include numbers in the prose.`;
+If relevant, align the advice with WCAG criteria like ${wcagIds} but do not include numbers in the prose.`;
 
         const ai = await callAiWithInlineData(prompt, base64, "image/jpeg");
         if (ai && (ai.summary || ai.recommendation)) {
@@ -1648,6 +1684,9 @@ If relevant, align the advice with WCAG ${wcagId} but do not include numbers in 
             recommendation:
               typeof ai.recommendation === "string" ? ai.recommendation : "",
           };
+          if (ai.problemCategory && typeof ai.problemCategory === "string") {
+            mentionedProblems.push(ai.problemCategory);
+          }
         }
       } catch (e) {
         console.error("[WCAG] AI feedback for violation screenshot failed:", e);
