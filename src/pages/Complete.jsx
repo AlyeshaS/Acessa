@@ -811,6 +811,39 @@ function Complete() {
     { key: "Robust", score: robustScore },
   ];
 
+  // Map WCAG criterion IDs to friendly, non-technical titles for end-users
+  const friendlyTitles = {
+    "scrollable-region-focusable": "Keyboard Navigation",
+    "button-name": "Button Labels",
+    "link-name": "Link Text",
+    "color-contrast": "Color Contrast",
+    "image-alt": "Image Descriptions",
+    "form-field-multiple-labels": "Form Labels",
+    "aria-required-attr": "Required Field Indicators",
+    "aria-valid-attr": "Input Validation",
+    "heading-order": "Heading Structure",
+    "list-item": "List Structure",
+    "definition-list": "Definition Lists",
+    dlitem: "Definition Items",
+    "autocomplete-valid": "Autocomplete",
+    blink: "Blinking Content",
+    "valid-aria-role": "ARIA Roles",
+    "text-alternatives": "Text Alternatives",
+    "keyboard-access": "Keyboard Access",
+    "focus-visible": "Focus Indicators",
+    "target-size": "Touch Target Size",
+    "page-title": "Page Title",
+    language: "Page Language",
+    label: "Field Labels",
+    "required-inputs": "Required Fields",
+  };
+
+  const getFriendlyTitle = (criterion, id) => {
+    if (!criterion && !id) return "Accessibility Issue";
+    const key = String(criterion || id).toLowerCase();
+    return friendlyTitles[key] || criterion || id || "Accessibility Issue";
+  };
+
   return (
     <>
       <div className="navbar">
@@ -1575,9 +1608,10 @@ function Complete() {
                         {lightbox.violation?.impact?.toUpperCase() || "ISSUE"}
                       </div>
                       <h3 className="lightbox-title">
-                        {lightbox.violation?.wcagCriterion ||
-                          lightbox.violation?.id ||
-                          "Accessibility Issue"}
+                        {getFriendlyTitle(
+                          lightbox.violation?.wcagCriterion,
+                          lightbox.violation?.id
+                        )}
                       </h3>
                       <p className="lightbox-text">
                         {lightbox?.aiFeedback?.summary ||

@@ -700,22 +700,43 @@ async function captureViolationScreenshots(page, axeViolations) {
 /**
  * Build the WCAG + HCI prompt
  */
+/**
+ * Sanitize text to prevent JSON injection from AI echoing back unescaped content
+ */
+function sanitizeForPrompt(text) {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .replace(/[\r\n\t]/g, " ") // Replace line breaks and tabs with spaces
+    .replace(/"/g, "'") // Replace double quotes with single quotes
+    .replace(/\\/g, "/") // Replace backslashes with forward slashes
+    .slice(0, 5000); // Limit length to prevent token overflow
+}
+
 function buildPrompt(pageData) {
   const { html, text, understandableData, axeViolations } = pageData;
 
   // Truncate to avoid token limits
   const maxLen = 15000;
-  const safeHtml = html.slice(0, maxLen);
-  const safeText = text.slice(0, maxLen);
+  const safeHtml = sanitizeForPrompt(html.slice(0, maxLen));
+  const safeText = sanitizeForPrompt(text.slice(0, maxLen));
 
-  // Format the form data for the prompt
-  const formsJson = JSON.stringify(understandableData.formFields, null, 2);
-  // Summarize Axe violations for the prompt to save tokens
+  // Format the form data for the prompt - sanitize each field
+  const sanitizedFormFields = understandableData.formFields.map((f) => ({
+    ...f,
+    id: sanitizeForPrompt(f.id),
+    type: sanitizeForPrompt(f.type),
+    label: sanitizeForPrompt(f.label),
+    placeholder: sanitizeForPrompt(f.placeholder),
+    ariaLabel: sanitizeForPrompt(f.ariaLabel),
+  }));
+  const formsJson = JSON.stringify(sanitizedFormFields, null, 2);
+
+  // Summarize Axe violations for the prompt to save tokens - sanitize descriptions
   const robustIssues = axeViolations.map((v) => ({
-    id: v.id,
-    impact: v.impact,
-    description: v.description,
-    help: v.help,
+    id: sanitizeForPrompt(v.id),
+    impact: sanitizeForPrompt(v.impact),
+    description: sanitizeForPrompt(v.description),
+    help: sanitizeForPrompt(v.help),
     nodes: v.nodes.length, // How many times this error happened
   }));
 
@@ -744,11 +765,17 @@ TASKS:
 
 1) WCAG 2.2 Evaluation (by principles)
 Evaluate the page across these WCAG principles:
-- Perceivable
-- Operable
-- Understandable
-- Robust
+- Perceivable (Principle 1 - criteria 1.x)
+- Operable (Principle 2 - criteria 2.x)
+- Understandable (Principle 3 - criteria 3.x)
+- Robust (Principle 4 - criteria 4.x)
 (You do not need to explicitly name the POUR principle in the issue text; the wcagCriterion already determines the principle.)
+
+CRITICAL: You MUST review the "Technical Audit Log" section below which contains automated accessibility violations detected by Axe-core.
+- These violations are REAL and must be reflected in your category scores.
+- When scoring Perceivable/Operable/Understandable/Robust, you MUST account for violations in that principle from the Technical Audit Log.
+- Example: If the Technical Audit Log shows violations with id="link-name" or description mentioning "2.4.4", these are Operable (Principle 2) violations and MUST lower the Operable score below 100.
+- Do NOT give a category a score of 100 if the Technical Audit Log contains violations for that principle.
 
 SPECIAL INSTRUCTIONS FOR "UNDERSTANDABLE" (Principle 3):
 You must use the provided "Form & Language Data" below to evaluate Principle 3 specifically.
@@ -826,13 +853,16 @@ Make sure:
 - Numeric scores must always be returned, even when uncertain (note uncertainty in text).
 
 CRITICAL: MANDATORY EXPLANATION FOR CATEGORY SCORES
-- If a categoryScore (Perceivable, Operable, Understandable, Robust) is LESS THAN 100, you MUST provide a "categoryExplanations" entry that lists:
+- Each categoryScore (Perceivable, Operable, Understandable, Robust) MUST reflect ALL violations in that principle, including both your analysis AND the automated Axe violations provided in the data.
+- If a categoryScore is LESS THAN 100, you MUST provide a "categoryExplanations" entry that lists:
   1. EXACT WCAG criteria being violated (e.g., "1.4.3 Contrast (Minimum)", "2.1.1 Keyboard")
   2. Why each criterion is violated
   3. How many violations affect that category
-- If a categoryScore IS 100, the explanation should state "No violations found in this category."
-- NEVER return a score < 100 without clear, specific reasoning tied to actual failing criteria.
+- If a categoryScore IS 100, the explanation should state "No violations found in this category." - BUT this should ONLY happen if there are truly NO violations from either your analysis or the automated audit.
+- NEVER return a score of 100 for a category if the automated audit shows violations in that principle.
+- Map WCAG criteria to principles: 1.x = Perceivable, 2.x = Operable, 3.x = Understandable, 4.x = Robust
 - Severity reference: 1=Low, 2=Medium, 3=High (include these numbers in explanations where relevant)
+- The automated violations will be merged with your groups array, so your scores must account for them.
 
 3) HCI / UX Summary (deep, expert-level analysis)
 Provide a detailed, human-centered design assessment focused on:
@@ -884,6 +914,17 @@ No backticks.
 No comments.
 No prose before or after.
 Do NOT wrap the JSON in json or any other fences.
+
+CRITICAL JSON RULES:
+- All string values MUST escape special characters: newlines as \\n, quotes as \\", backslashes as \\\\
+- Do NOT include literal line breaks inside string values
+- Use only straight ASCII double quotes ("), not smart quotes
+- All property names must be in double quotes
+- No trailing commas after the last item in arrays or objects
+- Numbers must NOT be quoted
+- Numbers must be LITERAL integers (e.g., 20), NOT expressions (e.g., 4*3+5*2)
+- Do NOT use \\b (backspace) or other control characters in strings
+- String values should use spaces for readability, not escape sequences like \\n unless representing actual line breaks in content
 
 The JSON MUST match this schema exactly:
 
@@ -968,7 +1009,10 @@ async function callAi(prompt) {
   const result = await ai.models.generateContent({
     model: "gemini-2.0-flash",
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json" },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1, // Lower temperature for more consistent JSON output
+    },
   });
 
   let text = "";
@@ -987,22 +1031,101 @@ async function callAi(prompt) {
   let jsonStr = extractFirstJSONObject(text);
   if (!jsonStr) {
     console.error("[WCAG] No JSON object found in AI response");
+    console.error("[WCAG] Raw AI response:", text.slice(0, 500));
     throw new Error("AI did not return a valid JSON object.");
   }
 
-  jsonStr = jsonStr.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m) => {
-    const inner = m.slice(1, -1).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-    return `"${inner}"`;
-  });
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
-
+  // More robust JSON cleanup - handle AI misbehavior
   try {
+    // First, try to parse as-is (when AI behaves correctly)
     return JSON.parse(jsonStr);
-  } catch (err) {
-    console.error("[WCAG] Failed to parse Gemini JSON:", err);
-    console.error("[WCAG] Cleaned JSON string was:", jsonStr.slice(0, 2000));
-    throw new Error("AI returned invalid JSON.");
+  } catch (firstErr) {
+    console.log("[WCAG] Initial parse failed, attempting cleanup...");
+    console.log("[WCAG] Error:", firstErr.message);
+
+    let cleaned = jsonStr;
+
+    // Remove BOM and control characters that break JSON
+    cleaned = cleaned.replace(/^\uFEFF/, "");
+    cleaned = cleaned.replace(/\\b/g, ""); // Remove backspace escape sequences
+    cleaned = cleaned.replace(/[\b]/g, ""); // Remove actual backspace characters
+
+    // Fix JavaScript expressions in numeric fields (e.g., "4 * 3 + 5 * 2")
+    cleaned = cleaned.replace(
+      /"deductedPoints":\s*([0-9\s\+\*\-\/]+),/g,
+      (match, expr) => {
+        try {
+          // Safely evaluate simple math expressions
+          const result = Function(`"use strict"; return (${expr})`)();
+          return `"deductedPoints": ${result},`;
+        } catch {
+          return `"deductedPoints": 0,`;
+        }
+      }
+    );
+
+    // Remove trailing commas
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, "$1");
+
+    // Fix unescaped newlines and tabs INSIDE string values
+    cleaned = cleaned.replace(/("(?:[^"\\]|\\.)*")/g, (match) => {
+      // Only process string literals
+      if (!match.startsWith('"') || !match.endsWith('"')) return match;
+      let str = match.slice(1, -1); // Remove quotes
+      str = str
+        .replace(/\n/g, " ") // Convert real newlines to spaces
+        .replace(/\r/g, "") // Remove carriage returns
+        .replace(/\t/g, " ") // Convert tabs to spaces
+        .replace(/\\n\\n/g, " ") // Fix double-escaped newlines
+        .replace(/\s+/g, " "); // Collapse multiple spaces
+      return `"${str}"`;
+    });
+
+    try {
+      console.log("[WCAG] Attempting parse with cleaned JSON...");
+      return JSON.parse(cleaned);
+    } catch (secondErr) {
+      console.error("[WCAG] Second parse failed:", secondErr.message);
+      console.error(
+        "[WCAG] Cleaned JSON (first 2000 chars):",
+        cleaned.slice(0, 2000)
+      );
+
+      // Last resort: try aggressive repair
+      try {
+        const repaired = repairJSON(cleaned);
+        console.log("[WCAG] Attempting parse with repaired JSON...");
+        return JSON.parse(repaired);
+      } catch (thirdErr) {
+        console.error("[WCAG] Third parse failed:", thirdErr.message);
+        console.error("[WCAG] All parse attempts failed");
+        throw new Error("AI returned invalid JSON that could not be repaired.");
+      }
+    }
   }
+}
+
+// Helper function to repair common JSON issues
+function repairJSON(jsonStr) {
+  let fixed = jsonStr;
+
+  // Remove any text before first { or after last }
+  const firstBrace = fixed.indexOf("{");
+  const lastBrace = fixed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    fixed = fixed.slice(firstBrace, lastBrace + 1);
+  }
+
+  // Fix common issues
+  fixed = fixed
+    .replace(/,(\s*[}\]])/g, "$1") // trailing commas
+    .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // unquoted keys
+    .replace(/:\s*'([^']*)'/g, ': "$1"') // single quotes to double
+    .replace(/\n/g, "\\n") // unescaped newlines
+    .replace(/\r/g, "") // remove carriage returns
+    .replace(/\t/g, " "); // tabs to spaces
+
+  return fixed;
 }
 
 /**
@@ -1991,6 +2114,60 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
     } catch (aiErr) {
       console.error("[WCAG] AI error in check-stream:", aiErr);
       sendEvent("ai", { status: "error", message: aiErr.message });
+
+      // Provide a fallback response structure to prevent crashes downstream
+      const axeViolationCount = axeResults.violations.length;
+      const highCount = axeResults.violations.filter(
+        (v) => v.impact === "critical"
+      ).length;
+      const mediumCount = axeResults.violations.filter(
+        (v) => v.impact === "serious" || v.impact === "moderate"
+      ).length;
+      const lowCount = axeResults.violations.filter(
+        (v) => v.impact === "minor"
+      ).length;
+      const totalViolations = axeViolationCount;
+      const deductedPoints = highCount * 3 + mediumCount * 2 + lowCount * 1;
+      const score = Math.max(0, 234 - deductedPoints);
+
+      aiResponse = {
+        score: score,
+        scoreBreakdown: {
+          highCount: highCount,
+          mediumCount: mediumCount,
+          lowCount: lowCount,
+          totalViolations: totalViolations,
+          maxPossiblePoints: 234,
+          deductedPoints: deductedPoints,
+          explanation: `${deductedPoints} points deducted from 234 possible: ${highCount} High + ${mediumCount} Medium + ${lowCount} Low violations`,
+        },
+        overallSummary: `Analysis found ${totalViolations} accessibility violations. AI analysis unavailable - showing automated results only.`,
+        categoryScores: {
+          Perceivable: 70,
+          Operable: 70,
+          Understandable: 70,
+          Robust: 70,
+        },
+        categoryExplanations: {
+          Perceivable: "Automated scan completed. AI analysis unavailable.",
+          Operable: "Automated scan completed. AI analysis unavailable.",
+          Understandable: "Automated scan completed. AI analysis unavailable.",
+          Robust: "Automated scan completed. AI analysis unavailable.",
+        },
+        levelScores: {
+          A: 70,
+          AA: 70,
+          AAA: 70,
+        },
+        groups: [],
+        hciSummary:
+          "AI analysis temporarily unavailable. Please review the automated violations detected.",
+        nextSteps: [
+          "Review the automated violations listed below",
+          "Test keyboard navigation manually",
+          "Verify color contrast meets WCAG standards",
+        ],
+      };
     }
 
     // Merge Axe automated groups with AI groups as the JSON endpoint does
