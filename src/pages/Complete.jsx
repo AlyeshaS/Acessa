@@ -836,6 +836,8 @@ function Complete() {
     language: "Page Language",
     label: "Field Labels",
     "required-inputs": "Required Fields",
+    "aria-command-name": "Button or Command Label",
+    list: "List Structure or Markup",
   };
 
   const getFriendlyTitle = (criterion, id) => {
@@ -942,7 +944,8 @@ function Complete() {
               </>
             )}
 
-            {aiScreenshotProgress > 0 && animationDone && (
+            {/* Show the third progress bar as soon as animationDone, even if aiScreenshotProgress is 0 */}
+            {animationDone && (
               <>
                 <div
                   className="loading-bar"
@@ -957,9 +960,25 @@ function Complete() {
                   />
                 </div>
                 <p className="loading-bar-text">
-                  Analyzing screenshots… {aiScreenshotProgress}% • Pages{" "}
-                  {pagesVisited || 0} • Violations {violationsFound || 0} •
-                  Duplicates {duplicatesSkipped || 0}
+                  {(() => {
+                    if (aiScreenshotProgress < 30) {
+                      return `Analyzing screenshots… ${aiScreenshotProgress}%`;
+                    } else if (aiScreenshotProgress < 60) {
+                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                        pagesVisited || 0
+                      }`;
+                    } else if (aiScreenshotProgress < 80) {
+                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                        pagesVisited || 0
+                      } • Violations: ${violationsFound || 0}`;
+                    } else {
+                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                        pagesVisited || 0
+                      } • Violations: ${violationsFound || 0} • Duplicates: ${
+                        duplicatesSkipped || 0
+                      }`;
+                    }
+                  })()}
                 </p>
               </>
             )}
@@ -1124,56 +1143,12 @@ function Complete() {
                                 >
                                   <strong>Points Calculation:</strong>
                                   <div style={{ marginLeft: 16, marginTop: 8 }}>
-                                    <div style={{ marginBottom: 4 }}>
-                                      Deducted:{" "}
-                                      <strong>
-                                        {scoreBreakdown.deductedPoints}
-                                      </strong>{" "}
-                                      points
-                                    </div>
-                                    <div style={{ marginBottom: 4 }}>
-                                      Maximum Possible:{" "}
-                                      <strong>
-                                        {scoreBreakdown.maxPossiblePoints}
-                                      </strong>{" "}
-                                      points
-                                    </div>
                                     <div
-                                      style={{
-                                        marginTop: 8,
-                                        padding: 8,
-                                        background: "#e8f5f4",
-                                        borderRadius: 4,
-                                      }}
+                                      style={{ marginBottom: 4, color: "#555" }}
                                     >
-                                      Final Score: (
-                                      {scoreBreakdown.maxPossiblePoints} -{" "}
-                                      {scoreBreakdown.deductedPoints}) ÷{" "}
-                                      {scoreBreakdown.maxPossiblePoints} × 100 ={" "}
-                                      <strong>{score}%</strong>
+                                      {scoreBreakdown.explanation}
                                     </div>
                                   </div>
-                                </div>
-                              )}
-
-                              {scoreBreakdown.explanation && (
-                                <div
-                                  style={{
-                                    marginTop: 12,
-                                    paddingTop: 12,
-                                    borderTop: "1px solid #ddd",
-                                  }}
-                                >
-                                  <strong>Summary:</strong>
-                                  <p
-                                    style={{
-                                      margin: "8px 0 0 0",
-                                      fontStyle: "italic",
-                                      color: "#555",
-                                    }}
-                                  >
-                                    {scoreBreakdown.explanation}
-                                  </p>
                                 </div>
                               )}
                             </div>
