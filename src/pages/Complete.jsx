@@ -243,6 +243,10 @@ function Complete() {
 
   const [progress, setProgress] = useState(0);
   const [screenshotProgress, setScreenshotProgress] = useState(0);
+  const [aiScreenshotProgress, setAiScreenshotProgress] = useState(0);
+  const [pagesVisited, setPagesVisited] = useState(0);
+  const [violationsFound, setViolationsFound] = useState(0);
+  const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const [animationDone, setAnimationDone] = useState(false);
 
   // NEW: "animation" state – we show AnalysisPlayer while this is true
@@ -289,6 +293,10 @@ function Complete() {
         setAnimating(false);
         setAnimationDone(false);
         setPreviewResult(null);
+        setAiScreenshotProgress(0);
+        setPagesVisited(0);
+        setViolationsFound(0);
+        setDuplicatesSkipped(0);
 
         // Open an EventSource stream to receive an immediate preview and
         // then the full AI result when it's ready. This ensures the UI
@@ -337,11 +345,40 @@ function Complete() {
         });
 
         evt.addEventListener("axe", (e) => {
-          // optional: could show counts or update progress
+          try {
+            const payload = JSON.parse(e.data || "{}");
+            if (payload.pagesVisited) setPagesVisited(payload.pagesVisited);
+            if (payload.violations) setViolationsFound(payload.violations);
+          } catch (err) {
+            console.error("[Complete] axe parse", err);
+          }
         });
 
         evt.addEventListener("ai", (e) => {
           // ai status event
+        });
+
+        evt.addEventListener("progress", (e) => {
+          try {
+            const payload = JSON.parse(e.data || "{}");
+            if (payload.pagesVisited) setPagesVisited(payload.pagesVisited);
+            if (payload.violations) setViolationsFound(payload.violations);
+            if (payload.duplicates !== undefined)
+              setDuplicatesSkipped(payload.duplicates);
+          } catch (err) {
+            console.error("[Complete] progress parse", err);
+          }
+        });
+
+        evt.addEventListener("screenshotAiProgress", (e) => {
+          try {
+            const payload = JSON.parse(e.data || "{}");
+            if (payload.percentage !== undefined) {
+              setAiScreenshotProgress(payload.percentage);
+            }
+          } catch (err) {
+            console.error("[Complete] screenshotAiProgress parse", err);
+          }
         });
 
         evt.addEventListener("result", (e) => {
@@ -854,7 +891,7 @@ function Complete() {
               </>
             )}
 
-            {imageLoaded && (
+            {imageLoaded && progress < 100 && !animationDone && (
               <>
                 <div
                   className="loading-bar"
@@ -869,6 +906,28 @@ function Complete() {
                   />
                 </div>
                 <p className="loading-bar-text">Analyzing… {progress}%</p>
+              </>
+            )}
+
+            {aiScreenshotProgress > 0 && animationDone && (
+              <>
+                <div
+                  className="loading-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={aiScreenshotProgress}
+                >
+                  <div
+                    className="loading-bar-fill"
+                    style={{ width: `${aiScreenshotProgress}%` }}
+                  />
+                </div>
+                <p className="loading-bar-text">
+                  Analyzing screenshots… {aiScreenshotProgress}% • Pages{" "}
+                  {pagesVisited || 0} • Violations {violationsFound || 0} •
+                  Duplicates {duplicatesSkipped || 0}
+                </p>
               </>
             )}
 
@@ -1324,7 +1383,7 @@ function Complete() {
 
             {/* NEW: Violation Screenshots with Interactive Feedback */}
             {violationScreenshots && violationScreenshots.length > 0 && (
-              <div className="hci-report">
+              <div className="visual-feedback">
                 <h2>Visual Accessibility Feedback</h2>
                 <p className="subheader" style={{ marginBottom: 16 }}>
                   Click the expand button (⤢) on each screenshot to view
@@ -1335,9 +1394,7 @@ function Complete() {
                     .filter(
                       (vs) =>
                         Array.isArray(vs?.violations) &&
-                        vs.violations.length > 0 &&
-                        Array.isArray(vs?.markers) &&
-                        vs.markers.length > 0
+                        vs.violations.length > 0
                     )
                     .map((vs, idx) => {
                       const violation = vs.violations?.[0];
@@ -1427,6 +1484,9 @@ function Complete() {
                         setLightbox({
                           screenshot: vs.screenshot,
                           violation: violation || vs,
+                          violations: Array.isArray(vs.violations)
+                            ? vs.violations
+                            : [],
                           marker: marker || markers[0],
                           severityColor,
                           aiFeedback,
@@ -1531,6 +1591,45 @@ function Complete() {
                           {lightbox.aiFeedback.recommendation}
                         </p>
                       )}
+
+                      {Array.isArray(lightbox.violations) &&
+                        lightbox.violations.length > 1 && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                              paddingTop: 12,
+                              borderTop: "1px solid #ddd",
+                            }}
+                          >
+                            <p
+                              className="lightbox-text"
+                              style={{ fontWeight: 600, color: "#189B97" }}
+                            >
+                              Other issues in this screenshot
+                            </p>
+                            <ul style={{ paddingLeft: 18, margin: 0 }}>
+                              {lightbox.violations.slice(1).map((v, i) => (
+                                <li
+                                  key={i}
+                                  className="lightbox-text"
+                                  style={{ marginTop: 6 }}
+                                >
+                                  <strong>
+                                    {v.tags?.find((t) =>
+                                      String(t).match(/^wcag\d/)
+                                    ) || v.id}
+                                  </strong>
+                                  {v.impact
+                                    ? ` • ${String(
+                                        v.impact
+                                      ).toUpperCase()} severity`
+                                    : ""}
+                                  {v.help ? ` — ${v.help}` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                     </aside>
                   </div>
                 </div>

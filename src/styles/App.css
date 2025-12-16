@@ -198,6 +198,7 @@
 .card-body {
   display: flex;
   flex-direction: column;
+  padding-bottom: 80px; /* Ensure content doesn't overlap footer */
   gap: 20px;
   padding: 0 5%;
   margin: 20px 0 100px 0;
@@ -250,6 +251,16 @@
   padding: 20px;
 }
 
+/* Visual feedback section should visually match HCI report */
+.visual-feedback {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: var(--white);
+  padding: 20px;
+}
+
 .next-steps {
   margin-top: 20px;
   display: flex;
@@ -264,7 +275,7 @@
   display: flex;
   gap: 16px;
   overflow-x: auto;
-  padding: 6px 4px 12px;
+  padding: 6px 4px 80px; /* add bottom space so expand icon never overlaps footer */
   margin-top: 16px;
   scroll-snap-type: x mandatory;
 }
@@ -284,6 +295,7 @@
 }
 
 .violation-card {
+  position: relative; /* keep expand icon anchored within the card */
   flex: 0 0 360px;
   min-width: 300px;
   border-radius: 8px;
@@ -312,7 +324,7 @@
   color: #ffffff;
   font-size: 18px;
   cursor: pointer;
-  z-index: 12;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -332,7 +344,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 999;
+  z-index: 9999;
   padding: 24px;
 }
 

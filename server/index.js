@@ -309,7 +309,191 @@ async function captureRealAccessibilitySteps(page) {
 }
 
 /**
- * Capture up to 5 violation-focused screenshots
+ * Discover internal navigation links on the page, filtering out downloads and external URLs.
+ * Returns up to 3 internal page URLs to visit.
+ */
+async function discoverInternalLinks(page, baseUrl) {
+  try {
+    const baseDomain = new URL(baseUrl).origin;
+    console.log(`[WCAG] Discovering internal links on ${baseDomain}`);
+
+    // First, open visible dropdowns/menus to reveal hidden links
+    try {
+      const toggles = await page.$$(
+        "[aria-haspopup], [aria-expanded], .dropdown-toggle, .menu-toggle, .navbar-toggler"
+      );
+      for (const toggle of toggles.slice(0, 15)) {
+        try {
+          const isVisible = await toggle.isVisible().catch(() => false);
+          if (isVisible) {
+            await toggle.hover().catch(() => {});
+            await page.waitForTimeout(100);
+            await toggle.click({ force: true }).catch(() => {});
+            await page.waitForTimeout(300);
+          }
+        } catch (e) {
+          // ignore individual toggle errors
+        }
+      }
+    } catch (e) {
+      // ignore menu opening errors
+    }
+
+    const links = await page.evaluate((origin) => {
+      const downloadExtensions = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".zip",
+        ".rar",
+        ".exe",
+        ".dmg",
+        ".pkg",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".svg",
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mp3",
+        ".wav",
+      ];
+
+      return Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => {
+          try {
+            const href = a.getAttribute("href");
+            if (
+              !href ||
+              href.startsWith("#") ||
+              href.startsWith("javascript:") ||
+              href.startsWith("mailto:") ||
+              href.startsWith("tel:")
+            ) {
+              return null;
+            }
+
+            // Check for download attribute
+            if (a.hasAttribute("download")) return null;
+
+            // Check for download file extensions
+            const lower = href.toLowerCase();
+            if (downloadExtensions.some((ext) => lower.includes(ext)))
+              return null;
+
+            // Resolve relative URLs
+            const url = new URL(href, origin);
+
+            // Only keep same-origin links
+            if (url.origin !== origin) return null;
+
+            // Avoid duplicates and base URL
+            if (url.href === origin || url.href === origin + "/") return null;
+
+            return url.href;
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean);
+    }, baseDomain);
+
+    // Deduplicate and limit to 25 for broader coverage
+    const unique = [...new Set(links)].slice(0, 25);
+    console.log(
+      `[WCAG] Found ${unique.length} internal pages to check:`,
+      unique
+    );
+    return unique;
+  } catch (err) {
+    console.error("[WCAG] Error discovering internal links:", err);
+    return [];
+  }
+}
+
+/**
+ * Discover client-side (SPA) routes by clicking visible links/buttons
+ * and recording URL changes without full page reloads.
+ */
+async function discoverClientRoutes(page, baseUrl) {
+  const origin = new URL(baseUrl).origin;
+  const discovered = new Set();
+  try {
+    // Primary pass: click visible buttons/links
+    const candidates = await page.$$(
+      'a[href], button, [role="button"], [aria-haspopup="true"], .dropdown-toggle, .menu-toggle'
+    );
+    for (let i = 0; i < candidates.length && i < 40; i++) {
+      const handle = candidates[i];
+      try {
+        const box = await handle.boundingBox();
+        if (!box || box.width < 4 || box.height < 4) continue;
+        const before = page.url();
+        await handle.scrollIntoViewIfNeeded();
+        await handle.hover().catch(() => {});
+        await page.waitForTimeout(150);
+        await handle.click({ force: true }).catch(() => {});
+        // wait briefly for SPA route change
+        await page.waitForTimeout(650);
+        const after = page.url();
+        if (after && after !== before && after.startsWith(origin)) {
+          discovered.add(after);
+        }
+
+        // Secondary pass: if a dropdown/menu opened, click newly visible menu items
+        const menuItems = await page.$$('a[href], [role="menuitem"]');
+        let clicked = 0;
+        for (const item of menuItems) {
+          if (clicked >= 10) break;
+          try {
+            const ibox = await item.boundingBox();
+            if (!ibox || ibox.width < 4 || ibox.height < 4) continue;
+            const href = await item.getAttribute("href");
+            // Skip non-links and external
+            if (
+              href &&
+              !href.startsWith("#") &&
+              !href.startsWith("javascript:")
+            ) {
+              const before2 = page.url();
+              await item.scrollIntoViewIfNeeded();
+              await item.click({ force: true }).catch(() => {});
+              await page.waitForTimeout(600);
+              const after2 = page.url();
+              if (after2 && after2 !== before2 && after2.startsWith(origin)) {
+                discovered.add(after2);
+              }
+              // navigate back to continue exploring other items
+              await page
+                .goBack({ waitUntil: "domcontentloaded" })
+                .catch(() => {});
+              await page.waitForTimeout(200);
+              clicked++;
+            }
+          } catch (e) {
+            // ignore menu item errors
+          }
+        }
+
+        // try to go back to keep clicking others
+        await page.goBack({ waitUntil: "domcontentloaded" }).catch(() => {});
+        await page.waitForTimeout(200);
+      } catch (e) {
+        // ignore click errors
+      }
+    }
+  } catch (err) {
+    console.error("[WCAG] Error discovering client routes:", err);
+  }
+  return Array.from(discovered).slice(0, 25);
+}
+
+/**
+ * Capture up to 12 violation-focused screenshots
  * Returns array of { screenshot: base64, violations: [...], bounds: {x, y, width, height} }
  */
 async function captureViolationScreenshots(page, axeViolations) {
@@ -325,7 +509,7 @@ async function captureViolationScreenshots(page, axeViolations) {
       `[WCAG] Starting screenshot capture for ${axeViolations.length} total violations`
     );
 
-    // Rank violations by severity and frequency; pick top 5
+    // Rank violations by severity and frequency; pick top 12
     const sevWeight = { critical: 3, serious: 3, moderate: 2, minor: 1 };
     const ranked = axeViolations
       .map((v) => ({
@@ -340,7 +524,7 @@ async function captureViolationScreenshots(page, axeViolations) {
     const uniqueViolations = [];
     const seenIds = new Set();
     for (const violation of ranked) {
-      if (!seenIds.has(violation.id) && uniqueViolations.length < 5) {
+      if (!seenIds.has(violation.id) && uniqueViolations.length < 12) {
         seenIds.add(violation.id);
         uniqueViolations.push(violation);
       }
@@ -353,6 +537,20 @@ async function captureViolationScreenshots(page, axeViolations) {
     for (let idx = 0; idx < uniqueViolations.length; idx++) {
       const violation = uniqueViolations[idx];
       try {
+        // If violation has a source URL from discovery, navigate there first
+        if (violation.__sourceUrl && page.url() !== violation.__sourceUrl) {
+          try {
+            await page.goto(violation.__sourceUrl, {
+              waitUntil: "domcontentloaded",
+              timeout: 60000,
+            });
+            await page.waitForTimeout(300);
+          } catch (navErr) {
+            console.log(
+              `[WCAG] Could not navigate to violation source URL ${violation.__sourceUrl}: ${navErr.message}`
+            );
+          }
+        }
         if (!violation.nodes || violation.nodes.length === 0) {
           console.log(
             `[WCAG] Violation ${violation.id} has no nodes, skipping`
@@ -1609,11 +1807,75 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       };
     });
 
-    // Capture violation-focused screenshots (up to 5)
+    // Discover and visit internal pages to get more comprehensive violation coverage
+    sendEvent("progress", { message: "Discovering internal pages..." });
+    const internalLinks = await discoverInternalLinks(page, url);
+    const spaLinks = await discoverClientRoutes(page, url);
+    const linksToVisit = Array.from(
+      new Set([url, ...internalLinks, ...spaLinks])
+    ).slice(0, 25);
+    // Tag initial page violations with source URL
+    const allViolations = axeResults.violations.map((v) => ({
+      ...v,
+      __sourceUrl: url,
+    }));
+    for (let i = 0; i < linksToVisit.length; i++) {
+      try {
+        const targetUrl = linksToVisit[i];
+        console.log(
+          `[WCAG] Navigating to page ${i + 1}/${
+            linksToVisit.length
+          }: ${targetUrl}`
+        );
+        sendEvent("progress", {
+          message: `Checking ${new URL(targetUrl).pathname}...`,
+        });
+        await page.goto(targetUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 60000,
+        });
+        await page.waitForTimeout(500);
+
+        const pageAxeResults = await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+          .analyze();
+
+        if (pageAxeResults.violations && pageAxeResults.violations.length > 0) {
+          console.log(
+            `[WCAG] Found ${pageAxeResults.violations.length} violations on ${targetUrl}`
+          );
+          // tag each violation with its source URL
+          allViolations.push(
+            ...pageAxeResults.violations.map((v) => ({
+              ...v,
+              __sourceUrl: targetUrl,
+            }))
+          );
+        }
+
+        // Navigate back to original page for consistency
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      } catch (navErr) {
+        console.error(
+          `[WCAG] Error visiting page ${linksToVisit[i]}:`,
+          navErr.message
+        );
+      }
+    }
+
+    console.log(
+      `[WCAG] Total violations across all pages: ${allViolations.length}`
+    );
+    // Emit summary of pages visited and violations found
+    sendEvent("progress", {
+      message: "Completed automated checks",
+      pagesVisited: internalLinks.length + 1,
+      violations: allViolations.length,
+    });
     sendEvent("progress", { message: "Capturing violation screenshots..." });
     const rawViolationScreenshots = await captureViolationScreenshots(
       page,
-      axeResults.violations
+      allViolations
     );
 
     // Deduplicate screenshots by comparing image data (sample multiple positions)
@@ -1635,18 +1897,37 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         screenshotMap.set(hash, vs);
       }
     }
-    const violationScreenshots = Array.from(screenshotMap.values()).slice(0, 5);
+    const violationScreenshots = Array.from(screenshotMap.values()).slice(
+      0,
+      12
+    );
 
+    // Report duplicate screenshots removed
+    const duplicates = Math.max(
+      rawViolationScreenshots.length - violationScreenshots.length,
+      0
+    );
     sendEvent("progress", {
       message: `Captured ${violationScreenshots.length} unique violation screenshots`,
+      pagesVisited: internalLinks.length + 1,
+      violations: allViolations.length,
+      duplicates,
     });
 
     // Track mentioned problems to avoid repetition
     const mentionedProblems = [];
 
     // For each unique screenshot, ask AI for non-developer visual feedback
-    for (let i = 0; i < Math.min(violationScreenshots.length, 5); i++) {
+    const totalToAnalyze = Math.min(violationScreenshots.length, 20);
+    for (let i = 0; i < totalToAnalyze; i++) {
       const vs = violationScreenshots[i];
+
+      // Emit progress event for AI screenshot analysis
+      sendEvent("screenshotAiProgress", {
+        current: i + 1,
+        total: totalToAnalyze,
+        percentage: Math.round(((i + 1) / totalToAnalyze) * 100),
+      });
       try {
         const dataUrl = vs.screenshot || "";
         const base64 =
@@ -1686,6 +1967,7 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
           };
           if (ai.problemCategory && typeof ai.problemCategory === "string") {
             mentionedProblems.push(ai.problemCategory);
+            vs.problemCategory = ai.problemCategory;
           }
         }
       } catch (e) {
@@ -1738,13 +2020,24 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
     if (aiResponse) aiResponse.groups = allGroups;
 
     // Final result payload - include violation screenshots
+    // Deduplicate by problem category across the site (keep first occurrence)
+    const byCategory = [];
+    const seenCats = new Set();
+    for (const vs of violationScreenshots) {
+      const cat = vs.problemCategory || vs.violationType;
+      if (!seenCats.has(cat)) {
+        seenCats.add(cat);
+        byCategory.push(vs);
+      }
+    }
+
     const finalPayload = {
       url,
       aiAnalysis: aiResponse,
       axe: axeResults.violations,
       screenshot: `data:image/jpeg;base64,${previewB64}`,
       steps: liveSteps, // Use the actual steps we captured with real coordinates
-      violationScreenshots: violationScreenshots, // New: violation-focused screenshots
+      violationScreenshots: byCategory, // New: violation-focused screenshots
     };
 
     sendEvent("result", finalPayload);
