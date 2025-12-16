@@ -952,31 +952,47 @@ function Complete() {
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={aiScreenshotProgress}
+                  aria-valuenow={
+                    !loading && !animating && analysis
+                      ? 100
+                      : Math.min(aiScreenshotProgress, 90)
+                  }
                 >
                   <div
                     className="loading-bar-fill"
-                    style={{ width: `${aiScreenshotProgress}%` }}
+                    style={{
+                      width: `${
+                        !loading && !animating && analysis
+                          ? 100
+                          : Math.min(aiScreenshotProgress, 90)
+                      }%`,
+                    }}
                   />
                 </div>
                 <p className="loading-bar-text">
                   {(() => {
-                    if (aiScreenshotProgress < 30) {
-                      return `Analyzing screenshots… ${aiScreenshotProgress}%`;
-                    } else if (aiScreenshotProgress < 60) {
-                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                    const displayProgress =
+                      !loading && !animating && analysis
+                        ? 100
+                        : Math.min(aiScreenshotProgress, 90);
+                    if (displayProgress < 30) {
+                      return `Analyzing screenshots… ${displayProgress}%`;
+                    } else if (displayProgress < 60) {
+                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
                         pagesVisited || 0
                       }`;
-                    } else if (aiScreenshotProgress < 80) {
-                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                    } else if (displayProgress < 80) {
+                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
                         pagesVisited || 0
                       } • Violations: ${violationsFound || 0}`;
-                    } else {
-                      return `Analyzing screenshots… ${aiScreenshotProgress}% • Pages viewed: ${
+                    } else if (displayProgress < 100) {
+                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
                         pagesVisited || 0
                       } • Violations: ${violationsFound || 0} • Duplicates: ${
                         duplicatesSkipped || 0
                       }`;
+                    } else {
+                      return `Analyzing screenshots… 100%`;
                     }
                   })()}
                 </p>
@@ -1370,7 +1386,52 @@ function Complete() {
             <div className="hci-report">
               <h2>HCI Report</h2>
               {hciParagraphs.length > 0 ? (
-                hciParagraphs.map((para, idx) => <p key={idx}>{para}</p>)
+                hciParagraphs.map((para, idx) => {
+                  // List of keywords to bold
+                  const keywords = [
+                    "accessibility",
+                    "usability",
+                    "contrast",
+                    "keyboard",
+                    "screen reader",
+                    "color blindness",
+                    "navigation",
+                    "focus",
+                    "label",
+                    "alt text",
+                    "ARIA",
+                    "compliance",
+                    "WCAG",
+                    "AODA",
+                    "error",
+                    "form",
+                    "structure",
+                    "heading",
+                    "landmark",
+                    "semantic",
+                    "cognitive",
+                    "perceivable",
+                    "operable",
+                    "understandable",
+                    "robust",
+                  ];
+                  // Regex to match keywords (case-insensitive, word boundaries)
+                  const regex = new RegExp(
+                    `\\b(${keywords.join("|")})\\b`,
+                    "gi"
+                  );
+                  // Replace keywords with bolded version
+                  const highlighted = para.replace(
+                    regex,
+                    (match) => `<strong>${match}</strong>`
+                  );
+                  return (
+                    <p
+                      key={idx}
+                      dangerouslySetInnerHTML={{ __html: highlighted }}
+                    />
+                  );
+                })
               ) : (
                 <p>{hciText}</p>
               )}
