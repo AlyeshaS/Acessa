@@ -309,6 +309,13 @@ function Complete() {
         const evt = new EventSource(streamUrl);
 
         evt.addEventListener("preview", (e) => {
+          {
+            /* Before and After card */
+          }
+          <div className="hci-report" style={{ marginTop: 32 }}>
+            <h2>Before and After</h2>
+            {/* Add before/after content here in the future */}
+          </div>;
           try {
             const payload = JSON.parse(e.data || "{}");
             if (payload.screenshot) {
@@ -1022,6 +1029,9 @@ function Complete() {
                       setPendingResult(null);
                     }
                     // Apply visual segments if available
+
+                    // before and after
+
                     if (pendingSegments.length > 0) {
                       setSegments(pendingSegments);
                     }
@@ -1032,7 +1042,6 @@ function Complete() {
           </div>
         )}
 
-        {/* RESULTS STATE (after animation finishes OR if no preview was returned) */}
         {!loading && !error && !animating && analysis && (
           <>
             <div className="scores">
@@ -1449,7 +1458,14 @@ function Complete() {
                 </ul>
               )}
             </div>
-
+            {/* Before and After card: after HCI Report, before Visual Feedback, only in main results */}
+            <div className="hci-report" style={{ marginTop: 32 }}>
+              <h2>Before and After</h2>
+              <p style={{ color: "#64748b", fontSize: "16px", marginTop: 16 }}>
+                This section will show a visual comparison of the page before
+                and after accessibility improvements.
+              </p>
+            </div>
             {/* NEW: Violation Screenshots with Interactive Feedback */}
             {violationScreenshots && violationScreenshots.length > 0 && (
               <div className="visual-feedback">
