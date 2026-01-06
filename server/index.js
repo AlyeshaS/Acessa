@@ -1049,6 +1049,13 @@ async function callAi(prompt) {
     cleaned = cleaned.replace(/^\uFEFF/, "");
     cleaned = cleaned.replace(/\\b/g, ""); // Remove backspace escape sequences
     cleaned = cleaned.replace(/[\b]/g, ""); // Remove actual backspace characters
+    // Remove all unescaped control characters (ASCII 0-31 except allowed escapes) from string values
+    // Allowed escapes: \n, \r, \t, \", \\, \/
+    cleaned = cleaned.replace(/"((?:[^"\\]|\\.)*)"/g, (match, str) => {
+      // Replace any raw control characters (except \n, \r, \t) with a space
+      const safe = str.replace(/([\x00-\x09\x0B\x0C\x0E-\x1F])/g, " ");
+      return `"${safe}"`;
+    });
 
     // Fix JavaScript expressions in numeric fields (e.g., "4 * 3 + 5 * 2")
     cleaned = cleaned.replace(

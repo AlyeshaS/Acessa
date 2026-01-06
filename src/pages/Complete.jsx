@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import IframePreview from "../components/IframePreview";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
@@ -1461,10 +1462,87 @@ function Complete() {
             {/* Before and After card: after HCI Report, before Visual Feedback, only in main results */}
             <div className="hci-report" style={{ marginTop: 32 }}>
               <h2>Before and After</h2>
-              <p style={{ color: "#64748b", fontSize: "16px", marginTop: 16 }}>
-                This section will show a visual comparison of the page before
-                and after accessibility improvements.
-              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 32,
+                  justifyContent: "center",
+                  marginBottom: 32,
+                }}
+              >
+                {/* BEFORE: Original Screenshot */}
+                <div style={{ flex: 1, minWidth: 320, maxWidth: 480 }}>
+                  <h3 style={{ textAlign: "center" }}>Before</h3>
+                  {previewResult?.screenshot ? (
+                    <img
+                      src={previewResult.screenshot}
+                      alt="Original Screenshot"
+                      style={{
+                        width: "100%",
+                        borderRadius: 8,
+                        border: "1px solid #111",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: "center", color: "#888" }}>
+                      No screenshot available
+                    </div>
+                  )}
+                </div>
+                {/* AFTER: HTML/CSS Modified Preview */}
+                <div style={{ flex: 1, minWidth: 320, maxWidth: 480 }}>
+                  <h3 style={{ textAlign: "center" }}>After</h3>
+                  {analysis?.html ? (
+                    <IframePreview
+                      html={analysis.html}
+                      css={`
+                        body,
+                        html {
+                          font-size: 1.25em !important;
+                          font-family: Arial, sans-serif !important;
+                        }
+                        * {
+                          color: #222 !important;
+                          background: #fff !important;
+                        }
+                        a {
+                          color: #0055cc !important;
+                        }
+                        h1,
+                        h2,
+                        h3,
+                        h4,
+                        h5,
+                        h6 {
+                          color: #1a237e !important;
+                        }
+                        body,
+                        p,
+                        span,
+                        div,
+                        li {
+                          filter: contrast(1.4);
+                        }
+                      `}
+                    />
+                  ) : previewResult?.screenshot ? (
+                    <img
+                      src={previewResult.screenshot}
+                      alt="After Screenshot (no HTML)"
+                      style={{
+                        width: "100%",
+                        borderRadius: 8,
+                        border: "1px solid #111",
+                        filter: "contrast(1.4) grayscale(0.1)",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: "center", color: "#888" }}>
+                      No after view available
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             {/* NEW: Violation Screenshots with Interactive Feedback */}
             {violationScreenshots && violationScreenshots.length > 0 && (
