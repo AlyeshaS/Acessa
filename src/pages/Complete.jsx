@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { aiModifyHtml } from "../api/wcagAPI";
 import IframePreview from "../components/IframePreview";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
@@ -233,6 +234,127 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     </div>
   );
 }
+
+function LightboxBeforeAfter({ screenshot, aiMod, html, css }) {
+  const [view, setView] = useState("before");
+  const hasAfter = aiMod && aiMod.modifiedHtml;
+  const afterScore =
+    aiMod && typeof aiMod.score === "number" ? aiMod.score : null;
+  // Brand colors
+  const activeBg = "#7c8da0";
+  const activeText = "#e4e7ed";
+  const inactiveBg = "#f7f9fc";
+  const inactiveText = "#e4e7ed";
+  // Always show live preview for 'after', fallback to original if missing
+  return (
+    <div style={{ position: "relative", textAlign: "center" }}>
+      <div
+        style={{
+          marginBottom: 12,
+          display: "flex",
+          justifyContent: "center",
+          gap: 12,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setView("before")}
+          style={{
+            padding: "6px 18px",
+            borderRadius: 6,
+            border: "none",
+            background: view === "before" ? activeBg : inactiveBg,
+            color: view === "before" ? activeText : inactiveText,
+            fontWeight: view === "before" ? 700 : 400,
+            cursor: "pointer",
+            outline: view === "before" ? `2px solid ${activeBg}` : "none",
+            boxShadow: view === "before" ? "0 0 0 2px #e4e7ed33" : "none",
+            transition: "all 0.15s",
+          }}
+        >
+          Before
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("after")}
+          style={{
+            padding: "6px 18px",
+            borderRadius: 6,
+            border: "none",
+            background: view === "after" ? activeBg : inactiveBg,
+            color: view === "after" ? activeText : inactiveText,
+            fontWeight: view === "after" ? 700 : 400,
+            cursor: "pointer",
+            outline: view === "after" ? `2px solid ${activeBg}` : "none",
+            boxShadow: view === "after" ? "0 0 0 2px #e4e7ed33" : "none",
+            transition: "all 0.15s",
+          }}
+        >
+          After
+        </button>
+      </div>
+      <div style={{ minHeight: 410 }}>
+        {view === "before" && (
+          <img
+            src={screenshot}
+            alt="Accessibility issue fullscreen"
+            style={{
+              maxWidth: "100%",
+              borderRadius: 8,
+              border: "1px solid #111",
+              background: inactiveBg,
+              width: "100%",
+            }}
+          />
+        )}
+        {view === "after" && (
+          <>
+            <div
+              style={{
+                borderRadius: 8,
+                border: "1px solid #111",
+                overflow: "hidden",
+                background: inactiveBg,
+              }}
+            >
+              <IframePreview
+                html={hasAfter ? aiMod.modifiedHtml : html}
+                css={hasAfter ? aiMod.css : css}
+                style={{ height: 400, width: "100%" }}
+              />
+            </div>
+            {afterScore !== null && hasAfter && (
+              <div
+                style={{
+                  marginTop: 16,
+                  fontWeight: 600,
+                  color: activeBg,
+                  fontSize: 18,
+                }}
+              >
+                New Score (After):{" "}
+                <span
+                  style={{
+                    color:
+                      afterScore >= 90
+                        ? "#2ecc40"
+                        : afterScore >= 70
+                        ? "#ffb700"
+                        : "#e74c3c",
+                  }}
+                >
+                  {afterScore}
+                </span>{" "}
+                / 100
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Complete() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -263,6 +385,10 @@ function Complete() {
   // NEW: Violation screenshots with interactive feedback
   const [violationScreenshots, setViolationScreenshots] = useState([]);
   const [selectedViolation, setSelectedViolation] = useState(null);
+
+  // AI-modified HTML/CSS for each violation (indexed by violation idx)
+  const [aiModResults, setAiModResults] = useState({});
+  const [aiModLoading, setAiModLoading] = useState({});
   const [lightbox, setLightbox] = useState(null); // fullscreen view of a screenshot + issue panel
 
   // Which categories are expanded in the UI
@@ -643,6 +769,44 @@ function Complete() {
       }
     }
   }, [animationDone, pendingResult, pendingSegments]);
+
+  // When violationScreenshots or analysis.html changes, call AI for each violation/feedback
+  useEffect(() => {
+    const html = analysis?.html;
+    if (
+      !html ||
+      !Array.isArray(violationScreenshots) ||
+      violationScreenshots.length === 0
+    )
+      return;
+    violationScreenshots.forEach((vs, idx) => {
+      // Only fetch if not already present or loading
+      if (aiModResults[idx] || aiModLoading[idx]) return;
+      // Use feedback from AI or fallback to violation description
+      const feedback =
+        (vs?.aiFeedback?.recommendation && vs.aiFeedback.summary
+          ? vs.aiFeedback.summary + ". " + vs.aiFeedback.recommendation
+          : vs?.aiFeedback?.recommendation || vs?.aiFeedback?.summary) ||
+        vs?.violations?.[0]?.help ||
+        vs?.violations?.[0]?.description ||
+        "Improve accessibility.";
+      setAiModLoading((prev) => ({ ...prev, [idx]: true }));
+      aiModifyHtml({ html, feedback })
+        .then((result) => {
+          setAiModResults((prev) => ({ ...prev, [idx]: result }));
+        })
+        .catch(() => {
+          setAiModResults((prev) => ({
+            ...prev,
+            [idx]: { modifiedHtml: html, css: "" },
+          }));
+        })
+        .finally(() => {
+          setAiModLoading((prev) => ({ ...prev, [idx]: false }));
+        });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [violationScreenshots, analysis?.html]);
 
   // When animation is done and analysis is available, finish progress and exit loading
   useEffect(() => {
@@ -1657,12 +1821,15 @@ function Complete() {
                         setSelectedViolation(vs);
                       };
 
+                      // --- AI-powered Interactive Preview Logic ---
+                      const aiMod = aiModResults[idx];
                       return (
                         <div key={idx} className="violation-card">
                           <div
                             style={{
                               position: "relative",
                               background: "#f0f0f0",
+                              marginBottom: 16,
                             }}
                           >
                             {/* Single expand button per screenshot to fullscreen */}
@@ -1677,6 +1844,23 @@ function Complete() {
                             </button>
                             <img src={vs.screenshot} alt={`violation-${idx}`} />
                           </div>
+                          {/* Live preview with AI-modified HTML/CSS */}
+                          {aiModLoading[idx] ? (
+                            <div style={{ marginTop: 8, color: "#888" }}>
+                              Loading AI preview…
+                            </div>
+                          ) : aiMod && aiMod.modifiedHtml ? (
+                            <div style={{ marginTop: 8 }}>
+                              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                                Live Preview (AI-powered fix):
+                              </div>
+                              <IframePreview
+                                html={aiMod.modifiedHtml}
+                                css={aiMod.css || ""}
+                                style={{ height: 220 }}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1721,12 +1905,43 @@ function Complete() {
                   </button>
 
                   <div className="lightbox-body">
+                    {/* BEGIN: Additive Before/After Toggle UI */}
                     <div className="lightbox-image-wrapper">
-                      <img
-                        src={lightbox.screenshot}
-                        alt="Accessibility issue fullscreen"
+                      {/* Toggle state for before/after view */}
+                      <LightboxBeforeAfter
+                        screenshot={lightbox.screenshot}
+                        aiMod={
+                          aiModResults && selectedViolation
+                            ? aiModResults[
+                                violationScreenshots.indexOf(selectedViolation)
+                              ]
+                            : null
+                        }
+                        html={
+                          selectedViolation &&
+                          aiModResults &&
+                          aiModResults[
+                            violationScreenshots.indexOf(selectedViolation)
+                          ]
+                            ? aiModResults[
+                                violationScreenshots.indexOf(selectedViolation)
+                              ].modifiedHtml
+                            : null
+                        }
+                        css={
+                          selectedViolation &&
+                          aiModResults &&
+                          aiModResults[
+                            violationScreenshots.indexOf(selectedViolation)
+                          ]
+                            ? aiModResults[
+                                violationScreenshots.indexOf(selectedViolation)
+                              ].css
+                            : ""
+                        }
                       />
                     </div>
+                    {/* END: Additive Before/After Toggle UI */}
 
                     <aside className="lightbox-panel">
                       <div

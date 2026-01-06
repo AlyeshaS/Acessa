@@ -1,4 +1,3 @@
-// server/index.js
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -14,6 +13,42 @@ app.use(cors());
 app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// AI-powered HTML/CSS modifier endpoint (must be after app is defined)
+app.post("/api/ai-modify-html", async (req, res) => {
+  const { html, feedback } = req.body || {};
+  if (!html || !feedback) {
+    return res
+      .status(400)
+      .json({ error: "Missing html or feedback in request body" });
+  }
+
+  // Build a strict prompt for Gemini to modify the HTML/CSS based on feedback and problemCategory
+  const prompt = `You are an expert accessibility and frontend engineer. Your task is to fix a specific accessibility issue in the provided HTML, as described by the feedback and problemCategory.\n\nInstructions:\n- ONLY return a valid JSON object with these exact fields: { \"modifiedHtml\": string, \"css\": string }\n- Always use the problemCategory to identify and fix the issue.\n- Only make the minimal changes needed to address the problem.\n- If no CSS changes are needed, return an empty string for css.\n- Do NOT include any explanation, summary, or extra fields.\n- The JSON must be strictly valid.\n\nExample:\n{\n  \"modifiedHtml\": \"...\",\n  \"css\": \"...\"\n}\n\n---\nHTML:\n${html.slice(
+    0,
+    12000
+  )}\n---\nFEEDBACK:\n${feedback}\n---\nproblemCategory: (use this to determine what to fix)\n${
+    feedback.problemCategory || ""
+  }\n`;
+
+  try {
+    const aiResult = await callAi(prompt);
+    // Defensive: ensure the result has the required fields
+    if (aiResult && (aiResult.modifiedHtml || aiResult.html)) {
+      res.json({
+        modifiedHtml: aiResult.modifiedHtml || aiResult.html,
+        css: aiResult.css || "",
+      });
+    } else {
+      res.status(500).json({ error: "AI did not return modified HTML." });
+    }
+  } catch (err) {
+    console.error("[AI Modify HTML] Error:", err);
+    res
+      .status(500)
+      .json({ error: "AI modification failed", details: err.message });
+  }
+});
 
 /**
  * Extract the first top-level JSON object from free-form text.
@@ -1180,14 +1215,31 @@ async function callAiWithInlineData(
     throw new Error("AI did not return a valid JSON object.");
   }
 
+  // Escape double quotes inside string values to prevent parse errors
   jsonStr = jsonStr.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m) => {
-    const inner = m.slice(1, -1).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+    let inner = m.slice(1, -1).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+    // Escape unescaped double quotes inside string values
+    inner = inner.replace(/([^\\])"/g, '$1\\"');
     return `"${inner}"`;
   });
   jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
 
   try {
     const parsed = JSON.parse(jsonStr);
+    console.log("[WCAG] Parsed Gemini AI response (inline):", parsed);
+    if (parsed && typeof parsed === "object") {
+      console.log("[WCAG] Parsed keys:", Object.keys(parsed));
+      if (parsed.modifiedHtml) {
+        console.log("[WCAG] modifiedHtml length:", parsed.modifiedHtml.length);
+      } else {
+        console.warn("[WCAG] No modifiedHtml field in parsed response.");
+      }
+      if (parsed.css) {
+        console.log("[WCAG] css length:", parsed.css.length);
+      } else {
+        console.warn("[WCAG] No css field in parsed response.");
+      }
+    }
     return parsed;
   } catch (err) {
     console.error("[WCAG] Failed to parse Gemini JSON (inline):", err);
