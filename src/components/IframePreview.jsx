@@ -18,6 +18,7 @@ export default function IframePreview({
   stylesheets = [],
   baseUrl,
   style = {},
+  scrollPosition = 0,
 }) {
   const iframeRef = useRef(null);
 
@@ -52,7 +53,18 @@ export default function IframePreview({
     doc.open();
     doc.write(fullHtml);
     doc.close();
-  }, [html, css, stylesheets, baseUrl]);
+
+    // Scroll to the desired position after content loads
+    setTimeout(() => {
+      try {
+        if (typeof scrollPosition === "number" && iframe.contentWindow) {
+          iframe.contentWindow.scrollTo(0, scrollPosition);
+        }
+      } catch (e) {
+        // Ignore cross-origin or timing errors
+      }
+    }, 50);
+  }, [html, css, stylesheets, baseUrl, scrollPosition]);
 
   return (
     <iframe

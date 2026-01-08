@@ -234,10 +234,37 @@ function LightboxBeforeAfter({
   html,
   stylesheets,
   baseUrl,
+  screenshotScrollY = 0,
   onAfterClick,
 }) {
   const [view, setView] = useState("before");
   const [requestedAfter, setRequestedAfter] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const progressRef = useRef();
+
+  // Animate progress bar from 0 to 100 when loadingAfter is true
+  useEffect(() => {
+    if (requestedAfter && loadingAfter) {
+      setProgress(0);
+      if (progressRef.current) clearInterval(progressRef.current);
+      progressRef.current = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(progressRef.current);
+            return 100;
+          }
+          // Speed: 1.5s total, 100/15 = ~7 per 100ms
+          return Math.min(100, prev + 7);
+        });
+      }, 100);
+    } else if (!loadingAfter) {
+      if (progressRef.current) clearInterval(progressRef.current);
+      setProgress(100);
+    }
+    return () => {
+      if (progressRef.current) clearInterval(progressRef.current);
+    };
+  }, [requestedAfter, loadingAfter]);
 
   // Brand colors
   const activeBg = "#7c8da0";
@@ -318,26 +345,56 @@ function LightboxBeforeAfter({
                 Click “After” to generate an accessibility-enhanced preview.
               </div>
             )}
-
-            {requestedAfter && loadingAfter && (
-              <div>Preparing AI-enhanced preview…</div>
-            )}
-
-            {requestedAfter && !loadingAfter && afterData && (
-              <IframePreview
-                html={html}
-                css={afterData.css || ""}
-                stylesheets={stylesheets || []}
-                baseUrl={baseUrl}
+            {requestedAfter && (loadingAfter || progress < 100) && (
+              <div
                 style={{
-                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                   height: 410,
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#5d6a78",
                 }}
-              />
+              >
+                <ScoreCircle
+                  value={progress}
+                  size={80}
+                  strokeWidth={10}
+                  label={"Loading..."}
+                />
+                <div style={{ color: "#888", marginTop: 12 }}>
+                  Preparing AI-enhanced preview…
+                </div>
+              </div>
             )}
+            {requestedAfter &&
+              progress === 100 &&
+              !loadingAfter &&
+              afterData && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    width: "100%",
+                  }}
+                >
+                  <IframePreview
+                    html={html}
+                    css={afterData.css || ""}
+                    stylesheets={stylesheets || []}
+                    baseUrl={baseUrl}
+                    scrollPosition={screenshotScrollY}
+                    style={{
+                      width: "727.64px",
+                      height: "410px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "#5d6a78",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
+              )}
           </>
         )}
       </div>
@@ -432,6 +489,7 @@ function Complete() {
       const res = await aiModifyHtml({
         html: analysis.html,
         feedback,
+        scrollY: 0,
       });
 
       setAiModResults((prev) => ({
@@ -547,7 +605,15 @@ function Complete() {
               payload.violationScreenshots &&
               Array.isArray(payload.violationScreenshots)
             ) {
-              setViolationScreenshots(payload.violationScreenshots);
+              const scrollY =
+                window.scrollY || document.documentElement.scrollTop || 0;
+              setViolationScreenshots(
+                payload.violationScreenshots.map((vs) => ({
+                  ...vs,
+                  scrollY:
+                    typeof vs.scrollY === "number" ? vs.scrollY : scrollY,
+                }))
+              );
             }
             // Don't overwrite the live steps - they've already been streamed and are animating
             // The payload.steps are redundant since we already received them as individual "step" events
@@ -1808,8 +1874,13 @@ function Complete() {
                         html={analysis?.html}
                         stylesheets={stylesheets}
                         baseUrl={url}
+                        screenshotScrollY={lightbox.scrollY}
                         onAfterClick={() =>
-                          handleAfterClick(lightbox.idx, lightbox.violation)
+                          handleAfterClick(
+                            lightbox.idx,
+                            lightbox.violation,
+                            lightbox.scrollY
+                          )
                         }
                       />
                     </div>
