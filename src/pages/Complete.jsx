@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { aiModifyHtml } from "../api/wcagAPI";
-import IframePreview from "../components/IframePreview";
+import IframePreview from "../components/IFramePreview.jsx";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
@@ -55,14 +55,6 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
     </div>
   );
 }
-
-const LOADING_STEPS = [
-  "Fetching your webpage…",
-  "Running automated accessibility checks…",
-  "Checking WCAG 2.2 and AODA requirements…",
-  "Analyzing HCI and UX patterns…",
-  "Building your accessibility report…",
-];
 
 /**
  * Shows live Playwright browser feed as it checks the page
@@ -134,7 +126,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           margin: "0 auto",
           borderRadius: "14px",
           overflow: "hidden",
-          border: "2px solid #189B97",
+          border: "2px solid var(--color-accent)",
           background: "rgba(15,23,42,0.8)",
           boxShadow: "0 4px 20px rgba(24,155,151,0.3)",
         }}
@@ -235,19 +227,27 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   );
 }
 
-function LightboxBeforeAfter({ screenshot, aiMod, html, css }) {
+function LightboxBeforeAfter({
+  screenshot,
+  loadingAfter,
+  afterData,
+  html,
+  stylesheets,
+  baseUrl,
+  onAfterClick,
+}) {
   const [view, setView] = useState("before");
-  const hasAfter = aiMod && aiMod.modifiedHtml;
-  const afterScore =
-    aiMod && typeof aiMod.score === "number" ? aiMod.score : null;
+  const [requestedAfter, setRequestedAfter] = useState(false);
+
   // Brand colors
   const activeBg = "#7c8da0";
   const activeText = "#e4e7ed";
-  const inactiveBg = "#f7f9fc";
+  const inactiveBg = "#5d6a78";
   const inactiveText = "#e4e7ed";
-  // Always show live preview for 'after', fallback to original if missing
+
   return (
     <div style={{ position: "relative", textAlign: "center" }}>
+      {/* Toggle buttons */}
       <div
         style={{
           marginBottom: 12,
@@ -267,16 +267,18 @@ function LightboxBeforeAfter({ screenshot, aiMod, html, css }) {
             color: view === "before" ? activeText : inactiveText,
             fontWeight: view === "before" ? 700 : 400,
             cursor: "pointer",
-            outline: view === "before" ? `2px solid ${activeBg}` : "none",
-            boxShadow: view === "before" ? "0 0 0 2px #e4e7ed33" : "none",
-            transition: "all 0.15s",
           }}
         >
           Before
         </button>
+
         <button
           type="button"
-          onClick={() => setView("after")}
+          onClick={() => {
+            setView("after");
+            setRequestedAfter(true);
+            onAfterClick();
+          }}
           style={{
             padding: "6px 18px",
             borderRadius: 6,
@@ -285,68 +287,56 @@ function LightboxBeforeAfter({ screenshot, aiMod, html, css }) {
             color: view === "after" ? activeText : inactiveText,
             fontWeight: view === "after" ? 700 : 400,
             cursor: "pointer",
-            outline: view === "after" ? `2px solid ${activeBg}` : "none",
-            boxShadow: view === "after" ? "0 0 0 2px #e4e7ed33" : "none",
-            transition: "all 0.15s",
           }}
         >
           After
         </button>
       </div>
+
       <div style={{ minHeight: 410 }}>
+        {/* BEFORE VIEW */}
         {view === "before" && (
           <img
             src={screenshot}
-            alt="Accessibility issue fullscreen"
+            alt="Accessibility issue screenshot"
             style={{
-              maxWidth: "100%",
+              width: "100%",
+              height: 410,
+              objectFit: "contain",
               borderRadius: 8,
               border: "1px solid #111",
               background: inactiveBg,
-              width: "100%",
             }}
           />
         )}
+
+        {/* AFTER VIEW */}
         {view === "after" && (
           <>
-            <div
-              style={{
-                borderRadius: 8,
-                border: "1px solid #111",
-                overflow: "hidden",
-                background: inactiveBg,
-              }}
-            >
-              <IframePreview
-                html={hasAfter ? aiMod.modifiedHtml : html}
-                css={hasAfter ? aiMod.css : css}
-                style={{ height: 400, width: "100%" }}
-              />
-            </div>
-            {afterScore !== null && hasAfter && (
-              <div
-                style={{
-                  marginTop: 16,
-                  fontWeight: 600,
-                  color: activeBg,
-                  fontSize: 18,
-                }}
-              >
-                New Score (After):{" "}
-                <span
-                  style={{
-                    color:
-                      afterScore >= 90
-                        ? "#2ecc40"
-                        : afterScore >= 70
-                        ? "#ffb700"
-                        : "#e74c3c",
-                  }}
-                >
-                  {afterScore}
-                </span>{" "}
-                / 100
+            {!requestedAfter && (
+              <div style={{ color: "#888" }}>
+                Click “After” to generate an accessibility-enhanced preview.
               </div>
+            )}
+
+            {requestedAfter && loadingAfter && (
+              <div>Preparing AI-enhanced preview…</div>
+            )}
+
+            {requestedAfter && !loadingAfter && afterData && (
+              <IframePreview
+                html={html}
+                css={afterData.css || ""}
+                stylesheets={stylesheets || []}
+                baseUrl={baseUrl}
+                style={{
+                  width: "100%",
+                  height: 410,
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#5d6a78",
+                }}
+              />
             )}
           </>
         )}
@@ -386,10 +376,11 @@ function Complete() {
   const [violationScreenshots, setViolationScreenshots] = useState([]);
   const [selectedViolation, setSelectedViolation] = useState(null);
 
-  // AI-modified HTML/CSS for each violation (indexed by violation idx)
-  const [aiModResults, setAiModResults] = useState({});
-  const [aiModLoading, setAiModLoading] = useState({});
   const [lightbox, setLightbox] = useState(null); // fullscreen view of a screenshot + issue panel
+
+  // Per-violation AI preview state
+  const [aiModResults, setAiModResults] = useState({}); // { [idx]: result }
+  const [aiModLoading, setAiModLoading] = useState({}); // { [idx]: boolean }
 
   // Which categories are expanded in the UI
   const [expandedCategories, setExpandedCategories] = useState({
@@ -399,8 +390,67 @@ function Complete() {
     Robust: false,
   });
 
+  const stylesheets = React.useMemo(() => {
+    if (!analysis?.html) return [];
+    return (
+      analysis.html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || []
+    );
+  }, [analysis?.html]);
+
   // AbortController stored in a ref so we can cancel on Back
   const abortRef = useRef(null);
+
+  const handleAfterClick = async (idx, violation) => {
+    if (!analysis?.html) {
+      console.error("No HTML available for AI modification");
+      return;
+    }
+
+    // 🔑 BUILD FEEDBACK HERE (this was missing)
+    const feedback = {
+      summary:
+        violation?.aiFeedback?.summary ||
+        violation?.problem ||
+        "Accessibility issue detected.",
+
+      recommendation:
+        violation?.aiFeedback?.recommendation ||
+        violation?.recommendation ||
+        "Improve visual accessibility.",
+
+      problemCategory:
+        violation?.wcagCriterion || violation?.problemCategory || "visual",
+    };
+
+    // set loading for THIS item
+    setAiModLoading((prev) => ({
+      ...prev,
+      [idx]: true,
+    }));
+
+    try {
+      const res = await aiModifyHtml({
+        html: analysis.html,
+        feedback,
+      });
+
+      setAiModResults((prev) => ({
+        ...prev,
+        [idx]: res,
+      }));
+    } catch (err) {
+      console.error("AI modify failed", err);
+    } finally {
+      setAiModLoading((prev) => ({
+        ...prev,
+        [idx]: false,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    console.log("HTML length:", analysis?.html?.length);
+  }, [analysis]);
 
   useEffect(() => {
     if (!url) {
@@ -425,39 +475,11 @@ function Complete() {
         setViolationsFound(0);
         setDuplicatesSkipped(0);
 
-        // Open an EventSource stream to receive an immediate preview and
-        // then the full AI result when it's ready. This ensures the UI
-        // can animate Playwright actions immediately while the server
-        // runs Axe and calls Gemini.
         const streamUrl = `http://localhost:4000/api/wcag-check-stream?url=${encodeURIComponent(
           url
         )}`;
 
         const evt = new EventSource(streamUrl);
-
-        evt.addEventListener("preview", (e) => {
-          {
-            /* Before and After card */
-          }
-          <div className="hci-report" style={{ marginTop: 32 }}>
-            <h2>Before and After</h2>
-            {/* Add before/after content here in the future */}
-          </div>;
-          try {
-            const payload = JSON.parse(e.data || "{}");
-            if (payload.screenshot) {
-              setPreviewResult({
-                screenshot: payload.screenshot,
-                steps: Array.isArray(payload.steps) ? payload.steps : [],
-              });
-              // wait for image to load before starting animation
-              setImageLoaded(false);
-              setAnimating(false);
-            }
-          } catch (err) {
-            console.error("[Complete] preview parse", err);
-          }
-        });
 
         // NEW: Listen for live step events as Axe finds real violations
         evt.addEventListener("step", (e) => {
@@ -758,55 +780,19 @@ function Complete() {
   useEffect(() => {
     if (animationDone && pendingResult) {
       const payload = pendingResult;
-      setAnalysis(
-        payload.aiAnalysis
-          ? { ...payload.aiAnalysis, url: payload.url }
-          : payload
-      );
+      setAnalysis({
+        ...payload.aiAnalysis,
+        url: payload.url,
+        html: payload.html,
+        stylesheets: payload.stylesheets || [],
+      });
+
       setPendingResult(null);
       if (pendingSegments.length > 0) {
         setSegments(pendingSegments);
       }
     }
   }, [animationDone, pendingResult, pendingSegments]);
-
-  // When violationScreenshots or analysis.html changes, call AI for each violation/feedback
-  useEffect(() => {
-    const html = analysis?.html;
-    if (
-      !html ||
-      !Array.isArray(violationScreenshots) ||
-      violationScreenshots.length === 0
-    )
-      return;
-    violationScreenshots.forEach((vs, idx) => {
-      // Only fetch if not already present or loading
-      if (aiModResults[idx] || aiModLoading[idx]) return;
-      // Use feedback from AI or fallback to violation description
-      const feedback =
-        (vs?.aiFeedback?.recommendation && vs.aiFeedback.summary
-          ? vs.aiFeedback.summary + ". " + vs.aiFeedback.recommendation
-          : vs?.aiFeedback?.recommendation || vs?.aiFeedback?.summary) ||
-        vs?.violations?.[0]?.help ||
-        vs?.violations?.[0]?.description ||
-        "Improve accessibility.";
-      setAiModLoading((prev) => ({ ...prev, [idx]: true }));
-      aiModifyHtml({ html, feedback })
-        .then((result) => {
-          setAiModResults((prev) => ({ ...prev, [idx]: result }));
-        })
-        .catch(() => {
-          setAiModResults((prev) => ({
-            ...prev,
-            [idx]: { modifiedHtml: html, css: "" },
-          }));
-        })
-        .finally(() => {
-          setAiModLoading((prev) => ({ ...prev, [idx]: false }));
-        });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [violationScreenshots, analysis?.html]);
 
   // When animation is done and analysis is available, finish progress and exit loading
   useEffect(() => {
@@ -1240,7 +1226,7 @@ function Complete() {
                         </p>
 
                         {/* Expandable Score Details */}
-                        <button
+                        {/* <button
                           onClick={() => setShowScoreDetails(!showScoreDetails)}
                           style={{
                             marginTop: 12,
@@ -1264,7 +1250,7 @@ function Complete() {
                           }}
                         >
                           {showScoreDetails ? "Hide" : "Show"} Score Details
-                        </button>
+                        </button> */}
 
                         {showScoreDetails && scoreBreakdown && (
                           <div
@@ -1624,90 +1610,7 @@ function Complete() {
               )}
             </div>
             {/* Before and After card: after HCI Report, before Visual Feedback, only in main results */}
-            <div className="hci-report" style={{ marginTop: 32 }}>
-              <h2>Before and After</h2>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 32,
-                  justifyContent: "center",
-                  marginBottom: 32,
-                }}
-              >
-                {/* BEFORE: Original Screenshot */}
-                <div style={{ flex: 1, minWidth: 320, maxWidth: 480 }}>
-                  <h3 style={{ textAlign: "center" }}>Before</h3>
-                  {previewResult?.screenshot ? (
-                    <img
-                      src={previewResult.screenshot}
-                      alt="Original Screenshot"
-                      style={{
-                        width: "100%",
-                        borderRadius: 8,
-                        border: "1px solid #111",
-                      }}
-                    />
-                  ) : (
-                    <div style={{ textAlign: "center", color: "#888" }}>
-                      No screenshot available
-                    </div>
-                  )}
-                </div>
-                {/* AFTER: HTML/CSS Modified Preview */}
-                <div style={{ flex: 1, minWidth: 320, maxWidth: 480 }}>
-                  <h3 style={{ textAlign: "center" }}>After</h3>
-                  {analysis?.html ? (
-                    <IframePreview
-                      html={analysis.html}
-                      css={`
-                        body,
-                        html {
-                          font-size: 1.25em !important;
-                          font-family: Arial, sans-serif !important;
-                        }
-                        * {
-                          color: #222 !important;
-                          background: #fff !important;
-                        }
-                        a {
-                          color: #0055cc !important;
-                        }
-                        h1,
-                        h2,
-                        h3,
-                        h4,
-                        h5,
-                        h6 {
-                          color: #1a237e !important;
-                        }
-                        body,
-                        p,
-                        span,
-                        div,
-                        li {
-                          filter: contrast(1.4);
-                        }
-                      `}
-                    />
-                  ) : previewResult?.screenshot ? (
-                    <img
-                      src={previewResult.screenshot}
-                      alt="After Screenshot (no HTML)"
-                      style={{
-                        width: "100%",
-                        borderRadius: 8,
-                        border: "1px solid #111",
-                        filter: "contrast(1.4) grayscale(0.1)",
-                      }}
-                    />
-                  ) : (
-                    <div style={{ textAlign: "center", color: "#888" }}>
-                      No after view available
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+
             {/* NEW: Violation Screenshots with Interactive Feedback */}
             {violationScreenshots && violationScreenshots.length > 0 && (
               <div className="visual-feedback">
@@ -1808,7 +1711,14 @@ function Complete() {
 
                       const openLightbox = (marker) => {
                         const aiFeedback = getAiFeedback(marker || markers[0]);
+
+                        // setAfterData(null);
+                        // setLoadingAfter(false);
+
+                        setSelectedViolation(vs);
+
                         setLightbox({
+                          idx,
                           screenshot: vs.screenshot,
                           violation: violation || vs,
                           violations: Array.isArray(vs.violations)
@@ -1818,7 +1728,6 @@ function Complete() {
                           severityColor,
                           aiFeedback,
                         });
-                        setSelectedViolation(vs);
                       };
 
                       // --- AI-powered Interactive Preview Logic ---
@@ -1844,23 +1753,7 @@ function Complete() {
                             </button>
                             <img src={vs.screenshot} alt={`violation-${idx}`} />
                           </div>
-                          {/* Live preview with AI-modified HTML/CSS */}
-                          {aiModLoading[idx] ? (
-                            <div style={{ marginTop: 8, color: "#888" }}>
-                              Loading AI preview…
-                            </div>
-                          ) : aiMod && aiMod.modifiedHtml ? (
-                            <div style={{ marginTop: 8 }}>
-                              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                                Live Preview (AI-powered fix):
-                              </div>
-                              <IframePreview
-                                html={aiMod.modifiedHtml}
-                                css={aiMod.css || ""}
-                                style={{ height: 220 }}
-                              />
-                            </div>
-                          ) : null}
+                          {/* ...existing code... */}
                         </div>
                       );
                     })}
@@ -1910,34 +1803,13 @@ function Complete() {
                       {/* Toggle state for before/after view */}
                       <LightboxBeforeAfter
                         screenshot={lightbox.screenshot}
-                        aiMod={
-                          aiModResults && selectedViolation
-                            ? aiModResults[
-                                violationScreenshots.indexOf(selectedViolation)
-                              ]
-                            : null
-                        }
-                        html={
-                          selectedViolation &&
-                          aiModResults &&
-                          aiModResults[
-                            violationScreenshots.indexOf(selectedViolation)
-                          ]
-                            ? aiModResults[
-                                violationScreenshots.indexOf(selectedViolation)
-                              ].modifiedHtml
-                            : null
-                        }
-                        css={
-                          selectedViolation &&
-                          aiModResults &&
-                          aiModResults[
-                            violationScreenshots.indexOf(selectedViolation)
-                          ]
-                            ? aiModResults[
-                                violationScreenshots.indexOf(selectedViolation)
-                              ].css
-                            : ""
+                        loadingAfter={aiModLoading[lightbox.idx]}
+                        afterData={aiModResults[lightbox.idx]}
+                        html={analysis?.html}
+                        stylesheets={stylesheets}
+                        baseUrl={url}
+                        onAfterClick={() =>
+                          handleAfterClick(lightbox.idx, lightbox.violation)
                         }
                       />
                     </div>

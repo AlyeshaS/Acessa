@@ -62,6 +62,11 @@ app.post("/api/ai-modify-html", async (req, res) => {
     typeof feedback === "string" ? feedback : JSON.stringify(feedback)
   ).toLowerCase();
 
+  function extractStylesheets(html) {
+    if (!html || typeof html !== "string") return [];
+    return html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || [];
+  }
+
   const problemCategoryText = (feedback.problemCategory || "").toLowerCase();
 
   // 🔧 EDIT: Logic-only detection is no longer used to block or branch behavior.
@@ -115,12 +120,13 @@ Required JSON format:
   "summary": "brief description of the issue",
   "recommendation": "clear human-readable fix",
   "problemCategory": "wcag-related category",
-  "modifiedHtml": "FULL HTML DOCUMENT WITH FIXES APPLIED",
   "css": "ONLY the CSS needed to support the fix"
 }
 
 Rules:
 - modifiedHtml MUST be a complete HTML document
+- The returned modifiedHtml MUST look identical to the original website except for the requested accessibility improvements.
+- Preserve all structure, scripts, styles, and external resources unless a change is required for accessibility.
 - Do NOT escape HTML
 - Do NOT omit any fields
 - If you cannot improve the HTML, return the ORIGINAL HTML as modifiedHtml
@@ -128,8 +134,7 @@ Rules:
 Accessibility issue to fix:
 ${JSON.stringify(feedback, null, 2)}
 
-Original HTML:
-${html}
+
 `;
 
   try {
@@ -142,11 +147,8 @@ ${html}
       problemCategory: aiResult?.problemCategory || "visual",
 
       // MUST always return real HTML
-      modifiedHtml:
-        typeof aiResult?.modifiedHtml === "string" &&
-        aiResult.modifiedHtml.trim()
-          ? aiResult.modifiedHtml
-          : html, // ✅ fallback to ORIGINAL HTML
+      modifiedHtml: html, // ALWAYS original HTML
+      css: typeof aiResult?.css === "string" ? aiResult.css : "",
 
       // CSS can safely be empty
       css: typeof aiResult?.css === "string" ? aiResult.css : "",
@@ -810,6 +812,11 @@ async function captureViolationScreenshots(page, axeViolations) {
 /**
  * Sanitize text to prevent JSON injection from AI echoing back unescaped content
  */
+
+function extractStylesheets(html) {
+  if (!html || typeof html !== "string") return [];
+  return html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || [];
+}
 function sanitizeForPrompt(text) {
   if (!text || typeof text !== "string") return "";
   return text
@@ -1298,26 +1305,26 @@ async function callAiWithInlineData(
   jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
 
   try {
-    const parsed = JSON.parse(jsonStr);
-    console.log("[WCAG] Parsed Gemini AI response (inline):", parsed);
-    if (parsed && typeof parsed === "object") {
-      console.log("[WCAG] Parsed keys:", Object.keys(parsed));
-      if (parsed.modifiedHtml) {
-        console.log("[WCAG] modifiedHtml length:", parsed.modifiedHtml.length);
-      } else {
-        console.warn("[WCAG] No modifiedHtml field in parsed response.");
-      }
-      if (parsed.css) {
-        console.log("[WCAG] css length:", parsed.css.length);
-      } else {
-        console.warn("[WCAG] No css field in parsed response.");
-      }
+    const cleaned = jsonStr
+      .replace(/```json\s*/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned);
+
+    console.log("[WCAG] Parsed Gemini AI response:", parsed);
+
+    if (parsed.modifiedHtml) {
+      console.log("[WCAG] modifiedHtml length:", parsed.modifiedHtml.length);
+    } else {
+      console.warn("[WCAG] No modifiedHtml field returned");
     }
+
     return parsed;
   } catch (err) {
-    console.error("[WCAG] Failed to parse Gemini JSON (inline):", err);
-    console.error("[WCAG] Cleaned JSON string was:", jsonStr.slice(0, 2000));
-    throw new Error("AI returned invalid JSON.");
+    console.error("[WCAG] Failed to parse Gemini AI response");
+    console.error("[WCAG] Raw AI response:", jsonStr);
+    throw new Error("AI did not return valid JSON");
   }
 }
 
@@ -2349,15 +2356,17 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
         : typeof aiResponse?.aiAnalysis?.html === "string"
         ? aiResponse.aiAnalysis.html
         : "";
+    const stylesheets = extractStylesheets(safeHtml);
 
     const finalPayload = {
       url,
       aiAnalysis: aiResponse,
       axe: axeResults.violations,
       screenshot: `data:image/jpeg;base64,${previewB64}`,
-      steps: liveSteps, // Use the actual steps we captured with real coordinates
-      violationScreenshots: byCategory, // New: violation-focused screenshots
+      steps: liveSteps,
+      violationScreenshots: byCategory,
       html: safeHtml,
+      stylesheets,
     };
 
     sendEvent("result", finalPayload);

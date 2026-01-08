@@ -1,3 +1,217 @@
+.progress-steps {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid #09f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 20px;
+  position: relative;
+}
+
+.progress-step-circle.active,
+.progress-step-circle.complete {
+  background: #09f;
+  color: #fff;
+}
+
+.progress-step-circle.inactive {
+  background: #fff;
+  color: #09f;
+}
+
+.progress-step-label {
+  margin-top: 8px;
+  color: #b3e5fc;
+  font-weight: normal;
+}
+
+.progress-step-label.active {
+  color: #09f;
+  font-weight: bold;
+}
+
+.progress-step-bar {
+  flex: 1;
+  height: 2px;
+  background: #b3e5fc;
+  margin: 0 16px;
+}
+/* Before and After Section Styles */
+.before-after-list {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-top: 24px;
+}
+.before-after-card {
+  background: #f9f9f9;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.before-after-images {
+  display: flex;
+  gap: 32px;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.before-after-img {
+  max-width: 320px;
+  max-height: 220px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.before-after-label {
+  display: block;
+  font-size: 14px;
+  color: #189b97;
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-align: center;
+}
+.before-after-feedback {
+  font-size: 15px;
+  color: #334155;
+  margin-top: 12px;
+}
+.before-after-placeholder {
+  width: 320px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  color: #64748b;
+  border-radius: 8px;
+  border: 1px dashed #ccc;
+  text-align: center;
+}
+.progress-steps {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid #09f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 20px;
+  position: relative;
+}
+
+.progress-step-circle.active,
+.progress-step-circle.complete {
+  background: #09f;
+  color: #fff;
+}
+
+.progress-step-circle.inactive {
+  background: #fff;
+  color: #09f;
+}
+
+.progress-step-label {
+  margin-top: 8px;
+  color: #b3e5fc;
+  font-weight: normal;
+}
+
+.progress-step-label.active {
+  color: #09f;
+  font-weight: bold;
+}
+
+.progress-step-bar {
+  flex: 1;
+  height: 2px;
+  background: #b3e5fc;
+  margin: 0 16px;
+}
+/* Before and After Section Styles */
+.before-after-list {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin-top: 24px;
+}
+.before-after-card {
+  background: #f9f9f9;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.before-after-images {
+  display: flex;
+  gap: 32px;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.before-after-img {
+  max-width: 320px;
+  max-height: 220px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.before-after-label {
+  display: block;
+  font-size: 14px;
+  color: #189b97;
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-align: center;
+}
+.before-after-feedback {
+  font-size: 15px;
+  color: #334155;
+  margin-top: 12px;
+}
+.before-after-placeholder {
+  width: 320px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  color: #64748b;
+  border-radius: 8px;
+  border: 1px dashed #ccc;
+  text-align: center;
+}
 #root {
   --white: #f7f9fc;
   --color-accent: #7c8da0;
@@ -449,6 +663,10 @@
 
 .lightbox-question {
   display: none;
+}
+
+iframe {
+  pointer-events: none;
 }
 
 .next-steps li {

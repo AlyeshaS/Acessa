@@ -1,40 +1,71 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 /**
- * IframePreview renders HTML content in an iframe and allows injecting CSS for visual changes.
+ * IframePreview
+ * Renders AI-modified HTML inside an iframe while preserving
+ * the original site's CSS, fonts, and asset paths.
+ *
  * Props:
- *   html: string (HTML content to display)
- *   css: string (CSS to inject for the "after" view)
- *   style: React style object for iframe
+ *  - html: string (AI-modified HTML body or full HTML)
+ *  - css: string (AI-generated CSS fixes)
+ *  - stylesheets: string[] (original <link rel="stylesheet"> tags)
+ *  - baseUrl: string (original page URL for relative assets)
+ *  - style: React style object for iframe sizing/styling
  */
-export default function IframePreview({ html, css = "", style = {} }) {
+export default function IframePreview({
+  html,
+  css = "",
+  stylesheets = [],
+  baseUrl,
+  style = {},
+}) {
   const iframeRef = useRef(null);
 
   useEffect(() => {
     const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    if (!iframe || !html) return;
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+
+    ${baseUrl ? `<base href="${baseUrl}" />` : ""}
+
+    ${Array.isArray(stylesheets) ? stylesheets.join("\n") : ""}
+
+    <style>
+      /* AI accessibility fixes (applied last) */
+      ${css || ""}
+    </style>
+  </head>
+  <body>
+    ${html}
+  </body>
+</html>
+`;
+
     doc.open();
-    doc.write(html);
+    doc.write(fullHtml);
     doc.close();
-    if (css) {
-      const styleTag = doc.createElement("style");
-      styleTag.innerHTML = css;
-      doc.head.appendChild(styleTag);
-    }
-  }, [html, css]);
+  }, [html, css, stylesheets, baseUrl]);
 
   return (
     <iframe
       ref={iframeRef}
+      title="AI Accessibility Preview"
+      sandbox="allow-same-origin"
       style={{
         width: "100%",
-        height: 500,
-        border: "1px solid #ccc",
-        borderRadius: 8,
+        height: "100%",
+        border: "none",
+        background: "#ffffff",
         ...style,
       }}
-      title="Preview"
     />
   );
 }
