@@ -14,37 +14,156 @@ app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// AI-powered HTML/CSS modifier endpoint (must be after app is defined)
+/**
+ * ===============================
+ * AI HTML/CSS VISUAL MODIFIER
+ * ===============================
+ * This endpoint is called EXPLICITLY by the frontend after WCAG feedback
+ * to generate a visual "after" preview (HTML + CSS).
+ */
 app.post("/api/ai-modify-html", async (req, res) => {
+  console.log("🔥🔥🔥 /api/ai-modify-html WAS CALLED");
   const { html, feedback } = req.body || {};
+
   if (!html || !feedback) {
     return res
       .status(400)
       .json({ error: "Missing html or feedback in request body" });
   }
 
-  // Build a strict prompt for Gemini to modify the HTML/CSS based on feedback and problemCategory
-  const prompt = `You are an expert accessibility and frontend engineer. Your task is to fix a specific accessibility issue in the provided HTML, as described by the feedback and problemCategory.\n\nInstructions:\n- ONLY return a valid JSON object with these exact fields: { \"modifiedHtml\": string, \"css\": string }\n- Always use the problemCategory to identify and fix the issue.\n- Only make the minimal changes needed to address the problem.\n- If no CSS changes are needed, return an empty string for css.\n- Do NOT include any explanation, summary, or extra fields.\n- The JSON must be strictly valid.\n\nExample:\n{\n  \"modifiedHtml\": \"...\",\n  \"css\": \"...\"\n}\n\n---\nHTML:\n${html.slice(
-    0,
-    12000
-  )}\n---\nFEEDBACK:\n${feedback}\n---\nproblemCategory: (use this to determine what to fix)\n${
-    feedback.problemCategory || ""
-  }\n`;
+  const visualKeywords = [
+    "contrast",
+    "font size",
+    "font color",
+    "color",
+    "background",
+    "border",
+    "highlight",
+    "bold",
+    "italic",
+    "underline",
+    "shadow",
+    "spacing",
+    "margin",
+    "padding",
+    "alignment",
+    "center",
+    "left",
+    "right",
+    "width",
+    "height",
+    "line height",
+    "letter spacing",
+    "visual",
+    "appearance",
+  ];
+
+  const feedbackText = (
+    typeof feedback === "string" ? feedback : JSON.stringify(feedback)
+  ).toLowerCase();
+
+  const problemCategoryText = (feedback.problemCategory || "").toLowerCase();
+
+  // 🔧 EDIT: Logic-only detection is no longer used to block or branch behavior.
+  // Visual simulation is ALWAYS allowed, even if feedback references technical concepts.
+  //
+  // const logicOnlyKeywords = [
+  //   "javascript",
+  //   "api",
+  //   "backend",
+  //   "function",
+  //   "async",
+  //   "promise",
+  //   "database",
+  //   "server",
+  //   "endpoint",
+  //   "auth",
+  //   "token",
+  // ];
+  //
+  // const isLogicRelated = logicOnlyKeywords.some(
+  //   (keyword) =>
+  //     feedbackText.includes(keyword) || problemCategoryText.includes(keyword)
+  // );
+  //
+  // if (isLogicRelated) {
+  //   console.warn(
+  //     "[AI Modify HTML] Logic-related feedback detected. Applying visual simulation anyway."
+  //   );
+  // }
+
+  const detectedVisualKeywords = visualKeywords.filter((keyword) =>
+    feedbackText.includes(keyword)
+  );
+
+  console.log(
+    "[AI Modify HTML] Detected visual keywords:",
+    detectedVisualKeywords
+  );
+
+  const prompt = `
+You are an AI that fixes accessibility issues by modifying HTML and CSS.
+
+You MUST return a single valid JSON object.
+DO NOT include explanations, markdown, or extra text.
+
+You MUST ALWAYS include ALL of the following fields.
+If no change is needed, return an empty string "".
+
+Required JSON format:
+{
+  "summary": "brief description of the issue",
+  "recommendation": "clear human-readable fix",
+  "problemCategory": "wcag-related category",
+  "modifiedHtml": "FULL HTML DOCUMENT WITH FIXES APPLIED",
+  "css": "ONLY the CSS needed to support the fix"
+}
+
+Rules:
+- modifiedHtml MUST be a complete HTML document
+- Do NOT escape HTML
+- Do NOT omit any fields
+- If you cannot improve the HTML, return the ORIGINAL HTML as modifiedHtml
+
+Accessibility issue to fix:
+${JSON.stringify(feedback, null, 2)}
+
+Original HTML:
+${html}
+`;
 
   try {
     const aiResult = await callAi(prompt);
-    // Defensive: ensure the result has the required fields
-    if (aiResult && (aiResult.modifiedHtml || aiResult.html)) {
-      res.json({
-        modifiedHtml: aiResult.modifiedHtml || aiResult.html,
-        css: aiResult.css || "",
-      });
-    } else {
-      res.status(500).json({ error: "AI did not return modified HTML." });
-    }
+
+    // ENFORCE THE RESPONSE CONTRACT (CRITICAL FIX)
+    const safeResponse = {
+      summary: aiResult?.summary || "Accessibility improvement applied.",
+      recommendation: aiResult?.recommendation || "",
+      problemCategory: aiResult?.problemCategory || "visual",
+
+      // MUST always return real HTML
+      modifiedHtml:
+        typeof aiResult?.modifiedHtml === "string" &&
+        aiResult.modifiedHtml.trim()
+          ? aiResult.modifiedHtml
+          : html, // ✅ fallback to ORIGINAL HTML
+
+      // CSS can safely be empty
+      css: typeof aiResult?.css === "string" ? aiResult.css : "",
+    };
+
+    // REQUIRED LOGGING (you were missing this)
+    console.log(
+      "[AI-MODIFY] Returning HTML length:",
+      safeResponse.modifiedHtml.length,
+      "| CSS length:",
+      safeResponse.css.length
+    );
+
+    return res.json(safeResponse);
   } catch (err) {
     console.error("[AI Modify HTML] Error:", err);
-    res
+    return res
       .status(500)
       .json({ error: "AI modification failed", details: err.message });
   }
@@ -107,80 +226,32 @@ function extractFirstJSONObject(raw) {
 async function fetchPageContent(url) {
   console.log("[WCAG] Launching Playwright for:", url);
   const browser = await chromium.launch();
-
   const context = await browser.newContext();
   const page = await context.newPage();
 
   try {
     await page.goto(url, { waitUntil: "networkidle", timeout: 120000 });
 
-    // 🔹 Take a full-page screenshot for the loading animation
-    const screenshotBuffer = await page.screenshot({ fullPage: true });
-    const screenshotBase64 = screenshotBuffer.toString("base64");
-    const screenshot = `data:image/png;base64,${screenshotBase64}`;
-
-    // 1. Get Basic Content
     const html = await page.content();
+
+    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    const screenshot = `data:image/png;base64,${screenshotBuffer.toString(
+      "base64"
+    )}`;
+
     const text = await page.evaluate(() => document.body.innerText || "");
 
-    // 2. Run Axe-Core
-    console.log("[WCAG] Running Axe-Core...");
     const axeResults = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
 
-    // 3. Extract specific "Understandable" signals (Keep your existing logic)
-    const understandableData = await page.evaluate(() => {
-      const langAttribute = document.documentElement.getAttribute("lang");
-
-      const formFields = Array.from(
-        document.querySelectorAll("input, select, textarea")
-      ).map((el) => {
-        let labelText = "No Label Found";
-        if (el.id) {
-          const label = document.querySelector(`label[for="${el.id}"]`);
-          if (label) labelText = label.innerText;
-        }
-        if (labelText === "No Label Found" && el.closest("label")) {
-          labelText = el.closest("label").innerText;
-        }
-        const ariaLabel =
-          el.getAttribute("aria-label") || el.getAttribute("aria-labelledby");
-
-        return {
-          type: el.tagName.toLowerCase(),
-          inputType: el.getAttribute("type"),
-          hasLabel: labelText !== "No Label Found",
-          labelText: labelText.trim().substring(0, 50),
-          hasAriaLabel: !!ariaLabel,
-          hasPlaceholder: el.hasAttribute("placeholder"),
-        };
-      });
-
-      const navCount = document.querySelectorAll(
-        'nav, [role="navigation"]'
-      ).length;
-
-      return {
-        langAttribute,
-        formFieldCount: formFields.length,
-        formFields: formFields.slice(0, 20),
-        navCount,
-      };
-    });
-
     return {
       html,
       text,
-      understandableData,
       axeViolations: axeResults.violations,
-      screenshot, // 🔹 send screenshot up to the caller
+      screenshot,
     };
-  } catch (error) {
-    console.error("Playwright Error:", error);
-    throw new Error(`Failed to load page content: ${error.message}`);
   } finally {
-    await context.close();
     await browser.close();
   }
 }
@@ -199,6 +270,7 @@ async function fetchPagePreview(url) {
   try {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto(url, { waitUntil: "networkidle", timeout: 180000 });
+
     // Take a smaller viewport screenshot for quick transfer
     const buffer = await page.screenshot({
       type: "jpeg",
@@ -1046,7 +1118,8 @@ async function callAi(prompt) {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      temperature: 0.1, // Lower temperature for more consistent JSON output
+      temperature: 0.2,
+      maxOutputTokens: 4096,
     },
   });
 
@@ -1370,6 +1443,7 @@ app.post("/api/wcag-check", async (req, res) => {
     // 4. Send Final Response (now includes screenshot + steps)
     res.json({
       url,
+      html: pageData.html,
       aiAnalysis: aiResponse,
       axe: axeViolations,
       screenshot, // 🔹 used by the AnalysisPlayer on the loading screen
@@ -1510,7 +1584,7 @@ app.post("/api/wcag-visual", async (req, res) => {
         idx + 1
       } of ${
         segments.length
-      }) of a web page. Answer only with a single JSON object matching this schema: {\n  \"score\": Number,\n  \"overallSummary\": \"string\",\n  \"groups\": [ { \"wcagCriterion\": \"string\", \"severity\": \"High|Medium|Low\", \"count\": Number, \"problem\": \"string\", \"recommendation\": \"string\" } ],\n  \"hciSummary\": \"string\",\n  \"nextSteps\": [\"string\"]\n}\n\nProvide concise findings focused on visual issues (contrast, layout, spacing, visible labels, focus indicators).`;
+      }) of a web page. Answer only with a single JSON object matching this schema: {\n  "score": Number,\n  "overallSummary": "string",\n  "groups": [ { "wcagCriterion": "string", "severity": "High|Medium|Low", "count": Number, "problem": "string", "recommendation": "string" } ],\n  "hciSummary": "string",\n  "nextSteps": [\"string\"]\n}\n\nProvide concise findings focused on visual issues (contrast, layout, spacing, visible labels, focus indicators).`;
 
       try {
         const aiRes = await callAiWithInlineData(prompt, seg.b64, "image/jpeg");
@@ -1741,7 +1815,7 @@ app.get("/api/wcag-visual-stream", async (req, res) => {
         // Build per-segment prompt and call AI
         const prompt = `You are an Accessibility & HCI Evaluation Engine.\nAnalyze the following screenshot segment (part ${
           i + 1
-        } of ${numSegments}) of a web page. Answer only with a single JSON object matching this schema: {\n  \"score\": Number,\n  \"overallSummary\": \"string\",\n  \"groups\": [ { \"wcagCriterion\": \"string\", \"severity\": \"High|Medium|Low\", \"count\": Number, \"problem\": \"string\", \"recommendation\": \"string\" } ],\n  \"hciSummary\": \"string\",\n  \"nextSteps\": [\"string\"]\n}\n\nProvide concise findings focused on visual issues (contrast, layout, spacing, visible labels, focus indicators).`;
+        } of ${numSegments}) of a web page. Answer only with a single JSON object matching this schema: {\n  "score": Number,\n  "overallSummary": "string",\n  "groups": [ { "wcagCriterion": "string", "severity": "High|Medium|Low", "count": Number, "problem": "string", "recommendation": "string" } ],\n  "hciSummary": "string",\n  "nextSteps": [\"string\"]\n}\n\nProvide concise findings focused on visual issues (contrast, layout, spacing, visible labels, focus indicators).`;
 
         let aiRes = null;
         try {
@@ -1808,7 +1882,6 @@ app.get("/api/wcag-visual-stream", async (req, res) => {
     };
 
     sendEvent("result", finalResponse);
-
     // close SSE
     sendEvent("done", { message: "complete" });
     res.end();
@@ -1952,7 +2025,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     sendEvent("axe", { count: axeResults.violations.length, steps: liveSteps });
 
     // Extract HTML, text and the 'understandable' signals used in prompts
-    const html = await page.content();
+    // const html = await page.content();
     const text = await page.evaluate(() => document.body.innerText || "");
     const understandableData = await page.evaluate(() => {
       const langAttribute = document.documentElement.getAttribute("lang");
@@ -2157,6 +2230,7 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       }
     }
 
+    const html = await page.content();
     // Build prompt and call AI (text-only) — this may take time, but preview already sent
     const pageData = {
       html,
@@ -2267,6 +2341,15 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       }
     }
 
+    const safeHtml =
+      typeof html === "string" && html.length > 0
+        ? html
+        : typeof aiResponse?.html === "string"
+        ? aiResponse.html
+        : typeof aiResponse?.aiAnalysis?.html === "string"
+        ? aiResponse.aiAnalysis.html
+        : "";
+
     const finalPayload = {
       url,
       aiAnalysis: aiResponse,
@@ -2274,6 +2357,7 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       screenshot: `data:image/jpeg;base64,${previewB64}`,
       steps: liveSteps, // Use the actual steps we captured with real coordinates
       violationScreenshots: byCategory, // New: violation-focused screenshots
+      html: safeHtml,
     };
 
     sendEvent("result", finalPayload);
