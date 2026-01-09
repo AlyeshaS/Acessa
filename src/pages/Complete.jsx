@@ -370,28 +370,15 @@ function LightboxBeforeAfter({
               progress === 100 &&
               !loadingAfter &&
               afterData && (
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
+                <div className="iframe-viewport">
                   <IframePreview
                     html={html}
                     css={afterData.css || ""}
                     stylesheets={stylesheets || []}
                     baseUrl={baseUrl}
                     scrollPosition={screenshotScrollY}
-                    style={{
-                      width: "727.64px",
-                      height: "410px",
-                      borderRadius: 8,
-                      border: "1px solid #111",
-                      background: "#5d6a78",
-                      objectFit: "contain",
-                    }}
+                    className="iframe-content"
+                    style={{ width: "1440px", height: "900px" }}
                   />
                 </div>
               )}

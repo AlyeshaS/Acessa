@@ -19,6 +19,7 @@ export default function IframePreview({
   baseUrl,
   style = {},
   scrollPosition = 0,
+  className,
 }) {
   const iframeRef = useRef(null);
 
@@ -71,9 +72,10 @@ export default function IframePreview({
       ref={iframeRef}
       title="AI Accessibility Preview"
       sandbox="allow-same-origin"
+      className="iframe-content"
+      width={1440}
+      height={900}
       style={{
-        width: "100%",
-        height: "100%",
         border: "none",
         background: "#ffffff",
         ...style,
