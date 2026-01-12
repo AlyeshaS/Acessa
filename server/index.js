@@ -23,12 +23,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
  */
 app.post("/api/ai-modify-html", async (req, res) => {
   console.log("🔥🔥🔥 /api/ai-modify-html WAS CALLED");
-  const { html, feedback } = req.body || {};
+  const { feedback } = req.body || {};
 
-  if (!html || !feedback) {
-    return res
-      .status(400)
-      .json({ error: "Missing html or feedback in request body" });
+  if (!feedback) {
+    return res.status(400).json({ error: "Missing feedback in request body" });
   }
 
   const visualKeywords = [
@@ -61,11 +59,6 @@ app.post("/api/ai-modify-html", async (req, res) => {
   const feedbackText = (
     typeof feedback === "string" ? feedback : JSON.stringify(feedback)
   ).toLowerCase();
-
-  function extractStylesheets(html) {
-    if (!html || typeof html !== "string") return [];
-    return html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || [];
-  }
 
   const problemCategoryText = (feedback.problemCategory || "").toLowerCase();
 
@@ -124,12 +117,12 @@ Required JSON format:
 }
 
 Rules:
-- modifiedHtml MUST be a complete HTML document
-- The returned modifiedHtml MUST look identical to the original website except for the requested accessibility improvements.
-- Preserve all structure, scripts, styles, and external resources unless a change is required for accessibility.
-- Do NOT escape HTML
-- Do NOT omit any fields
-- If you cannot improve the HTML, return the ORIGINAL HTML as modifiedHtml
+- Do NOT return HTML or modifiedHtml.
+- The output is instructional guidance only.
+- Provide a concise CSS snippet that demonstrates how the accessibility issue could be fixed.
+- The CSS does not need to match exact selectors and may be illustrative.
+- If no meaningful CSS change applies, return an empty string for css,
+- Always prioritize clarity and developer understanding over completeness.
 
 Accessibility issue to fix:
 ${JSON.stringify(feedback, null, 2)}
@@ -140,27 +133,14 @@ ${JSON.stringify(feedback, null, 2)}
   try {
     const aiResult = await callAi(prompt);
 
-    // ENFORCE THE RESPONSE CONTRACT (CRITICAL FIX)
     const safeResponse = {
       summary: aiResult?.summary || "Accessibility improvement applied.",
       recommendation: aiResult?.recommendation || "",
       problemCategory: aiResult?.problemCategory || "visual",
-
-      // MUST always return real HTML
-      modifiedHtml: html, // ALWAYS original HTML
-      css: typeof aiResult?.css === "string" ? aiResult.css : "",
-
-      // CSS can safely be empty
       css: typeof aiResult?.css === "string" ? aiResult.css : "",
     };
 
-    // REQUIRED LOGGING (you were missing this)
-    console.log(
-      "[AI-MODIFY] Returning HTML length:",
-      safeResponse.modifiedHtml.length,
-      "| CSS length:",
-      safeResponse.css.length
-    );
+    console.log("CSS length:", safeResponse.css.length);
 
     return res.json(safeResponse);
   } catch (err) {
@@ -683,27 +663,54 @@ async function captureViolationScreenshots(page, axeViolations) {
           } (selector: ${target})`
         );
 
-        // Try to get bounding box for the primary node
-        const bounds = await page.evaluate((selector) => {
+        // Try to get bounding box for the primary node and capture scrollY, with debug logs
+        const boundsAndScroll = await page.evaluate((selector) => {
           try {
             const el = document.querySelector(selector);
             if (!el) {
               console.log(`[WCAG] Could not find element: ${selector}`);
-              return null;
+              console.log(
+                `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
+                window.scrollY
+              );
+              return { bounds: null, scrollY: window.scrollY };
             }
+            console.log(
+              `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
+              window.scrollY
+            );
             el.scrollIntoView({ block: "center", inline: "center" });
+
+            console.log(
+              `[WCAG] [DEBUG] window.scrollY after scrollIntoView:`,
+              window.scrollY
+            );
             const box = el.getBoundingClientRect();
             return {
-              x: Math.max(0, Math.round(box.x)),
-              y: Math.max(0, Math.round(box.y)),
-              width: Math.round(box.width),
-              height: Math.round(box.height),
+              bounds: {
+                x: Math.max(0, Math.round(box.x)),
+                y: Math.max(0, Math.round(box.y)),
+                width: Math.round(box.width),
+                height: Math.round(box.height),
+              },
+              scrollY: window.scrollY,
             };
           } catch (e) {
             console.log(`[WCAG] Error getting bounds: ${e.message}`);
-            return null;
+            console.log(
+              `[WCAG] [DEBUG] window.scrollY in error:`,
+              window.scrollY
+            );
+            return { bounds: null, scrollY: window.scrollY };
           }
         }, target);
+        console.log(
+          `[WCAG] [DEBUG] scrollY returned from page.evaluate:`,
+          boundsAndScroll.scrollY
+        );
+        const bounds = boundsAndScroll.bounds;
+        const scrollY = boundsAndScroll.scrollY;
+        await page.waitForTimeout(300);
 
         // Collect visible node bounds to overlay multiple issue markers
         // Build a unique list of selectors for all nodes tied to this violation
@@ -719,32 +726,40 @@ async function captureViolationScreenshots(page, axeViolations) {
             }
           });
 
+        // Compute marker bounding boxes and attach AI/violation text
         const markers = await page.evaluate((selectors) => {
           const viewportW = window.innerWidth || 0;
           const viewportH = window.innerHeight || 0;
-
           return selectors
             .map((selector) => {
               try {
                 const el = document.querySelector(selector);
                 if (!el) return null;
-
                 const rect = el.getBoundingClientRect();
                 if (!rect || rect.width === 0 || rect.height === 0) return null;
-
                 const inViewport =
                   rect.x + rect.width > 0 &&
                   rect.y + rect.height > 0 &&
                   rect.x < viewportW &&
                   rect.y < viewportH;
-
                 if (!inViewport) return null;
-
+                const x = Math.round(rect.x);
+                const y = Math.round(rect.y);
+                const w = Math.round(rect.width);
+                const h = Math.round(rect.height);
+                if (
+                  !Number.isFinite(x) ||
+                  !Number.isFinite(y) ||
+                  w <= 0 ||
+                  h <= 0
+                ) {
+                  return null;
+                }
                 return {
-                  x: Math.round(rect.x),
-                  y: Math.round(rect.y),
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height),
+                  x,
+                  y,
+                  width: w,
+                  height: h,
                   selector,
                 };
               } catch (e) {
@@ -756,6 +771,36 @@ async function captureViolationScreenshots(page, axeViolations) {
             })
             .filter(Boolean);
         }, markerSelectors);
+
+        // Attach AI/violation text to each marker (robust, safe)
+        const markersWithText = (markers || []).map((m, i) => {
+          // Try to find the corresponding node for this selector
+          const node = violation.nodes.find(
+            (n) => n.target && n.target.join(" ") === m.selector
+          );
+          // Attach summary/recommendation from AI if available, else from violation
+          let summary =
+            violation?.aiFeedback?.summary ||
+            node?.summary ||
+            violation?.help ||
+            violation?.description ||
+            "";
+          let recommendation =
+            violation?.aiFeedback?.recommendation ||
+            node?.recommendation ||
+            violation?.recommendation ||
+            "";
+          // Defensive: always string
+          summary = typeof summary === "string" ? summary : "";
+          recommendation =
+            typeof recommendation === "string" ? recommendation : "";
+          return {
+            ...m,
+            issueId: violation.id,
+            summary,
+            recommendation,
+          };
+        });
 
         await page.waitForTimeout(150);
 
@@ -785,10 +830,16 @@ async function captureViolationScreenshots(page, axeViolations) {
           )}`,
           violations: [violation],
           bounds: bounds || { x: 0, y: 0, width: 0, height: 0 },
-          markers: markers || [],
+          markers: markersWithText,
           violationType: violation.id,
           wcagCriterion:
             violation.tags?.find((t) => t.match(/^wcag\d/)) || violation.id,
+          scrollY: scrollY,
+          viewport: {
+            width: 1280,
+            height: 720,
+          },
+          screenshotOnly: !markersWithText || markersWithText.length === 0,
         });
       } catch (err) {
         console.error(
@@ -813,10 +864,6 @@ async function captureViolationScreenshots(page, axeViolations) {
  * Sanitize text to prevent JSON injection from AI echoing back unescaped content
  */
 
-function extractStylesheets(html) {
-  if (!html || typeof html !== "string") return [];
-  return html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || [];
-}
 function sanitizeForPrompt(text) {
   if (!text || typeof text !== "string") return "";
   return text
@@ -827,12 +874,20 @@ function sanitizeForPrompt(text) {
 }
 
 function buildPrompt(pageData) {
-  const { html, text, understandableData, axeViolations } = pageData;
+  const { html, text, understandableData, axeViolations } = pageData || {};
 
   // Truncate to avoid token limits
   const maxLen = 15000;
-  const safeHtml = sanitizeForPrompt(html.slice(0, maxLen));
-  const safeText = sanitizeForPrompt(text.slice(0, maxLen));
+
+  const safeHtml =
+    typeof html === "string" && html.length > 0
+      ? sanitizeForPrompt(html.slice(0, maxLen))
+      : "";
+
+  const safeText =
+    typeof text === "string" && text.length > 0
+      ? sanitizeForPrompt(text.slice(0, maxLen))
+      : "";
 
   // Format the form data for the prompt - sanitize each field
   const sanitizedFormFields = understandableData.formFields.map((f) => ({
@@ -1312,13 +1367,7 @@ async function callAiWithInlineData(
 
     const parsed = JSON.parse(cleaned);
 
-    console.log("[WCAG] Parsed Gemini AI response:", parsed);
-
-    if (parsed.modifiedHtml) {
-      console.log("[WCAG] modifiedHtml length:", parsed.modifiedHtml.length);
-    } else {
-      console.warn("[WCAG] No modifiedHtml field returned");
-    }
+    console.log("[WCAG] Parsed Gemini AI response:");
 
     return parsed;
   } catch (err) {
@@ -2154,7 +2203,17 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       if (screenshotMap.has(hash)) {
         const existing = screenshotMap.get(hash);
         existing.violations.push(...vs.violations);
-        existing.markers.push(...vs.markers);
+        const seen = new Set(
+          existing.markers.map((m) => `${m.x}-${m.y}-${m.width}-${m.height}`)
+        );
+
+        vs.markers.forEach((m) => {
+          const key = `${m.x}-${m.y}-${m.width}-${m.height}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            existing.markers.push(m);
+          }
+        });
       } else {
         screenshotMap.set(hash, vs);
       }
@@ -2348,15 +2407,8 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       }
     }
 
-    const safeHtml =
-      typeof html === "string" && html.length > 0
-        ? html
-        : typeof aiResponse?.html === "string"
-        ? aiResponse.html
-        : typeof aiResponse?.aiAnalysis?.html === "string"
-        ? aiResponse.aiAnalysis.html
-        : "";
-    const stylesheets = extractStylesheets(safeHtml);
+    const safeHtml = "";
+    const stylesheets = [];
 
     const finalPayload = {
       url,
@@ -2364,9 +2416,14 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       axe: axeResults.violations,
       screenshot: `data:image/jpeg;base64,${previewB64}`,
       steps: liveSteps,
-      violationScreenshots: byCategory,
-      html: safeHtml,
-      stylesheets,
+      violationScreenshots: byCategory.map((vs) => ({
+        ...vs,
+        viewport: vs.viewport || { width: 1280, height: 720 },
+        screenshotOnly: !vs.markers || vs.markers.length === 0,
+      })),
+
+      html: "",
+      stylesheets: [],
     };
 
     sendEvent("result", finalPayload);
