@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiModifyHtml } from "../api/wcagAPI";
-import IframePreview from "../components/IFramePreview.jsx";
+// import IframePreview from "../components/IFramePreview.jsx";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
@@ -231,10 +231,7 @@ function LightboxBeforeAfter({
   screenshot,
   loadingAfter,
   afterData,
-  html,
-  stylesheets,
-  baseUrl,
-  screenshotScrollY = 0,
+  markers = [],
   onAfterClick,
 }) {
   const [view, setView] = useState("before");
@@ -242,22 +239,15 @@ function LightboxBeforeAfter({
   const [progress, setProgress] = useState(0);
   const progressRef = useRef();
 
-  // Animate progress bar from 0 to 100 when loadingAfter is true
+  // Animate progress while loadingAfter
   useEffect(() => {
     if (requestedAfter && loadingAfter) {
       setProgress(0);
       if (progressRef.current) clearInterval(progressRef.current);
       progressRef.current = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(progressRef.current);
-            return 100;
-          }
-          // Speed: 1.5s total, 100/15 = ~7 per 100ms
-          return Math.min(100, prev + 7);
-        });
+        setProgress((prev) => Math.min(100, prev + 7));
       }, 100);
-    } else if (!loadingAfter) {
+    } else if (!loadingAfter && requestedAfter) {
       if (progressRef.current) clearInterval(progressRef.current);
       setProgress(100);
     }
@@ -266,15 +256,52 @@ function LightboxBeforeAfter({
     };
   }, [requestedAfter, loadingAfter]);
 
-  // Brand colors
   const activeBg = "#7c8da0";
   const activeText = "#e4e7ed";
   const inactiveBg = "#5d6a78";
   const inactiveText = "#e4e7ed";
 
+  // Pick up to 6 markers to overlay (avoid clutter)
+  const safeMarkers = Array.isArray(markers) ? markers.slice(0, 6) : [];
+
+  // Manage hovered state for each marker
+  const [hoveredIndexes, setHoveredIndexes] = useState(
+    Array(safeMarkers.length).fill(false)
+  );
+
+  // Scaling logic for overlays
+  const imgRef = useRef(null);
+  const [imgDims, setImgDims] = useState({
+    naturalWidth: 1,
+    naturalHeight: 1,
+    clientWidth: 1,
+    clientHeight: 1,
+  });
+  useEffect(() => {
+    if (!imgRef.current) return;
+    const img = imgRef.current;
+    const updateDims = () => {
+      setImgDims({
+        naturalWidth: img.naturalWidth || 1,
+        naturalHeight: img.naturalHeight || 1,
+        clientWidth: img.clientWidth || 1,
+        clientHeight: img.clientHeight || 1,
+      });
+    };
+    img.addEventListener("load", updateDims);
+    updateDims();
+    return () => img.removeEventListener("load", updateDims);
+  }, [screenshot, view, requestedAfter]);
+
+  const scaleX = imgDims.clientWidth / imgDims.naturalWidth;
+  const scaleY = imgDims.clientHeight / imgDims.naturalHeight;
+
+  // Clamp helper
+  const clamp = (val, min = 0) => Math.max(min, val);
+
   return (
     <div style={{ position: "relative", textAlign: "center" }}>
-      {/* Toggle buttons */}
+      {/* Toggle */}
       <div
         style={{
           marginBottom: 12,
@@ -304,7 +331,7 @@ function LightboxBeforeAfter({
           onClick={() => {
             setView("after");
             setRequestedAfter(true);
-            onAfterClick();
+            onAfterClick?.();
           }}
           style={{
             padding: "6px 18px",
@@ -320,12 +347,14 @@ function LightboxBeforeAfter({
         </button>
       </div>
 
+      {/* IMAGE AREA */}
       <div style={{ minHeight: 410 }}>
-        {/* BEFORE VIEW */}
+        {/* BEFORE */}
         {view === "before" && (
           <img
+            ref={imgRef}
             src={screenshot}
-            alt="Accessibility issue screenshot"
+            alt="Before screenshot"
             style={{
               width: "100%",
               height: 410,
@@ -337,14 +366,15 @@ function LightboxBeforeAfter({
           />
         )}
 
-        {/* AFTER VIEW */}
+        {/* AFTER */}
         {view === "after" && (
           <>
             {!requestedAfter && (
               <div style={{ color: "#888" }}>
-                Click “After” to generate an accessibility-enhanced preview.
+                Click “After” to generate overlay preview.
               </div>
             )}
+
             {requestedAfter && (loadingAfter || progress < 100) && (
               <div
                 style={{
@@ -362,26 +392,127 @@ function LightboxBeforeAfter({
                   label={"Loading..."}
                 />
                 <div style={{ color: "#888", marginTop: 12 }}>
-                  Preparing AI-enhanced preview…
+                  Generating recommended overlay…
                 </div>
               </div>
             )}
-            {requestedAfter &&
-              progress === 100 &&
-              !loadingAfter &&
-              afterData && (
-                <div className="iframe-viewport">
-                  <IframePreview
-                    html={html}
-                    css={afterData.css || ""}
-                    stylesheets={stylesheets || []}
-                    baseUrl={baseUrl}
-                    scrollPosition={screenshotScrollY}
-                    className="iframe-content"
-                    style={{ width: "1440px", height: "900px" }}
-                  />
+
+            {requestedAfter && progress === 100 && !loadingAfter && (
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: 410,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: "1px solid #111",
+                  background: inactiveBg,
+                }}
+              >
+                {/* Same screenshot */}
+                <img
+                  ref={imgRef}
+                  src={screenshot}
+                  alt="After screenshot with overlays"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    display: "block",
+                  }}
+                />
+
+                {/* Overlay layer */}
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.35)",
+                    zIndex: 1,
+                  }}
+                >
+                  {safeMarkers.map((m, i) => {
+                    // Tooltip content: prefer summary, fallback to recommendation
+                    const tooltip =
+                      m.summary ||
+                      m.recommendation ||
+                      "Accessibility improvement";
+                    // Defensive: clamp and scale
+                    const left = clamp((m.x || 0) * scaleX);
+                    const top = clamp((m.y || 0) * scaleY);
+                    const width = clamp((m.width || 0) * scaleX);
+                    const height = clamp((m.height || 0) * scaleY);
+                    return (
+                      <div
+                        key={`${m.selector || "m"}-${i}`}
+                        style={{
+                          position: "absolute",
+                          left,
+                          top,
+                          width,
+                          height,
+                          borderRadius: 6,
+                          border: "3px solid #ff4d4f",
+                          background: "rgba(255,77,79,0.15)",
+                          zIndex: 2,
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                        }}
+                        onMouseEnter={() => {
+                          setHoveredIndexes((prev) => {
+                            const arr = [...prev];
+                            arr[i] = true;
+                            return arr;
+                          });
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredIndexes((prev) => {
+                            const arr = [...prev];
+                            arr[i] = false;
+                            return arr;
+                          });
+                        }}
+                        tabIndex={0}
+                        aria-label={tooltip}
+                      >
+                        {hoveredIndexes[i] && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: -38,
+                              left: 0,
+                              background: "#222",
+                              color: "#fff",
+                              padding: "6px 12px",
+                              borderRadius: 6,
+                              fontSize: 13,
+                              whiteSpace: "pre-line",
+                              zIndex: 10,
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                              pointerEvents: "none",
+                              maxWidth: 260,
+                            }}
+                            role="tooltip"
+                          >
+                            {tooltip}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+
+                <div
+                  style={{
+                    fontWeight: 700,
+                    marginBottom: 6,
+                    color: "#189B97",
+                  }}
+                >
+                  Suggested CSS snippet
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -434,22 +565,10 @@ function Complete() {
     Robust: false,
   });
 
-  const stylesheets = React.useMemo(() => {
-    if (!analysis?.html) return [];
-    return (
-      analysis.html.match(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi) || []
-    );
-  }, [analysis?.html]);
-
   // AbortController stored in a ref so we can cancel on Back
   const abortRef = useRef(null);
 
   const handleAfterClick = async (idx, violation) => {
-    if (!analysis?.html) {
-      console.error("No HTML available for AI modification");
-      return;
-    }
-
     // 🔑 BUILD FEEDBACK HERE (this was missing)
     const feedback = {
       summary:
@@ -474,9 +593,9 @@ function Complete() {
 
     try {
       const res = await aiModifyHtml({
-        html: analysis.html,
+        html: typeof analysis?.html === "string" ? analysis.html : "",
         feedback,
-        scrollY: 0,
+        scrollY: typeof violation?.scrollY === "number" ? violation.scrollY : 0,
       });
 
       setAiModResults((prev) => ({
@@ -1770,6 +1889,15 @@ function Complete() {
 
                         setSelectedViolation(vs);
 
+                        // Capture current URL and scrollY for this screenshot
+                        const scrollY =
+                          typeof vs.scrollY === "number"
+                            ? vs.scrollY
+                            : window.scrollY ||
+                              document.documentElement.scrollTop ||
+                              0;
+                        const currentUrl = window.location.href;
+
                         setLightbox({
                           idx,
                           screenshot: vs.screenshot,
@@ -1780,6 +1908,8 @@ function Complete() {
                           marker: marker || markers[0],
                           severityColor,
                           aiFeedback,
+                          scrollY,
+                          url: currentUrl,
                         });
                       };
 
@@ -1858,10 +1988,11 @@ function Complete() {
                         screenshot={lightbox.screenshot}
                         loadingAfter={aiModLoading[lightbox.idx]}
                         afterData={aiModResults[lightbox.idx]}
-                        html={analysis?.html}
-                        stylesheets={stylesheets}
-                        baseUrl={url}
-                        screenshotScrollY={lightbox.scrollY}
+                        markers={
+                          selectedViolation?.screenshotOnly
+                            ? []
+                            : selectedViolation?.markers || []
+                        }
                         onAfterClick={() =>
                           handleAfterClick(
                             lightbox.idx,
@@ -1900,6 +2031,13 @@ function Complete() {
                           {lightbox.aiFeedback.recommendation}
                         </p>
                       )}
+                      {/* {aiModResults[lightbox.idx]?.css &&
+                        aiModResults[lightbox.idx].css.trim() && (
+                          <div style={{ marginTop: 16 }}>
+                            <h4>Suggested CSS</h4>
+                            <pre>{aiModResults[lightbox.idx].css}</pre>
+                          </div>
+                        )} */}
 
                       {Array.isArray(lightbox.violations) &&
                         lightbox.violations.length > 1 && (
