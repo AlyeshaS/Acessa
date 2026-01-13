@@ -57,26 +57,6 @@ function App() {
               }}
               onAnalyzeClick={handleAnalyzeClick}
             />
-
-            {/* COMMENTED OUT: Separate HTML/Visual buttons - merged into search button */}
-            {/* <div style={{ marginTop: 12 }}>
-              <button
-                className="btn-analyze"
-                style={{ marginRight: 12 }}
-                onClick={handleAnalyzeClick}
-                disabled={!url?.trim()}
-              >
-                Analyze (HTML)
-              </button>
-
-              <button
-                className="btn-analyze"
-                onClick={handleVisualClick}
-                disabled={!url?.trim()}
-              >
-                Analyze (Visual)
-              </button>
-            </div> */}
           </div>
 
           <div className="cards">
@@ -114,6 +94,7 @@ function App() {
               </div>
 
               {/* HCI Report */}
+
               <article className="feature-card">
                 <div className="feature-illustration" aria-hidden="true">
                   <svg

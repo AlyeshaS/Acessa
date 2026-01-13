@@ -4,6 +4,7 @@ import { aiModifyHtml } from "../api/wcagAPI";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
+import { getHighlightTargets } from "../utils/highlightTargets";
 
 // Reusable circular progress component
 function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
@@ -128,7 +129,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           overflow: "hidden",
           border: "2px solid var(--color-accent)",
           background: "rgba(15,23,42,0.8)",
-          boxShadow: "0 4px 20px rgba(24,155,151,0.3)",
+          boxShadow: "0 4px 20px rgba(124,138,160,0.3)",
         }}
       >
         {/* Single screenshot with client-side overlays */}
@@ -177,8 +178,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
               border: `${Math.max(3, Math.round(4 * scale))}px solid #189B97`,
               boxShadow: `0 0 0 ${Math.round(
                 8 * scale
-              )}px rgba(24,155,151,0.25)`,
-              background: "rgba(24,155,151,0.15)",
+              )}px rgba(124,138,160,0.25)`,
+              background: "rgba(124,138,160,0.15)",
               pointerEvents: "none",
               zIndex: 4,
             }}
@@ -201,7 +202,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
             lineHeight: 1.5,
           }}
         >
-          <div style={{ fontWeight: 600, color: "#189B97", marginBottom: 4 }}>
+          <div style={{ fontWeight: 600, color: " #94a3b8", marginBottom: 4 }}>
             🔍 Live Accessibility Scan
           </div>
           <div>{currentStep?.label || "Preparing scan..."}</div>
@@ -293,11 +294,123 @@ function LightboxBeforeAfter({
     return () => img.removeEventListener("load", updateDims);
   }, [screenshot, view, requestedAfter]);
 
-  const scaleX = imgDims.clientWidth / imgDims.naturalWidth;
-  const scaleY = imgDims.clientHeight / imgDims.naturalHeight;
+  // Use original screenshot resolution for scaling
+  const scaleX =
+    imgDims.naturalWidth > 0 ? imgDims.clientWidth / imgDims.naturalWidth : 1;
+  const scaleY =
+    imgDims.naturalHeight > 0
+      ? imgDims.clientHeight / imgDims.naturalHeight
+      : 1;
 
   // Clamp helper
   const clamp = (val, min = 0) => Math.max(min, val);
+
+  // Compute highlight boxes for each marker (issue)
+  // Prefer boundingBoxes if present, else fallback to selector-based logic
+  const highlightBoxes = safeMarkers.flatMap((m) => {
+    // Prefer boundingBoxes (authoritative)
+    if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
+      if (window.localStorage.getItem("debugHighlights") === "true") {
+        // Dev-only debug log
+        console.log(
+          "[Highlight] IssueId:",
+          m.issueId,
+          "BoundingBoxes:",
+          m.boundingBoxes.length,
+          "(authoritative)"
+        );
+      }
+      return m.boundingBoxes.map((b) => ({
+        ...b,
+        summary: m.summary,
+        recommendation: m.recommendation,
+        selector: b.selector,
+      }));
+    }
+    // Fallback: use selector-based logic if no boundingBoxes
+    if (Array.isArray(m.boxes) && m.boxes.length > 0) {
+      if (window.localStorage.getItem("debugHighlights") === "true") {
+        console.log(
+          "[Highlight] IssueId:",
+          m.issueId,
+          "Fallback to boxes:",
+          m.boxes.length
+        );
+      }
+      return m.boxes.map((b) => ({
+        ...b,
+        summary: m.summary,
+        recommendation: m.recommendation,
+        selector: b.selector,
+      }));
+    }
+    // Use getHighlightTargets if selectors or text anchors are present
+    if (
+      m.allowFallbackHighlight === true &&
+      (m.selectors || m.fallbackTextAnchors)
+    ) {
+      try {
+        const boxes = getHighlightTargets(m, null);
+        if (Array.isArray(boxes) && boxes.length > 0) {
+          if (window.localStorage.getItem("debugHighlights") === "true") {
+            console.log(
+              "[Highlight] IssueId:",
+              m.issueId,
+              "Fallback to getHighlightTargets:",
+              boxes.length
+            );
+          }
+          return boxes.map((b) => ({
+            ...b,
+            summary: m.summary,
+            recommendation: m.recommendation,
+            selector: b.selector || m.selector,
+          }));
+        }
+      } catch (err) {
+        // fallback below
+      }
+    }
+    // Fallback: use direct coordinates
+    if (
+      typeof m.x === "number" &&
+      typeof m.y === "number" &&
+      typeof m.width === "number" &&
+      typeof m.height === "number"
+    ) {
+      if (window.localStorage.getItem("debugHighlights") === "true") {
+        console.log(
+          "[Highlight] IssueId:",
+          m.issueId,
+          "Fallback to direct coordinates"
+        );
+      }
+      return [
+        {
+          x: m.x,
+          y: m.y,
+          width: m.width,
+          height: m.height,
+          summary: m.summary,
+          recommendation: m.recommendation,
+          selector: m.selector,
+        },
+      ];
+    }
+    // If nothing valid, fail silently
+    if (window.localStorage.getItem("debugHighlights") === "true") {
+      console.log(
+        "[Highlight] IssueId:",
+        m.issueId,
+        "No valid highlight, fail silently"
+      );
+    }
+    return [];
+  });
+
+  // Debug panel for devs
+  const debugHighlights =
+    window.localStorage.getItem("debugHighlights") === "true";
 
   return (
     <div style={{ position: "relative", textAlign: "center" }}>
@@ -431,20 +544,25 @@ function LightboxBeforeAfter({
                     zIndex: 1,
                   }}
                 >
-                  {safeMarkers.map((m, i) => {
-                    // Tooltip content: prefer summary, fallback to recommendation
+                  {highlightBoxes.map((b, i) => {
+                    if (
+                      b.visualSource === "ai-visual" &&
+                      b.source === "axe-node"
+                    ) {
+                      return null;
+                    }
                     const tooltip =
-                      m.summary ||
-                      m.recommendation ||
+                      b.summary ||
+                      b.recommendation ||
                       "Accessibility improvement";
-                    // Defensive: clamp and scale
-                    const left = clamp((m.x || 0) * scaleX);
-                    const top = clamp((m.y || 0) * scaleY);
-                    const width = clamp((m.width || 0) * scaleX);
-                    const height = clamp((m.height || 0) * scaleY);
+                    const left = clamp((b.x || 0) * scaleX);
+                    const top = clamp((b.y || 0) * scaleY);
+                    const width = clamp((b.width || 0) * scaleX);
+                    const height = clamp((b.height || 0) * scaleY);
+
                     return (
                       <div
-                        key={`${m.selector || "m"}-${i}`}
+                        key={`${b.selector || "box"}-${i}`}
                         style={{
                           position: "absolute",
                           left,
@@ -495,11 +613,97 @@ function LightboxBeforeAfter({
                             role="tooltip"
                           >
                             {tooltip}
+                            {debugHighlights && (
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  marginTop: 4,
+                                  color: "#ff4d4f",
+                                }}
+                              >
+                                <div>Selector: {b.selector}</div>
+                                <div>
+                                  Box: x={Math.round(b.x)}, y={Math.round(b.y)},
+                                  w={Math.round(b.width)}, h=
+                                  {Math.round(b.height)}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     );
                   })}
+                  {highlightBoxes.length === 0 &&
+                    safeMarkers.map((m, i) => {
+                      // Tooltip content: prefer summary, fallback to recommendation
+                      const tooltip =
+                        m.summary ||
+                        m.recommendation ||
+                        "Accessibility improvement";
+                      // Defensive: clamp and scale
+                      const left = clamp((m.x || 0) * scaleX);
+                      const top = clamp((m.y || 0) * scaleY);
+                      const width = clamp((m.width || 0) * scaleX);
+                      const height = clamp((m.height || 0) * scaleY);
+                      return (
+                        <div
+                          key={`${m.selector || "m"}-${i}`}
+                          style={{
+                            position: "absolute",
+                            left,
+                            top,
+                            width,
+                            height,
+                            borderRadius: 6,
+                            border: "3px solid #ff4d4f",
+                            background: "rgba(255,77,79,0.15)",
+                            zIndex: 2,
+                            cursor: "pointer",
+                            pointerEvents: "auto",
+                          }}
+                          onMouseEnter={() => {
+                            setHoveredIndexes((prev) => {
+                              const arr = [...prev];
+                              arr[i] = true;
+                              return arr;
+                            });
+                          }}
+                          onMouseLeave={() => {
+                            setHoveredIndexes((prev) => {
+                              const arr = [...prev];
+                              arr[i] = false;
+                              return arr;
+                            });
+                          }}
+                          tabIndex={0}
+                          aria-label={tooltip}
+                        >
+                          {hoveredIndexes[i] && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: -38,
+                                left: 0,
+                                background: "#222",
+                                color: "#fff",
+                                padding: "6px 12px",
+                                borderRadius: 6,
+                                fontSize: 13,
+                                whiteSpace: "pre-line",
+                                zIndex: 10,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                                pointerEvents: "none",
+                                maxWidth: 260,
+                              }}
+                              role="tooltip"
+                            >
+                              {tooltip}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
 
                 <div
@@ -2082,6 +2286,59 @@ function Complete() {
                 </div>
               </div>
             )}
+
+            {/* MAIN FEEDBACK SCREENSHOT WITH HIGHLIGHTS */}
+            {!loading &&
+              !animating &&
+              analysis &&
+              analysis.screenshot &&
+              analysis.violations && (
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    maxWidth: 900,
+                    margin: "32px auto",
+                  }}
+                >
+                  <img
+                    src={analysis.screenshot}
+                    alt="Analyzed page with feedback highlights"
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid #111",
+                      display: "block",
+                    }}
+                  />
+                  {/* Overlay all bounding boxes */}
+                  {analysis.violations.map(
+                    (v, vi) =>
+                      Array.isArray(v.nodes) &&
+                      v.nodes.map(
+                        (node, ni) =>
+                          node.boundingBox && (
+                            <div
+                              key={`main-fbbox-${vi}-${ni}`}
+                              style={{
+                                position: "absolute",
+                                left: node.boundingBox.x,
+                                top: node.boundingBox.y,
+                                width: node.boundingBox.width,
+                                height: node.boundingBox.height,
+                                borderRadius: 8,
+                                border: "2px dashed #7c8da0",
+                                background: "rgba(124,138,160,0.10)",
+                                zIndex: 10,
+                                pointerEvents: "none",
+                              }}
+                              title={v.description || v.help || v.id}
+                            />
+                          )
+                      )
+                  )}
+                </div>
+              )}
 
             {/* Visual Segments section removed to fix empty JSX block */}
           </>

@@ -1,20 +1,3 @@
-.iframe-content {
-  transform: scale(0.505);
-  transform-origin: top left;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.iframe-viewport {
-  width: 727.64px;
-  height: 410px;
-  overflow: hidden;
-  position: relative;
-  background: white;
-  border-radius: 12px;
-}
-
 .progress-steps {
   display: flex;
   align-items: center;

@@ -72,9 +72,9 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
               width: currentStep.width,
               height: currentStep.height,
               borderRadius: "10px",
-              border: "3px solid #189B97",
-              boxShadow: "0 0 0 4px rgba(24,155,151,0.3)",
-              background: "rgba(24,155,151,0.08)",
+              border: "3px solid #7c8da0",
+              boxShadow: "0 0 0 4px rgba(124,138,160,0.3)",
+              background: "rgba(124,138,160,0.08)",
               transition: "all 0.25s ease-out",
             }}
           />

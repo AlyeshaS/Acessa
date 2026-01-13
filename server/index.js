@@ -704,10 +704,7 @@ async function captureViolationScreenshots(page, axeViolations) {
             return { bounds: null, scrollY: window.scrollY };
           }
         }, target);
-        console.log(
-          `[WCAG] [DEBUG] scrollY returned from page.evaluate:`,
-          boundsAndScroll.scrollY
-        );
+
         const bounds = boundsAndScroll.bounds;
         const scrollY = boundsAndScroll.scrollY;
         await page.waitForTimeout(300);
@@ -780,16 +777,9 @@ async function captureViolationScreenshots(page, axeViolations) {
           );
           // Attach summary/recommendation from AI if available, else from violation
           let summary =
-            violation?.aiFeedback?.summary ||
-            node?.summary ||
-            violation?.help ||
-            violation?.description ||
-            "";
+            node?.summary || violation?.help || violation?.description || "";
           let recommendation =
-            violation?.aiFeedback?.recommendation ||
-            node?.recommendation ||
-            violation?.recommendation ||
-            "";
+            node?.recommendation || violation?.recommendation || "";
           // Defensive: always string
           summary = typeof summary === "string" ? summary : "";
           recommendation =
@@ -799,6 +789,7 @@ async function captureViolationScreenshots(page, axeViolations) {
             issueId: violation.id,
             summary,
             recommendation,
+            source: "axe-node",
           };
         });
 
@@ -1400,6 +1391,10 @@ app.post("/api/wcag-check", async (req, res) => {
     const axeGroups = axeViolations.map((v) => {
       const wcagTag = v.tags?.find((t) => t.match(/^wcag\d/)) || v.id;
 
+      // If boundingBoxes were attached by Playwright, use them; else empty array
+      const boundingBoxes = Array.isArray(v.boundingBoxes)
+        ? v.boundingBoxes
+        : [];
       return {
         wcagCriterion: wcagTag,
         severity: v.impact
@@ -1409,6 +1404,7 @@ app.post("/api/wcag-check", async (req, res) => {
         problem: v.help || v.description || "Automated syntax error detected.",
         recommendation: "Fix syntax issues reported by Axe-core.",
         type: "automated",
+        boundingBoxes,
       };
     });
 
@@ -2420,6 +2416,7 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
         ...vs,
         viewport: vs.viewport || { width: 1280, height: 720 },
         screenshotOnly: !vs.markers || vs.markers.length === 0,
+        visualSource: vs.aiFeedback ? "ai-visual" : "axe-only",
       })),
 
       html: "",

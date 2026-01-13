@@ -1,45 +1,54 @@
 import { chromium } from "playwright";
 import axe from "axe-core";
-
 const axeSource = axe.source;
 
-export async function runAxeOnUrl(url) {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage();
 
-  // Give the page more time to load on first run
-  await page.goto(url, {
-    waitUntil: "networkidle",
-    timeout: 45000, // 45s instead of default 30s
-  });
+// Give the page more time to load on first run
+await page.goto(url, {
+  waitUntil: "networkidle",
+  timeout: 45000, // 45s instead of default 30s
+});
 
-  await page.addScriptTag({ content: axeSource });
+await page.addScriptTag({ content: axeSource });
 
-  const axeResults = await runAxeOnPage(page); // however you’re doing this
+// Run axe in the page context
+const axeResults = await page.evaluate(async () => {
+  // @ts-ignore
+  return await window.axe.run();
+});
 
-  // Turn axe violations into "groups-style" objects
-  const axeGroups = axeResults.violations.map((v) => {
-    // Try to grab the WCAG id and name from axe metadata if available
-    const wcagCriterion =
-      (v.tags && v.tags.find((t) => t.startsWith("wcag"))) ||
-      v.id ||
-      "Unknown WCAG criterion";
-
-    return {
-      wcagCriterion,
-      severity:
-        (v.impact || "medium").charAt(0).toUpperCase() +
-        (v.impact || "medium").slice(1),
-      count: v.nodes ? v.nodes.length : 1,
-      problem: v.description || v.help || "Axe reported a WCAG violation.",
-      recommendation: v.helpUrl
-        ? `Fix this issue following: ${v.helpUrl}`
-        : v.help || "Update the markup to satisfy this WCAG criterion.",
-    };
-  });
-
-  await browser.close();
-  return axeResults;
+// For each violation node, extract selector and bounding box
+for (const violation of axeResults.violations) {
+  for (const node of violation.nodes) {
+    // Use the first target selector if available
+    const selector = Array.isArray(node.target) ? node.target[0] : node.target;
+    if (selector) {
+      try {
+        // Evaluate in page context to get bounding box
+        const box = await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const rect = el.getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            selector: sel,
+          };
+        }, selector);
+        node.boundingBox = box;
+      } catch (e) {
+        node.boundingBox = null;
+      }
+      node.selector = selector;
+    } else {
+      node.boundingBox = null;
+      node.selector = null;
+    }
+  }
 }
 
 export async function runAxeOnUrlSafe(url, retries = 1) {

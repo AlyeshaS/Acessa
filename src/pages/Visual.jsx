@@ -156,8 +156,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
               border: `${Math.max(2, Math.round(3 * scale))}px solid #189B97`,
               boxShadow: `0 0 0 ${Math.round(
                 4 * scale
-              )}px rgba(24,155,151,0.35)`,
-              background: "rgba(24,155,151,0.1)",
+              )}px rgba(124,138,160,0.35)`,
+              background: "rgba(124,138,160,0.1)",
               pointerEvents: "none",
               transition: "all 0.2s ease-out",
               zIndex: 4,
