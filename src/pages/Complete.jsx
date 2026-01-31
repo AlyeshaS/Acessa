@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
 import { getHighlightTargets } from "../utils/highlightTargets";
+// import VisualImprovementsCard from "../components/VisualImprovementsCard.jsx";
 
 // Reusable circular progress component
 function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
@@ -48,6 +49,7 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
           dominantBaseline="middle"
           textAnchor="middle"
           className="score-circle-text"
+          // style={{ fill: "var(--background)" }}
         >
           {clamped}
         </text>
@@ -177,7 +179,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
               borderRadius: "8px",
               border: `${Math.max(3, Math.round(4 * scale))}px solid #189B97`,
               boxShadow: `0 0 0 ${Math.round(
-                8 * scale
+                8 * scale,
               )}px rgba(124,138,160,0.25)`,
               background: "rgba(124,138,160,0.15)",
               pointerEvents: "none",
@@ -202,7 +204,13 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
             lineHeight: 1.5,
           }}
         >
-          <div style={{ fontWeight: 600, color: " #94a3b8", marginBottom: 4 }}>
+          <div
+            style={{
+              fontWeight: 600,
+              color: "var(--background)",
+              marginBottom: 4,
+            }}
+          >
             🔍 Live Accessibility Scan
           </div>
           <div>{currentStep?.label || "Preparing scan..."}</div>
@@ -234,11 +242,34 @@ function LightboxBeforeAfter({
   afterData,
   markers = [],
   onAfterClick,
+  selectedViolation,
+  generatedFeedback,
 }) {
   const [view, setView] = useState("before");
   const [requestedAfter, setRequestedAfter] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressRef = useRef();
+  const [fixedScreenshot, setFixedScreenshot] = useState(null);
+  const [originalDims, setOriginalDims] = useState({ width: 0, height: 0 });
+  const [loadingFix, setLoadingFix] = useState(false);
+  const [fixProgress, setFixProgress] = useState(0);
+  const fixProgressRef = useRef();
+  // Animate progress while loadingFix
+  useEffect(() => {
+    if (loadingFix) {
+      setFixProgress(0);
+      if (fixProgressRef.current) clearInterval(fixProgressRef.current);
+      fixProgressRef.current = setInterval(() => {
+        setFixProgress((prev) => Math.min(100, prev + 7));
+      }, 100);
+    } else {
+      if (fixProgressRef.current) clearInterval(fixProgressRef.current);
+      setFixProgress(100);
+    }
+    return () => {
+      if (fixProgressRef.current) clearInterval(fixProgressRef.current);
+    };
+  }, [loadingFix]);
 
   // Animate progress while loadingAfter
   useEffect(() => {
@@ -267,7 +298,7 @@ function LightboxBeforeAfter({
 
   // Manage hovered state for each marker
   const [hoveredIndexes, setHoveredIndexes] = useState(
-    Array(safeMarkers.length).fill(false)
+    Array(safeMarkers.length).fill(false),
   );
 
   // Scaling logic for overlays
@@ -288,6 +319,10 @@ function LightboxBeforeAfter({
         clientWidth: img.clientWidth || 1,
         clientHeight: img.clientHeight || 1,
       });
+      // Store original screenshot dimensions for fixed image
+      if (img.naturalWidth && img.naturalHeight) {
+        setOriginalDims({ width: img.naturalWidth, height: img.naturalHeight });
+      }
     };
     img.addEventListener("load", updateDims);
     updateDims();
@@ -317,7 +352,7 @@ function LightboxBeforeAfter({
           m.issueId,
           "BoundingBoxes:",
           m.boundingBoxes.length,
-          "(authoritative)"
+          "(authoritative)",
         );
       }
       return m.boundingBoxes.map((b) => ({
@@ -334,7 +369,7 @@ function LightboxBeforeAfter({
           "[Highlight] IssueId:",
           m.issueId,
           "Fallback to boxes:",
-          m.boxes.length
+          m.boxes.length,
         );
       }
       return m.boxes.map((b) => ({
@@ -357,7 +392,7 @@ function LightboxBeforeAfter({
               "[Highlight] IssueId:",
               m.issueId,
               "Fallback to getHighlightTargets:",
-              boxes.length
+              boxes.length,
             );
           }
           return boxes.map((b) => ({
@@ -382,7 +417,7 @@ function LightboxBeforeAfter({
         console.log(
           "[Highlight] IssueId:",
           m.issueId,
-          "Fallback to direct coordinates"
+          "Fallback to direct coordinates",
         );
       }
       return [
@@ -402,7 +437,7 @@ function LightboxBeforeAfter({
       console.log(
         "[Highlight] IssueId:",
         m.issueId,
-        "No valid highlight, fail silently"
+        "No valid highlight, fail silently",
       );
     }
     return [];
@@ -436,7 +471,7 @@ function LightboxBeforeAfter({
             cursor: "pointer",
           }}
         >
-          Before
+          Original
         </button>
 
         <button
@@ -456,14 +491,75 @@ function LightboxBeforeAfter({
             cursor: "pointer",
           }}
         >
-          After
+          Highlight
+        </button>
+        <button
+          type="button"
+          disabled={loadingFix}
+          onClick={async () => {
+            console.log("Fix button clicked");
+            setView("fix");
+            setLoadingFix(true);
+            // Send screenshot to backend for AI visual fix
+            const feedbackToSend =
+              selectedViolation?.aiFeedback || generatedFeedback;
+            console.log(
+              "[Fix Button] Sending screenshot and feedback to backend",
+              { screenshot, feedback: feedbackToSend },
+            );
+            try {
+              // Use OpenAI gpt-image-1 image editing endpoint
+              const prompt =
+                feedbackToSend?.recommendation ||
+                feedbackToSend?.summary ||
+                "Improve accessibility of this image.";
+              const res = await fetch(
+                "http://localhost:4000/api/ai/image-edit",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    screenshot,
+                    prompt,
+                  }),
+                },
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (data.editedImageBase64) {
+                  setFixedScreenshot(data.editedImageBase64);
+                  setView("fixed");
+                } else if (data.editedImageUrl) {
+                  setFixedScreenshot(data.editedImageUrl);
+                  setView("fixed");
+                }
+              }
+            } catch (err) {
+              console.error("Fix button error:", err);
+            } finally {
+              setLoadingFix(false);
+            }
+          }}
+          style={{
+            padding: "6px 18px",
+            borderRadius: 6,
+            border: "none",
+            background: inactiveBg,
+            color: inactiveText,
+            fontWeight: 400,
+            cursor: loadingFix ? "not-allowed" : "pointer",
+            opacity: loadingFix ? 0.7 : 1,
+            transition: "background 0.2s, color 0.2s",
+          }}
+        >
+          {loadingFix ? "Fixing..." : "Fix"}
         </button>
       </div>
 
       {/* IMAGE AREA */}
       <div style={{ minHeight: 410 }}>
         {/* BEFORE */}
-        {view === "before" && (
+        {view === "before" && !loadingFix && (
           <img
             ref={imgRef}
             src={screenshot}
@@ -480,7 +576,7 @@ function LightboxBeforeAfter({
         )}
 
         {/* AFTER */}
-        {view === "after" && (
+        {view === "after" && !loadingFix && (
           <>
             {!requestedAfter && (
               <div style={{ color: "#888" }}>
@@ -719,6 +815,79 @@ function LightboxBeforeAfter({
             )}
           </>
         )}
+
+        {/* FIX LOADING UI */}
+        {loadingFix && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 410,
+            }}
+          >
+            <ScoreCircle
+              value={fixProgress}
+              size={80}
+              strokeWidth={10}
+              label={"Loading..."}
+            />
+            <div style={{ color: "#888", marginTop: 12 }}>
+              Applying AI visual fix…
+            </div>
+          </div>
+        )}
+        {/* FIXED (AI-modified) SCREENSHOT */}
+        {view === "fixed" && fixedScreenshot && !loadingFix && (
+          <div
+            style={{
+              position: "relative",
+              width: originalDims.width ? originalDims.width : "100%",
+              height: originalDims.height ? originalDims.height : 410,
+              maxWidth: "100%",
+              maxHeight: 410,
+              borderRadius: 8,
+              overflow: "hidden",
+              border: "1px solid #111",
+              background: inactiveBg,
+              margin: "0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              src={fixedScreenshot}
+              alt="AI-modified screenshot"
+              style={{
+                width: originalDims.width ? originalDims.width : "100%",
+                height: originalDims.height ? originalDims.height : 410,
+                maxWidth: "100%",
+                maxHeight: 410,
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                bottom: 12,
+                left: 12,
+                background: "rgba(24,155,151,0.85)",
+                color: "#fff",
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15,
+                zIndex: 10,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+              }}
+            >
+              AI-modified screenshot
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -773,7 +942,6 @@ function Complete() {
   const abortRef = useRef(null);
 
   const handleAfterClick = async (idx, violation) => {
-    // 🔑 BUILD FEEDBACK HERE (this was missing)
     const feedback = {
       summary:
         violation?.aiFeedback?.summary ||
@@ -844,7 +1012,7 @@ function Complete() {
         setDuplicatesSkipped(0);
 
         const streamUrl = `http://localhost:4000/api/wcag-check-stream?url=${encodeURIComponent(
-          url
+          url,
         )}`;
 
         const evt = new EventSource(streamUrl);
@@ -922,7 +1090,7 @@ function Complete() {
                   ...vs,
                   scrollY:
                     typeof vs.scrollY === "number" ? vs.scrollY : scrollY,
-                }))
+                })),
               );
             }
             // Don't overwrite the live steps - they've already been streamed and are animating
@@ -952,7 +1120,7 @@ function Complete() {
           // This runs in parallel and will populate segments for display after animation
           try {
             const visualStreamUrl = `http://localhost:4000/api/wcag-visual-stream?url=${encodeURIComponent(
-              url
+              url,
             )}`;
             const visualEvt = new EventSource(visualStreamUrl);
 
@@ -1045,7 +1213,7 @@ function Complete() {
           } catch (visualErr) {
             console.error(
               "[Complete] Failed to start visual stream:",
-              visualErr
+              visualErr,
             );
           }
         });
@@ -1309,7 +1477,7 @@ function Complete() {
       else if (sev === "low") acc.low += count;
       return acc;
     },
-    { high: 0, medium: 0, low: 0 }
+    { high: 0, medium: 0, low: 0 },
   );
 
   const totalIssues =
@@ -1551,7 +1719,7 @@ function Complete() {
                       setAnalysis(
                         payload.aiAnalysis
                           ? { ...payload.aiAnalysis, url: payload.url }
-                          : payload
+                          : payload,
                       );
                       setPendingResult(null);
                     }
@@ -1600,33 +1768,6 @@ function Complete() {
                           Higher scores indicate better alignment with WCAG 2.2
                           and AODA.
                         </p>
-
-                        {/* Expandable Score Details */}
-                        {/* <button
-                          onClick={() => setShowScoreDetails(!showScoreDetails)}
-                          style={{
-                            marginTop: 12,
-                            background: "none",
-                            border: "1px solid #189B97",
-                            color: "#189B97",
-                            padding: "8px 12px",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            transition: "all 0.2s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.background = "#189B97";
-                            e.target.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.background = "none";
-                            e.target.style.color = "#189B97";
-                          }}
-                        >
-                          {showScoreDetails ? "Hide" : "Show"} Score Details
-                        </button> */}
 
                         {showScoreDetails && scoreBreakdown && (
                           <div
@@ -1839,7 +1980,7 @@ function Complete() {
                                             </p>
                                           )}
                                         </div>
-                                      )
+                                      ),
                                     )
                                   ) : (
                                     <p className="no-issues">
@@ -1850,7 +1991,7 @@ function Complete() {
                                 </div>
                               )}
                             </div>
-                          )
+                          ),
                       )}
                     </div>
                   </div>
@@ -1918,7 +2059,10 @@ function Complete() {
                 </div>
               </div>
             </div>
-
+            {/* Visual Improvements Card: after score, before HCI, Next Steps, etc. */}
+            {/* <VisualImprovementsCard
+              violationScreenshots={violationScreenshots}
+            /> */}
             <div className="hci-report">
               <h2>HCI Report</h2>
               {hciParagraphs.length > 0 ? (
@@ -1954,12 +2098,12 @@ function Complete() {
                   // Regex to match keywords (case-insensitive, word boundaries)
                   const regex = new RegExp(
                     `\\b(${keywords.join("|")})\\b`,
-                    "gi"
+                    "gi",
                   );
                   // Replace keywords with bolded version
                   const highlighted = para.replace(
                     regex,
-                    (match) => `<strong>${match}</strong>`
+                    (match) => `<strong>${match}</strong>`,
                   );
                   return (
                     <p
@@ -2000,7 +2144,7 @@ function Complete() {
                     .filter(
                       (vs) =>
                         Array.isArray(vs?.violations) &&
-                        vs.violations.length > 0
+                        vs.violations.length > 0,
                     )
                     .map((vs, idx) => {
                       const violation = vs.violations?.[0];
@@ -2012,7 +2156,7 @@ function Complete() {
                           Number.isFinite(m?.x) &&
                           Number.isFinite(m?.y) &&
                           m?.width !== undefined &&
-                          m?.height !== undefined
+                          m?.height !== undefined,
                       );
 
                       const markers = validMarkers;
@@ -2025,8 +2169,8 @@ function Complete() {
                         violation?.impact === "serious"
                           ? 3
                           : violation?.impact === "moderate"
-                          ? 2
-                          : 1
+                            ? 2
+                            : 1
                       ];
 
                       // Pull AI feedback from visual segment analysis for this area
@@ -2069,7 +2213,7 @@ function Complete() {
                           matched = aiAnalysis.groups.find(
                             (g) =>
                               g?.wcagCriterion === wcagKey ||
-                              g?.wcagCriterion?.includes(wcagKey || "")
+                              g?.wcagCriterion?.includes(wcagKey || ""),
                           );
                         }
                         const summary =
@@ -2201,9 +2345,11 @@ function Complete() {
                           handleAfterClick(
                             lightbox.idx,
                             lightbox.violation,
-                            lightbox.scrollY
+                            lightbox.scrollY,
                           )
                         }
+                        selectedViolation={selectedViolation}
+                        generatedFeedback={lightbox?.aiFeedback}
                       />
                     </div>
                     {/* END: Additive Before/After Toggle UI */}
@@ -2220,7 +2366,7 @@ function Complete() {
                       <h3 className="lightbox-title">
                         {getFriendlyTitle(
                           lightbox.violation?.wcagCriterion,
-                          lightbox.violation?.id
+                          lightbox.violation?.id,
                         )}
                       </h3>
                       <p className="lightbox-text">
@@ -2267,12 +2413,12 @@ function Complete() {
                                 >
                                   <strong>
                                     {v.tags?.find((t) =>
-                                      String(t).match(/^wcag\d/)
+                                      String(t).match(/^wcag\d/),
                                     ) || v.id}
                                   </strong>
                                   {v.impact
                                     ? ` • ${String(
-                                        v.impact
+                                        v.impact,
                                       ).toUpperCase()} severity`
                                     : ""}
                                   {v.help ? ` — ${v.help}` : ""}
@@ -2334,8 +2480,8 @@ function Complete() {
                               }}
                               title={v.description || v.help || v.id}
                             />
-                          )
-                      )
+                          ),
+                      ),
                   )}
                 </div>
               )}

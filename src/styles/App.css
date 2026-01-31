@@ -259,8 +259,12 @@
   height: 70px;
   border-radius: 10px;
   cursor: pointer;
-  transition: transform 0.06s ease, box-shadow 0.2s ease, background 0.2s ease,
-    color 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.06s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
   box-shadow: 0 1px 2px rgba(25, 28, 41, 0.1);
 }
 
@@ -270,7 +274,9 @@
   border: 1px solid var(--btn-light-border);
   color: var(--btn-light-icon);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 .btn-upload:hover {
   background: var(--color-accent);
@@ -317,7 +323,9 @@
 
 /* Make SVGs smooth on hover */
 .btn-icon svg path {
-  transition: fill 0.2s ease, stroke 0.2s ease;
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease;
 }
 
 .navbar {
@@ -363,7 +371,9 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .feature-card:hover {
@@ -465,6 +475,16 @@
   padding: 20px;
 }
 
+/* Visual Improvements card: match HCI report styling */
+.visual-improvements-card {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: var(--white);
+  padding: 20px;
+}
+
 /* Visual feedback section should visually match HCI report */
 .visual-feedback {
   margin-top: 20px;
@@ -543,7 +563,9 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
 .violation-fullscreen:hover {
@@ -588,7 +610,9 @@
   font-family: "Segoe UI", sans-serif;
   cursor: pointer;
   backdrop-filter: blur(4px);
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
   z-index: 5;
 }
 
@@ -830,7 +854,10 @@ main {
   padding: 0.75rem 0.9rem 0.9rem;
   background: #ffffff;
   cursor: pointer;
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease,
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.2s ease,
     background-color 0.2s ease;
 }
 
@@ -984,7 +1011,9 @@ main {
   line-height: 1.2rem;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
   z-index: 50;
   pointer-events: none;
 }
@@ -1001,7 +1030,9 @@ main {
   border-color: transparent #2e3742 transparent transparent;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
 }
 
 /* Show tooltip on hover */
@@ -1070,4 +1101,86 @@ main {
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   display: block;
+}
+
+/* Visual Improvements section */
+.visual-improvements {
+  background: #f7fafc;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 28px 24px;
+  margin-top: 32px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+.screenshots-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-top: 18px;
+}
+.screenshot-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.03);
+  padding: 18px 16px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.screenshot-img-wrapper {
+  width: 220px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+}
+.screenshot-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.screenshot-actions button {
+  padding: 6px 18px;
+  border-radius: 6px;
+  border: none;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.screenshot-actions button:disabled {
+  background: #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+.screenshot-desc {
+  font-size: 13px;
+  color: #475569;
+  text-align: center;
+}
+.enlarge-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(30, 41, 59, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: pointer;
+}
+.enlarge-modal img {
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
 }

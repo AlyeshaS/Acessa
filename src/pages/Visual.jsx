@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
+// import VisualImprovements from "../components/VisualImprovements.jsx";
 
 // Lightweight ScoreCircle reused from Complete
 function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
@@ -155,7 +156,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
               borderRadius: 10,
               border: `${Math.max(2, Math.round(3 * scale))}px solid #189B97`,
               boxShadow: `0 0 0 ${Math.round(
-                4 * scale
+                4 * scale,
               )}px rgba(124,138,160,0.35)`,
               background: "rgba(124,138,160,0.1)",
               pointerEvents: "none",
@@ -208,8 +209,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
             {currentStep?.type === "click"
               ? "Simulating user interaction"
               : currentStep?.type === "highlight"
-              ? "Highlighting a potential issue"
-              : "Analyzing your page"}
+                ? "Highlighting a potential issue"
+                : "Analyzing your page"}
           </div>
           <div>
             {currentStep?.label ||
@@ -266,7 +267,7 @@ function Visual() {
 
         // Open an EventSource to receive streamed updates from the server.
         const streamUrl = `http://localhost:4000/api/wcag-visual-stream?url=${encodeURIComponent(
-          url
+          url,
         )}`;
 
         const evt = new EventSource(streamUrl);
@@ -339,7 +340,7 @@ function Visual() {
             // Defer final analysis application until the preview animation finishes
             setPendingAnalysis(payload);
             setSegments(
-              Array.isArray(payload.breakdown) ? payload.breakdown : []
+              Array.isArray(payload.breakdown) ? payload.breakdown : [],
             );
             // do not force progress to 100% here; wait for animation to finish
           } catch (err) {
