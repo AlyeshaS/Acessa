@@ -14,6 +14,113 @@ app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+import { openaiImageEdit } from "./openaiImageEdit.js";
+/**
+ * Image Editing endpoint: Uses OpenAI gpt-image-1 to edit an image based on a prompt.
+ * POST /api/ai/image-edit
+ * Body: { screenshot: base64 string, prompt: string }
+ * Returns: { editedImageUrl, editedImageBase64 }
+ */
+app.post("/api/ai/image-edit", async (req, res) => {
+  const { screenshot, prompt } = req.body || {};
+  if (!screenshot || typeof screenshot !== "string") {
+    return res
+      .status(400)
+      .json({ error: "Missing screenshot in request body" });
+  }
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({ error: "Missing prompt in request body" });
+  }
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Missing OpenAI API key" });
+    }
+    const result = await openaiImageEdit({
+      imageBase64: screenshot,
+      prompt,
+      apiKey,
+    });
+    // OpenAI returns an array of images (usually with a URL)
+    const imageUrl = result.data?.[0]?.url;
+    const imageBase64 = result.data?.[0]?.b64_json;
+    res.json({
+      editedImageUrl: imageUrl,
+      editedImageBase64: imageBase64
+        ? `data:image/png;base64,${imageBase64}`
+        : undefined,
+    });
+  } catch (err) {
+    console.error("[AI Image Edit] Error:", err);
+    res.status(500).json({ error: "Image edit failed", details: err.message });
+  }
+});
+
+/**
+ * Visual AI Fix endpoint: Accepts a screenshot and feedback, sends to Gemini AI for WCAG fixes (contrast, color, font size), returns improved image and feedback.
+ */
+app.post("/api/wcag-visual", async (req, res) => {
+  const { screenshot, feedback } = req.body || {};
+  if (!screenshot || typeof screenshot !== "string") {
+    return res
+      .status(400)
+      .json({ error: "Missing screenshot in request body" });
+  }
+  try {
+    // Build prompt for Gemini
+    const prompt = `You are an AI accessibility engine. Given a screenshot of a web page, your job is to visually fix the image so it passes WCAG guidelines for contrast, color, and font size. Apply the feedback below. Return ONLY a single valid JSON object with a base64 JPEG image (fixedScreenshot) and a summary of the changes. Do NOT include any explanations, markdown, or extra text.\n\nFeedback: ${JSON.stringify(feedback, null, 2)}`;
+
+    // Call Gemini with inline image data
+    let aiRes;
+    let rawAiText = "";
+    try {
+      aiRes = await callAiWithInlineData(
+        prompt,
+        screenshot.replace(/^data:image\/jpeg;base64,/, ""),
+        "image/jpeg",
+      );
+    } catch (aiErr) {
+      if (aiErr && aiErr.message) rawAiText = aiErr.message;
+      console.error("[WCAG] AI error in callAiWithInlineData:", aiErr);
+    }
+
+    // If parsing failed or no valid image, fallback to original screenshot
+    let imageData =
+      aiRes && aiRes.fixedScreenshot ? aiRes.fixedScreenshot : null;
+    if (!imageData || typeof imageData !== "string" || imageData.length < 100) {
+      console.error("[WCAG] No valid AI image, returning original screenshot.");
+      // Always fallback to the original screenshot base64 (strip prefix if present)
+      imageData = screenshot.replace(/^data:image\/(jpeg|png);base64,/, "");
+    }
+    // Log the outgoing image length and prefix for debugging
+    const preview = imageData ? imageData.slice(0, 30) : "(empty)";
+    console.log(
+      `[WCAG] Sending fixedScreenshot: length=${imageData.length}, startsWith='${preview}'`,
+    );
+    // Ensure we do not double-prefix the data URL
+    let fixedScreenshotUrl = imageData;
+    if (imageData && !imageData.startsWith("data:image/jpeg;base64,")) {
+      fixedScreenshotUrl = `data:image/jpeg;base64,${imageData}`;
+    }
+    res.json({
+      fixedScreenshot: fixedScreenshotUrl,
+      summary:
+        aiRes && aiRes.summary
+          ? aiRes.summary
+          : "Visual accessibility improvements applied.",
+      feedback: aiRes && aiRes.feedback ? aiRes.feedback : feedback,
+      aiError: aiRes && aiRes.error ? aiRes.error : undefined,
+    });
+  } catch (err) {
+    console.error("[WCAG] /api/wcag-visual error:", err);
+    if (err && err.message) {
+      console.error("[WCAG] Raw error message:", err.message);
+    }
+    res
+      .status(500)
+      .json({ error: "Visual AI fix failed", details: err.message });
+  }
+});
 /**
  * ===============================
  * AI HTML/CSS VISUAL MODIFIER
@@ -91,12 +198,12 @@ app.post("/api/ai-modify-html", async (req, res) => {
   // }
 
   const detectedVisualKeywords = visualKeywords.filter((keyword) =>
-    feedbackText.includes(keyword)
+    feedbackText.includes(keyword),
   );
 
   console.log(
     "[AI Modify HTML] Detected visual keywords:",
-    detectedVisualKeywords
+    detectedVisualKeywords,
   );
 
   const prompt = `
@@ -218,7 +325,7 @@ async function fetchPageContent(url) {
 
     const screenshotBuffer = await page.screenshot({ fullPage: true });
     const screenshot = `data:image/png;base64,${screenshotBuffer.toString(
-      "base64"
+      "base64",
     )}`;
 
     const text = await page.evaluate(() => document.body.innerText || "");
@@ -388,7 +495,7 @@ async function captureRealAccessibilitySteps(page) {
     }
 
     console.log(
-      `[WCAG] Captured ${steps.length} real accessibility check steps`
+      `[WCAG] Captured ${steps.length} real accessibility check steps`,
     );
   } catch (err) {
     console.error("[WCAG] Error capturing real steps:", err);
@@ -409,7 +516,7 @@ async function discoverInternalLinks(page, baseUrl) {
     // First, open visible dropdowns/menus to reveal hidden links
     try {
       const toggles = await page.$$(
-        "[aria-haspopup], [aria-expanded], .dropdown-toggle, .menu-toggle, .navbar-toggler"
+        "[aria-haspopup], [aria-expanded], .dropdown-toggle, .menu-toggle, .navbar-toggler",
       );
       for (const toggle of toggles.slice(0, 15)) {
         try {
@@ -495,7 +602,7 @@ async function discoverInternalLinks(page, baseUrl) {
     const unique = [...new Set(links)].slice(0, 25);
     console.log(
       `[WCAG] Found ${unique.length} internal pages to check:`,
-      unique
+      unique,
     );
     return unique;
   } catch (err) {
@@ -514,7 +621,7 @@ async function discoverClientRoutes(page, baseUrl) {
   try {
     // Primary pass: click visible buttons/links
     const candidates = await page.$$(
-      'a[href], button, [role="button"], [aria-haspopup="true"], .dropdown-toggle, .menu-toggle'
+      'a[href], button, [role="button"], [aria-haspopup="true"], .dropdown-toggle, .menu-toggle',
     );
     for (let i = 0; i < candidates.length && i < 40; i++) {
       const handle = candidates[i];
@@ -595,7 +702,7 @@ async function captureViolationScreenshots(page, axeViolations) {
 
   try {
     console.log(
-      `[WCAG] Starting screenshot capture for ${axeViolations.length} total violations`
+      `[WCAG] Starting screenshot capture for ${axeViolations.length} total violations`,
     );
 
     // Rank violations by severity and frequency; pick top 12
@@ -620,7 +727,7 @@ async function captureViolationScreenshots(page, axeViolations) {
     }
 
     console.log(
-      `[WCAG] Will capture ${uniqueViolations.length} unique violation types`
+      `[WCAG] Will capture ${uniqueViolations.length} unique violation types`,
     );
 
     for (let idx = 0; idx < uniqueViolations.length; idx++) {
@@ -636,13 +743,13 @@ async function captureViolationScreenshots(page, axeViolations) {
             await page.waitForTimeout(300);
           } catch (navErr) {
             console.log(
-              `[WCAG] Could not navigate to violation source URL ${violation.__sourceUrl}: ${navErr.message}`
+              `[WCAG] Could not navigate to violation source URL ${violation.__sourceUrl}: ${navErr.message}`,
             );
           }
         }
         if (!violation.nodes || violation.nodes.length === 0) {
           console.log(
-            `[WCAG] Violation ${violation.id} has no nodes, skipping`
+            `[WCAG] Violation ${violation.id} has no nodes, skipping`,
           );
           continue;
         }
@@ -652,7 +759,7 @@ async function captureViolationScreenshots(page, axeViolations) {
 
         if (!target) {
           console.log(
-            `[WCAG] Could not determine selector for violation ${violation.id}`
+            `[WCAG] Could not determine selector for violation ${violation.id}`,
           );
           continue;
         }
@@ -660,7 +767,7 @@ async function captureViolationScreenshots(page, axeViolations) {
         console.log(
           `[WCAG] Capturing screenshot for violation ${idx + 1}/5: ${
             violation.id
-          } (selector: ${target})`
+          } (selector: ${target})`,
         );
 
         // Try to get bounding box for the primary node and capture scrollY, with debug logs
@@ -671,19 +778,19 @@ async function captureViolationScreenshots(page, axeViolations) {
               console.log(`[WCAG] Could not find element: ${selector}`);
               console.log(
                 `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
-                window.scrollY
+                window.scrollY,
               );
               return { bounds: null, scrollY: window.scrollY };
             }
             console.log(
               `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
-              window.scrollY
+              window.scrollY,
             );
             el.scrollIntoView({ block: "center", inline: "center" });
 
             console.log(
               `[WCAG] [DEBUG] window.scrollY after scrollIntoView:`,
-              window.scrollY
+              window.scrollY,
             );
             const box = el.getBoundingClientRect();
             return {
@@ -699,7 +806,7 @@ async function captureViolationScreenshots(page, axeViolations) {
             console.log(`[WCAG] Error getting bounds: ${e.message}`);
             console.log(
               `[WCAG] [DEBUG] window.scrollY in error:`,
-              window.scrollY
+              window.scrollY,
             );
             return { bounds: null, scrollY: window.scrollY };
           }
@@ -761,7 +868,7 @@ async function captureViolationScreenshots(page, axeViolations) {
                 };
               } catch (e) {
                 console.log(
-                  `[WCAG] Marker error for ${selector}: ${e.message}`
+                  `[WCAG] Marker error for ${selector}: ${e.message}`,
                 );
                 return null;
               }
@@ -773,7 +880,7 @@ async function captureViolationScreenshots(page, axeViolations) {
         const markersWithText = (markers || []).map((m, i) => {
           // Try to find the corresponding node for this selector
           const node = violation.nodes.find(
-            (n) => n.target && n.target.join(" ") === m.selector
+            (n) => n.target && n.target.join(" ") === m.selector,
           );
           // Attach summary/recommendation from AI if available, else from violation
           let summary =
@@ -812,12 +919,12 @@ async function captureViolationScreenshots(page, axeViolations) {
         }
 
         console.log(
-          `[WCAG] Screenshot captured: ${screenshotBuf.length} bytes`
+          `[WCAG] Screenshot captured: ${screenshotBuf.length} bytes`,
         );
 
         screenshots.push({
           screenshot: `data:image/jpeg;base64,${screenshotBuf.toString(
-            "base64"
+            "base64",
           )}`,
           violations: [violation],
           bounds: bounds || { x: 0, y: 0, width: 0, height: 0 },
@@ -835,7 +942,7 @@ async function captureViolationScreenshots(page, axeViolations) {
       } catch (err) {
         console.error(
           `[WCAG] Error capturing violation screenshot for ${violation.id}:`,
-          err.message
+          err.message,
         );
       }
     }
@@ -1229,7 +1336,7 @@ async function callAi(prompt) {
         } catch {
           return `"deductedPoints": 0,`;
         }
-      }
+      },
     );
 
     // Remove trailing commas
@@ -1256,7 +1363,7 @@ async function callAi(prompt) {
       console.error("[WCAG] Second parse failed:", secondErr.message);
       console.error(
         "[WCAG] Cleaned JSON (first 2000 chars):",
-        cleaned.slice(0, 2000)
+        cleaned.slice(0, 2000),
       );
 
       // Last resort: try aggressive repair
@@ -1303,7 +1410,7 @@ function repairJSON(jsonStr) {
 async function callAiWithInlineData(
   prompt,
   base64Str,
-  mimeType = "image/jpeg"
+  mimeType = "image/jpeg",
 ) {
   console.log("[WCAG] Calling Gemini AI with inline image...");
 
@@ -1335,10 +1442,12 @@ async function callAiWithInlineData(
     text = JSON.stringify(result);
   }
 
+  console.log("[WCAG] Raw AI response before parsing:", text);
   let jsonStr = extractFirstJSONObject(text);
   if (!jsonStr) {
     console.error("[WCAG] No JSON object found in AI response (inline data)");
-    throw new Error("AI did not return a valid JSON object.");
+    // Return a fallback error object instead of throwing
+    return { error: "AI did not return a valid JSON object.", raw: text };
   }
 
   // Escape double quotes inside string values to prevent parse errors
@@ -1358,13 +1467,14 @@ async function callAiWithInlineData(
 
     const parsed = JSON.parse(cleaned);
 
-    console.log("[WCAG] Parsed Gemini AI response:");
+    console.log("[WCAG] Parsed Gemini AI response:", parsed);
 
     return parsed;
   } catch (err) {
     console.error("[WCAG] Failed to parse Gemini AI response");
     console.error("[WCAG] Raw AI response:", jsonStr);
-    throw new Error("AI did not return valid JSON");
+    // Return a fallback error object instead of throwing
+    return { error: "AI did not return valid JSON", raw: jsonStr };
   }
 }
 
@@ -1416,14 +1526,14 @@ app.post("/api/wcag-check", async (req, res) => {
     if (axeViolations.length > 0) {
       aiResponse.categoryScores.Robust = Math.max(
         0,
-        aiResponse.categoryScores.Robust - axeViolations.length * 5
+        aiResponse.categoryScores.Robust - axeViolations.length * 5,
       );
       aiResponse.score = Math.floor(
         (aiResponse.categoryScores.Perceivable +
           aiResponse.categoryScores.Operable +
           aiResponse.categoryScores.Understandable +
           aiResponse.categoryScores.Robust) /
-          4
+          4,
       );
     }
     // --- END MERGING LOGIC ---
@@ -1572,8 +1682,8 @@ app.post("/api/wcag-visual", async (req, res) => {
     const pageHeight = await page.evaluate(() =>
       Math.max(
         document.documentElement.scrollHeight,
-        document.body.scrollHeight
-      )
+        document.body.scrollHeight,
+      ),
     );
     const pageWidth = 1280;
     const numSegments = Math.min(3, Math.max(1, Math.ceil(pageHeight / 1000)));
@@ -1676,7 +1786,7 @@ app.post("/api/wcag-visual", async (req, res) => {
     }
 
     const validScores = segmentResults.filter(
-      (s) => s.aiAnalysis && typeof s.aiAnalysis.score === "number"
+      (s) => s.aiAnalysis && typeof s.aiAnalysis.score === "number",
     ).length;
     if (validScores > 0)
       stitched.score = Math.round((stitched.score || 0) / validScores);
@@ -1832,8 +1942,8 @@ app.get("/api/wcag-visual-stream", async (req, res) => {
     const pageHeight = await page.evaluate(() =>
       Math.max(
         document.documentElement.scrollHeight,
-        document.body.scrollHeight
-      )
+        document.body.scrollHeight,
+      ),
     );
     const pageWidth = 1280;
     const numSegments = Math.min(3, Math.max(1, Math.ceil(pageHeight / 1000)));
@@ -1908,7 +2018,7 @@ app.get("/api/wcag-visual-stream", async (req, res) => {
     }
 
     const validScores = segmentResults.filter(
-      (s) => s.aiAnalysis && typeof s.aiAnalysis.score === "number"
+      (s) => s.aiAnalysis && typeof s.aiAnalysis.score === "number",
     ).length;
     if (validScores > 0)
       stitched.score = Math.round((stitched.score || 0) / validScores);
@@ -2054,7 +2164,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             viewportWidth: Math.round(viewport.width || 0),
             viewportHeight: Math.round(viewport.height || 0),
             screenshot: `data:image/jpeg;base64,${stepScreenshotBuf.toString(
-              "base64"
+              "base64",
             )}`,
           };
 
@@ -2082,7 +2192,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     const understandableData = await page.evaluate(() => {
       const langAttribute = document.documentElement.getAttribute("lang");
       const formFields = Array.from(
-        document.querySelectorAll("input, select, textarea")
+        document.querySelectorAll("input, select, textarea"),
       ).map((el) => {
         let labelText = "No Label Found";
         if (el.id) {
@@ -2104,7 +2214,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         };
       });
       const navCount = document.querySelectorAll(
-        'nav, [role="navigation"]'
+        'nav, [role="navigation"]',
       ).length;
       return {
         langAttribute,
@@ -2119,7 +2229,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     const internalLinks = await discoverInternalLinks(page, url);
     const spaLinks = await discoverClientRoutes(page, url);
     const linksToVisit = Array.from(
-      new Set([url, ...internalLinks, ...spaLinks])
+      new Set([url, ...internalLinks, ...spaLinks]),
     ).slice(0, 25);
     // Tag initial page violations with source URL
     const allViolations = axeResults.violations.map((v) => ({
@@ -2132,7 +2242,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         console.log(
           `[WCAG] Navigating to page ${i + 1}/${
             linksToVisit.length
-          }: ${targetUrl}`
+          }: ${targetUrl}`,
         );
         sendEvent("progress", {
           message: `Checking ${new URL(targetUrl).pathname}...`,
@@ -2149,14 +2259,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
         if (pageAxeResults.violations && pageAxeResults.violations.length > 0) {
           console.log(
-            `[WCAG] Found ${pageAxeResults.violations.length} violations on ${targetUrl}`
+            `[WCAG] Found ${pageAxeResults.violations.length} violations on ${targetUrl}`,
           );
           // tag each violation with its source URL
           allViolations.push(
             ...pageAxeResults.violations.map((v) => ({
               ...v,
               __sourceUrl: targetUrl,
-            }))
+            })),
           );
         }
 
@@ -2165,13 +2275,13 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       } catch (navErr) {
         console.error(
           `[WCAG] Error visiting page ${linksToVisit[i]}:`,
-          navErr.message
+          navErr.message,
         );
       }
     }
 
     console.log(
-      `[WCAG] Total violations across all pages: ${allViolations.length}`
+      `[WCAG] Total violations across all pages: ${allViolations.length}`,
     );
     // Emit summary of pages visited and violations found
     sendEvent("progress", {
@@ -2182,7 +2292,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     sendEvent("progress", { message: "Capturing violation screenshots..." });
     const rawViolationScreenshots = await captureViolationScreenshots(
       page,
-      allViolations
+      allViolations,
     );
 
     // Deduplicate screenshots by comparing image data (sample multiple positions)
@@ -2193,14 +2303,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       const len = img.length;
       const hash = `${len}-${img.slice(
         Math.floor(len * 0.25),
-        Math.floor(len * 0.25) + 100
+        Math.floor(len * 0.25) + 100,
       )}-${img.slice(Math.floor(len * 0.75), Math.floor(len * 0.75) + 100)}`;
 
       if (screenshotMap.has(hash)) {
         const existing = screenshotMap.get(hash);
         existing.violations.push(...vs.violations);
         const seen = new Set(
-          existing.markers.map((m) => `${m.x}-${m.y}-${m.width}-${m.height}`)
+          existing.markers.map((m) => `${m.x}-${m.y}-${m.width}-${m.height}`),
         );
 
         vs.markers.forEach((m) => {
@@ -2216,13 +2326,13 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     }
     const violationScreenshots = Array.from(screenshotMap.values()).slice(
       0,
-      12
+      12,
     );
 
     // Report duplicate screenshots removed
     const duplicates = Math.max(
       rawViolationScreenshots.length - violationScreenshots.length,
-      0
+      0,
     );
     sendEvent("progress", {
       message: `Captured ${violationScreenshots.length} unique violation screenshots`,
@@ -2260,7 +2370,7 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         const avoidClause =
           mentionedProblems.length > 0
             ? `\n\nIMPORTANT: You have already mentioned these problems in previous screenshots: ${mentionedProblems.join(
-                ", "
+                ", ",
               )}. Focus on a DIFFERENT accessibility issue visible in THIS screenshot. Do not repeat the same concern.`
             : "";
 
@@ -2313,13 +2423,13 @@ If relevant, align the advice with WCAG criteria like ${wcagIds} but do not incl
       // Provide a fallback response structure to prevent crashes downstream
       const axeViolationCount = axeResults.violations.length;
       const highCount = axeResults.violations.filter(
-        (v) => v.impact === "critical"
+        (v) => v.impact === "critical",
       ).length;
       const mediumCount = axeResults.violations.filter(
-        (v) => v.impact === "serious" || v.impact === "moderate"
+        (v) => v.impact === "serious" || v.impact === "moderate",
       ).length;
       const lowCount = axeResults.violations.filter(
-        (v) => v.impact === "minor"
+        (v) => v.impact === "minor",
       ).length;
       const totalViolations = axeViolationCount;
       const deductedPoints = highCount * 3 + mediumCount * 2 + lowCount * 1;
