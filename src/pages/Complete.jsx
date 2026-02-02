@@ -872,6 +872,23 @@ function LightboxBeforeAfter({
             <div
               style={{
                 position: "absolute",
+                bottom: 8,
+                right: 12,
+                background: "rgba(0,0,0,0.55)",
+                color: "#fff",
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontSize: 11,
+                zIndex: 20,
+                fontStyle: "italic",
+                pointerEvents: "none",
+              }}
+            >
+              Image may have inaccuracies
+            </div>
+            <div
+              style={{
+                position: "absolute",
                 bottom: 12,
                 left: 12,
                 background: "rgba(24,155,151,0.85)",
