@@ -843,8 +843,8 @@ function LightboxBeforeAfter({
           <div
             style={{
               position: "relative",
-              width: originalDims.width ? originalDims.width : "100%",
-              height: originalDims.height ? originalDims.height : 410,
+              width: originalDims.width ? `${originalDims.width}px` : "100%",
+              height: originalDims.height ? `${originalDims.height}px` : "410px",
               maxWidth: "100%",
               maxHeight: 410,
               borderRadius: 8,
@@ -861,31 +861,15 @@ function LightboxBeforeAfter({
               src={fixedScreenshot}
               alt="AI-modified screenshot"
               style={{
-                width: originalDims.width ? originalDims.width : "100%",
-                height: originalDims.height ? originalDims.height : 410,
+                width: originalDims.width ? `${originalDims.width}px` : "100%",
+                height: originalDims.height ? `${originalDims.height}px` : "410px",
                 maxWidth: "100%",
                 maxHeight: 410,
                 objectFit: "contain",
                 display: "block",
               }}
             />
-            <div
-              style={{
-                position: "absolute",
-                bottom: 8,
-                right: 12,
-                background: "rgba(0,0,0,0.55)",
-                color: "#fff",
-                padding: "4px 10px",
-                borderRadius: 6,
-                fontSize: 11,
-                zIndex: 20,
-                fontStyle: "italic",
-                pointerEvents: "none",
-              }}
-            >
-              Image may have inaccuracies
-            </div>
+
             <div
               style={{
                 position: "absolute",
