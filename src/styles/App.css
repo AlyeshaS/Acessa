@@ -458,12 +458,12 @@
 }
 
 .scores {
-  margin-top: 20px;
+  /* margin-top: 20px; */
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  /* gap: 15px; */
   background: var(--white);
-  padding: 20px;
+  /* padding: 20px; */
 }
 
 .hci-report {

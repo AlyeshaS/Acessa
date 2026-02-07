@@ -8,6 +8,147 @@ import { getHighlightTargets } from "../utils/highlightTargets";
 // import VisualImprovementsCard from "../components/VisualImprovementsCard.jsx";
 
 // Reusable circular progress component
+// Segmented donut for issue counts
+function SegmentedDonut({
+  critical = 0,
+  warning = 0,
+  minor = 0,
+  size = 100,
+  strokeWidth = 10,
+}) {
+  const total = critical + warning + minor;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  // Segment proportions
+  const critPct = total ? critical / total : 0;
+  const warnPct = total ? warning / total : 0;
+  const minorPct = total ? minor / total : 0;
+  // Segment angles
+  const critLen = critPct * circumference;
+  const warnLen = warnPct * circumference;
+  const minorLen = minorPct * circumference;
+  // Colors
+  const critColor = "#B3261E";
+  const warnColor = "#B45309";
+  const minorColor = "#475569";
+  const successColor = "#7c8da0";
+  const ringBg = "#E5E7EB";
+  // If no issues, show success ring
+  if (total === 0) {
+    return (
+      <svg width={size} height={size}>
+        <circle
+          stroke={ringBg}
+          strokeWidth={strokeWidth}
+          r={radius}
+          cx={size / 2}
+          cy={size / 2}
+          fill="none"
+        />
+        <circle
+          stroke={successColor}
+          strokeWidth={strokeWidth}
+          r={radius}
+          cx={size / 2}
+          cy={size / 2}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={0}
+        />
+        <text
+          x="50%"
+          y="50%"
+          dominantBaseline="middle"
+          textAnchor="middle"
+          fontSize={size * 0.22}
+          fill={successColor}
+          fontWeight="bold"
+        >
+          0
+        </text>
+      </svg>
+    );
+  }
+  // Draw segments
+  let offset = 0;
+  return (
+    <svg width={size} height={size}>
+      <circle
+        stroke={ringBg}
+        strokeWidth={strokeWidth}
+        r={radius}
+        cx={size / 2}
+        cy={size / 2}
+        fill="none"
+      />
+      {/* Critical segment */}
+      {critical > 0 && (
+        <circle
+          stroke={critColor}
+          strokeWidth={strokeWidth}
+          r={radius}
+          cx={size / 2}
+          cy={size / 2}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{
+            strokeDasharray: `${critLen} ${circumference - critLen}`,
+            transform: `rotate(-90deg)`,
+            transformOrigin: "50% 50%",
+          }}
+        />
+      )}
+      {/* Warning segment */}
+      {warning > 0 && (
+        <circle
+          stroke={warnColor}
+          strokeWidth={strokeWidth}
+          r={radius}
+          cx={size / 2}
+          cy={size / 2}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset + critLen}
+          style={{
+            strokeDasharray: `${warnLen} ${circumference - warnLen}`,
+            transform: `rotate(-90deg)`,
+            transformOrigin: "50% 50%",
+          }}
+        />
+      )}
+      {/* Minor segment */}
+      {minor > 0 && (
+        <circle
+          stroke={minorColor}
+          strokeWidth={strokeWidth}
+          r={radius}
+          cx={size / 2}
+          cy={size / 2}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset + critLen + warnLen}
+          style={{
+            strokeDasharray: `${minorLen} ${circumference - minorLen}`,
+            transform: `rotate(-90deg)`,
+            transformOrigin: "50% 50%",
+          }}
+        />
+      )}
+      <text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize={size * 0.22}
+        fill="#111827"
+        fontWeight="bold"
+      >
+        {total}
+      </text>
+    </svg>
+  );
+}
 function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
   const clamped = Math.max(0, Math.min(100, value)); // 0–100 safety
   const radius = (size - strokeWidth) / 2;
@@ -177,7 +318,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
               width: scaled(currentStep.width),
               height: scaled(currentStep.height),
               borderRadius: "8px",
-              border: `${Math.max(3, Math.round(4 * scale))}px solid #189B97`,
+              border: `${Math.max(3, Math.round(4 * scale))}px solid #7c8da0`,
               boxShadow: `0 0 0 ${Math.round(
                 8 * scale,
               )}px rgba(124,138,160,0.25)`,
@@ -806,7 +947,7 @@ function LightboxBeforeAfter({
                   style={{
                     fontWeight: 700,
                     marginBottom: 6,
-                    color: "#189B97",
+                    color: "#7c8da0",
                   }}
                 >
                   Suggested CSS snippet
@@ -844,7 +985,9 @@ function LightboxBeforeAfter({
             style={{
               position: "relative",
               width: originalDims.width ? `${originalDims.width}px` : "100%",
-              height: originalDims.height ? `${originalDims.height}px` : "410px",
+              height: originalDims.height
+                ? `${originalDims.height}px`
+                : "410px",
               maxWidth: "100%",
               maxHeight: 410,
               borderRadius: 8,
@@ -862,7 +1005,9 @@ function LightboxBeforeAfter({
               alt="AI-modified screenshot"
               style={{
                 width: originalDims.width ? `${originalDims.width}px` : "100%",
-                height: originalDims.height ? `${originalDims.height}px` : "410px",
+                height: originalDims.height
+                  ? `${originalDims.height}px`
+                  : "410px",
                 maxWidth: "100%",
                 maxHeight: 410,
                 objectFit: "contain",
@@ -938,6 +1083,11 @@ function Complete() {
     Understandable: false,
     Robust: false,
   });
+
+  const [activeView, setActiveView] = useState("issues"); // issues | fixed | sideBySide
+  const [filterSeverity, setFilterSeverity] = useState("all"); // all | critical | moderate | minor
+  const [sortBy, setSortBy] = useState("priority"); // priority | name
+  const [expandedItems, setExpandedItems] = useState({});
 
   // AbortController stored in a ref so we can cancel on Back
   const abortRef = useRef(null);
@@ -1455,6 +1605,76 @@ function Complete() {
     }
   };
 
+  // Helper: Toggle expanded state for issue cards
+  const toggleExpanded = (key) => {
+    setExpandedItems((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Helper: Calculate severity counts from violations
+  const calculateSeverityCounts = () => {
+    const counts = { critical: 0, serious: 0, moderate: 0, minor: 0 };
+    if (!analysis?.violations) return counts;
+
+    analysis.violations.forEach((v) => {
+      const impact = (v.impact || "minor").toLowerCase();
+      if (counts.hasOwnProperty(impact)) {
+        counts[impact]++;
+      }
+    });
+
+    return counts;
+  };
+
+  // Helper: Filter and sort violations
+  const getFilteredAndSortedViolations = () => {
+    if (!analysis?.violations) return [];
+
+    let filtered = [...analysis.violations];
+
+    // Filter by severity
+    if (filterSeverity !== "all") {
+      filtered = filtered.filter((v) => {
+        const impact = (v.impact || "minor").toLowerCase();
+        if (filterSeverity === "critical")
+          return impact === "critical" || impact === "serious";
+        if (filterSeverity === "warnings") return impact === "moderate";
+        if (filterSeverity === "minor") return impact === "minor";
+        return true;
+      });
+    }
+
+    // Sort
+    if (sortBy === "priority") {
+      filtered.sort((a, b) => {
+        const severityOrder = {
+          critical: 1,
+          serious: 2,
+          moderate: 3,
+          minor: 4,
+        };
+        const aOrder = severityOrder[(a.impact || "minor").toLowerCase()] || 5;
+        const bOrder = severityOrder[(b.impact || "minor").toLowerCase()] || 5;
+        return aOrder - bOrder;
+      });
+    } else if (sortBy === "name") {
+      filtered.sort((a, b) => {
+        const aTitle = getFriendlyTitle(a.wcagCriterion, a.id);
+        const bTitle = getFriendlyTitle(b.wcagCriterion, b.id);
+        return aTitle.localeCompare(bTitle);
+      });
+    }
+
+    return filtered;
+  };
+
+  const severityCountsFiltered = calculateSeverityCounts();
+  const filteredViolations = getFilteredAndSortedViolations();
+  const totalIssuesCount = analysis?.violations?.length || 0;
+  const accessibilityScoreValue = score !== null ? score : 0;
+
   const groupedByPrinciple = {
     Perceivable: [],
     Operable: [],
@@ -1740,6 +1960,985 @@ function Complete() {
 
         {!loading && !error && !animating && analysis && (
           <>
+            {/* NEW: Two-Column Results Layout */}
+            <div
+              className="results-layout"
+              style={{
+                display: "flex",
+                gap: "24px",
+                marginTop: "32px",
+                minHeight: "600px",
+              }}
+            >
+              {/* LEFT PANEL - Website Preview */}
+              <div
+                className="preview-panel"
+                style={{
+                  flex: 1,
+                  background: "var(--white)",
+                  borderRadius: "16px",
+                  padding: "32px 28px",
+                  boxShadow: "0 6px 32px rgba(30,127,78,0.08)",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  border: "1px solid #e0e7ef",
+                  minHeight: "520px",
+                  marginRight: "auto",
+                }}
+              >
+                <div className="scores">
+                  <h2
+                    style={{
+                      fontSize: "22px",
+                      fontWeight: 700,
+                      color: "#7c8da0",
+                      marginBottom: "18px",
+                      letterSpacing: "-0.5px",
+                    }}
+                  >
+                    Scores
+                  </h2>
+                  <div className="score-body">
+                    <div className="score-content">
+                      <p
+                        className="subheader"
+                        style={{
+                          fontSize: "15px",
+                          color: "#7c8da09",
+                          marginBottom: "10px",
+                          fontWeight: 500,
+                        }}
+                      >
+                        URL:&nbsp;
+                        <a
+                          href={analysis.url || url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="analyzed-url"
+                          style={{
+                            color: "#7c8da0",
+                            textDecoration: "underline",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {analysis.url || url}
+                        </a>
+                      </p>
+                      {score !== null && (
+                        <div
+                          className="overall-score"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "24px",
+                            marginBottom: "18px",
+                          }}
+                        >
+                          <ScoreCircle
+                            value={score}
+                            label="Overall WCAG Score"
+                          />
+                          <div
+                            className="overall-score-text"
+                            style={{
+                              flex: 1,
+                              background: "rgb(255, 255, 255)",
+                              borderRadius: "10px",
+                              padding: "14px 18px",
+                              boxShadow: "0 2px 8px rgba(30,127,78,0.07)",
+                            }}
+                          >
+                            <p
+                              className="subheader"
+                              style={{
+                                fontSize: "15px",
+                                color: "#475569",
+                                fontWeight: 600,
+                                marginBottom: "6px",
+                              }}
+                            >
+                              Overall Accessibility
+                            </p>
+                            <p
+                              className="overall-score-number"
+                              style={{
+                                fontSize: "24px",
+                                color: "#7c8da0",
+                                fontWeight: 700,
+                                marginBottom: "4px",
+                              }}
+                            >
+                              <strong>{score}</strong> / 100
+                            </p>
+                            <p
+                              className="overall-score-hint"
+                              style={{
+                                fontSize: "12px",
+                                color: "#475569",
+                                marginBottom: "0",
+                              }}
+                            >
+                              Higher scores indicate better alignment with WCAG
+                              2.2 and AODA.
+                            </p>
+                            {showScoreDetails && scoreBreakdown && (
+                              <div
+                                style={{
+                                  marginTop: 16,
+                                  padding: 16,
+                                  background: "#f9f9f9",
+                                  borderRadius: 8,
+                                  border: "1px solid #e0e0e0",
+                                }}
+                              >
+                                <h4
+                                  style={{
+                                    margin: "0 0 12px 0",
+                                    fontSize: "13px",
+                                    color: "#7c8da0",
+                                  }}
+                                >
+                                  Score Calculation Breakdown
+                                </h4>
+                                <div
+                                  style={{
+                                    fontSize: "12px",
+                                    lineHeight: "1.8",
+                                  }}
+                                >
+                                  {scoreBreakdown.highCount !== undefined && (
+                                    <div>
+                                      <strong>Severity Distribution:</strong>
+                                      <div
+                                        style={{ marginLeft: 16, marginTop: 8 }}
+                                      >
+                                        <div style={{ marginBottom: 6 }}>
+                                          🔴 <strong>High Severity:</strong>{" "}
+                                          {scoreBreakdown.highCount} violation
+                                          {scoreBreakdown.highCount !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                          ({scoreBreakdown.highCount * 3}{" "}
+                                          points)
+                                        </div>
+                                        <div style={{ marginBottom: 6 }}>
+                                          🟠 <strong>Medium Severity:</strong>{" "}
+                                          {scoreBreakdown.mediumCount} violation
+                                          {scoreBreakdown.mediumCount !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                          ({scoreBreakdown.mediumCount * 2}{" "}
+                                          points)
+                                        </div>
+                                        <div style={{ marginBottom: 6 }}>
+                                          🟡 <strong>Low Severity:</strong>{" "}
+                                          {scoreBreakdown.lowCount} violation
+                                          {scoreBreakdown.lowCount !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                          ({scoreBreakdown.lowCount * 1} point
+                                          {scoreBreakdown.lowCount !== 1
+                                            ? "s"
+                                            : ""}
+                                          )
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {scoreBreakdown.deductedPoints !==
+                                    undefined && (
+                                    <div
+                                      style={{
+                                        marginTop: 12,
+                                        paddingTop: 12,
+                                        borderTop: "1px solid #ddd",
+                                      }}
+                                    >
+                                      <strong>Points Calculation:</strong>
+                                      <div
+                                        style={{ marginLeft: 16, marginTop: 8 }}
+                                      >
+                                        <div
+                                          style={{
+                                            marginBottom: 4,
+                                            color: "#555",
+                                          }}
+                                        >
+                                          {scoreBreakdown.explanation}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div
+                        className="category-section"
+                        style={{
+                          marginTop: "18px",
+                        }}
+                      >
+                        <p
+                          className="subheader"
+                          style={{
+                            fontSize: "14px",
+                            color: "#475569",
+                            fontWeight: 500,
+                            marginBottom: "10px",
+                          }}
+                        >
+                          Category Scores (WCAG 2.2 – POUR)
+                        </p>
+                        <div
+                          className="category-grid"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, 1fr)",
+                            gap: "18px",
+                          }}
+                        >
+                          {categories.map(
+                            (cat) =>
+                              cat.score !== null && (
+                                <div
+                                  className="category-card"
+                                  key={cat.key}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => toggleCategory(cat.key)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      toggleCategory(cat.key);
+                                    }
+                                  }}
+                                  style={{
+                                    background: "#fff",
+                                    borderRadius: "8px",
+                                    boxShadow: "0 2px 8px rgba(30,127,78,0.07)",
+                                    padding: "12px 10px",
+                                    border: "1px solid #e0e7ef",
+                                    cursor: "pointer",
+                                    transition: "box-shadow 0.2s",
+                                  }}
+                                >
+                                  <div
+                                    className="category-header"
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      marginBottom: "8px",
+                                    }}
+                                  >
+                                    <div
+                                      className="category-header-main"
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                      }}
+                                    >
+                                      <span
+                                        className="category-title"
+                                        style={{
+                                          fontSize: "15px",
+                                          color: "#7c8da0",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {cat.key}
+                                      </span>
+                                      <span
+                                        className="category-score-label"
+                                        style={{
+                                          fontSize: "15px",
+                                          color: "#475569",
+                                          // fontWeight: 700,
+                                        }}
+                                      >
+                                        {cat.score}%
+                                      </span>
+                                    </div>
+                                    <span
+                                      className={
+                                        expandedCategories[cat.key]
+                                          ? "chevron chevron-open"
+                                          : "chevron"
+                                      }
+                                      aria-hidden="true"
+                                      style={{
+                                        fontSize: "18px",
+                                        color: "#475569",
+                                        marginLeft: "6px",
+                                      }}
+                                    >
+                                      ▾
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="category-circle-wrapper"
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "center",
+                                      marginBottom: "8px",
+                                    }}
+                                  >
+                                    <ScoreCircle
+                                      value={cat.score}
+                                      size={100}
+                                      strokeWidth={10}
+                                      label={`${cat.key} score`}
+                                    />
+                                  </div>
+                                  {expandedCategories[cat.key] && (
+                                    <div
+                                      className="category-details category-details-open"
+                                      style={{
+                                        background: "#f5f5f5",
+                                        padding: "12px",
+                                        borderRadius: "8px",
+                                        marginBottom: "12px",
+                                        fontSize: "13px",
+                                        lineHeight: "1.6",
+                                        borderLeft: "4px solid #7c8da0",
+                                      }}
+                                    >
+                                      {categoryExplanations[cat.key] && (
+                                        <div>
+                                          <strong style={{ color: "#7c8da0" }}>
+                                            Why this score:
+                                          </strong>
+                                          <p
+                                            style={{
+                                              margin: "8px 0 0 0",
+                                              whiteSpace: "pre-wrap",
+                                            }}
+                                          >
+                                            {categoryExplanations[cat.key]}
+                                          </p>
+                                        </div>
+                                      )}
+                                      <p className="category-details-intro">
+                                        WCAG issues related to{" "}
+                                        {cat.key.toLowerCase()}:
+                                      </p>
+                                      {groupedByPrinciple[cat.key] &&
+                                      groupedByPrinciple[cat.key].length > 0 ? (
+                                        groupedByPrinciple[cat.key].map(
+                                          (g, idx) => (
+                                            <div
+                                              key={idx}
+                                              className="issue-item"
+                                            >
+                                              <p>
+                                                <strong>
+                                                  {g.wcagCriterion ||
+                                                    "Unspecified criterion"}
+                                                </strong>
+                                                {g.severity && (
+                                                  <span>
+                                                    {" "}
+                                                    • {g.severity} severity
+                                                  </span>
+                                                )}
+                                                {typeof g.count ===
+                                                  "number" && (
+                                                  <span>
+                                                    {" "}
+                                                    • approx. {g.count}{" "}
+                                                    occurrence
+                                                    {g.count === 1 ? "" : "s"}
+                                                  </span>
+                                                )}
+                                              </p>
+                                              {g.problem && (
+                                                <p className="issue-problem">
+                                                  <strong>Problem:</strong>{" "}
+                                                  {g.problem}
+                                                </p>
+                                              )}
+                                              {g.recommendation && (
+                                                <p className="issue-recommendation">
+                                                  <strong>
+                                                    Recommendation:
+                                                  </strong>{" "}
+                                                  {g.recommendation}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ),
+                                        )
+                                      ) : (
+                                        <p className="no-issues">
+                                          No specific WCAG issues were
+                                          identified for this category.
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ),
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT PANEL - Accessibility Issues */}
+              <div
+                style={{
+                  width: "480px",
+                  background: "#fff",
+                  borderRadius: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                }}
+              >
+                {/* Fixed Header */}
+                <div
+                  style={{
+                    padding: "24px",
+                    borderBottom: "1px solid #e5e7eb",
+                    flexShrink: 0,
+                  }}
+                >
+                  <h2
+                    style={{
+                      margin: "0 0 20px 0",
+                      fontSize: "13px",
+                      color: "#4B5563",
+                    }}
+                  >
+                    <strong>Total Issues:</strong> {totalIssues}
+                    <br />
+                    <span style={{ fontSize: "12px", color: "#4B5563" }}>
+                      <strong>Conformance Levels:</strong>
+                      {levelAScore !== null && (
+                        <>
+                          {" "}
+                          Level A: <strong>{levelAScore}</strong>%
+                        </>
+                      )}
+                      {levelAAScore !== null && (
+                        <>
+                          {" "}
+                          &nbsp;Level AA: <strong>{levelAAScore}</strong>%
+                        </>
+                      )}
+                      {levelAAAScore !== null && (
+                        <>
+                          {" "}
+                          &nbsp;Level AAA: <strong>{levelAAAScore}</strong>%
+                        </>
+                      )}
+                    </span>
+                    Accessibility Issues
+                  </h2>
+                  <p
+                    style={{
+                      margin: "0 0 20px 0",
+                      fontSize: "13px",
+                      color: "#4B5563",
+                    }}
+                  >
+                    {totalIssuesCount} issue{totalIssuesCount !== 1 ? "s" : ""}{" "}
+                    found • Sorted by {sortBy}
+                  </p>
+
+                  {/* Score Circle */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "24px",
+                      marginBottom: "24px",
+                      padding: "20px",
+                      background: "#E5E7EB",
+                      borderRadius: "12px",
+                    }}
+                  >
+                    <div style={{ flexShrink: 0 }}>
+                      {/* Segmented Donut for Issue Counts */}
+                      <SegmentedDonut
+                        critical={
+                          severityCountsFiltered.critical +
+                          severityCountsFiltered.serious
+                        }
+                        warning={severityCountsFiltered.moderate}
+                        minor={severityCountsFiltered.minor}
+                        size={100}
+                        strokeWidth={10}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            background: "#B3261E",
+                          }}
+                        ></span>
+                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
+                          {severityCountsFiltered.critical +
+                            severityCountsFiltered.serious}{" "}
+                          Critical issues
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            background: "#B45309",
+                          }}
+                        ></span>
+                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
+                          {severityCountsFiltered.moderate} Warnings
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            background: "#475569",
+                          }}
+                        ></span>
+                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
+                          {severityCountsFiltered.minor} Minor issues
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter Controls */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: "4px", flex: 1 }}>
+                      {["all", "critical", "warnings", "minor"].map(
+                        (filter) => (
+                          <button
+                            key={filter}
+                            onClick={() => setFilterSeverity(filter)}
+                            style={{
+                              padding: "8px 16px",
+                              background:
+                                filterSeverity === filter
+                                  ? "#1f2937"
+                                  : "transparent",
+                              color:
+                                filterSeverity === filter ? "#fff" : "#6b7280",
+                              border: "none",
+                              borderRadius: "6px",
+                              fontSize: "13px",
+                              fontWeight: "500",
+                              cursor: "pointer",
+                              transition: "all 0.2s",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {filter}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      style={{
+                        padding: "8px 12px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        background: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="priority">Sort: Priority</option>
+                      <option value="name">Sort: Name</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Scrollable Issues List */}
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: "auto",
+                    padding: "16px 24px 24px",
+                  }}
+                >
+                  {filteredViolations.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "60px 20px",
+                        textAlign: "center",
+                        color: "#9ca3af",
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: "14px" }}>
+                        No issues found matching the current filter.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredViolations.map((violation, vIdx) => {
+                      const itemKey = `violation-${vIdx}`;
+                      const isExpanded = expandedItems[itemKey];
+                      const friendlyTitle = getFriendlyTitle(
+                        violation.wcagCriterion,
+                        violation.id,
+                      );
+                      const severityColor =
+                        violation.impact === "critical" ||
+                        violation.impact === "serious"
+                          ? "#B3261E"
+                          : violation.impact === "moderate"
+                            ? "#B45309"
+                            : "#475569";
+
+                      return (
+                        <div
+                          key={itemKey}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #e5e7eb",
+                            borderLeft: `4px solid ${severityColor}`,
+                            borderRadius: "8px",
+                            marginBottom: "12px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {/* Card Header */}
+                          <div
+                            onClick={() => toggleExpanded(itemKey)}
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                              padding: "16px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "12px",
+                                flex: 1,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  marginTop: "4px",
+                                  width: "18px",
+                                  height: "18px",
+                                  cursor: "pointer",
+                                }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "10px",
+                                    marginBottom: "8px",
+                                  }}
+                                >
+                                  <h3
+                                    style={{
+                                      margin: 0,
+                                      fontSize: "15px",
+                                      fontWeight: "600",
+                                    }}
+                                  >
+                                    {friendlyTitle}
+                                  </h3>
+                                  <span
+                                    style={{
+                                      padding: "2px 8px",
+                                      borderRadius: "4px",
+                                      fontSize: "10px",
+                                      fontWeight: "700",
+                                      color: "#fff",
+                                      background: severityColor,
+                                      letterSpacing: "0.5px",
+                                    }}
+                                  >
+                                    {(
+                                      violation.impact || "MINOR"
+                                    ).toUpperCase()}
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: "12px",
+                                    fontSize: "12px",
+                                    color: "#4B5563",
+                                  }}
+                                >
+                                  <span>⏱️ ~5 min fix</span>
+                                  <span>
+                                    📋 {violation.wcagCriterion || violation.id}
+                                  </span>
+                                  <span>🌐 All pages</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "#9ca3af",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                padding: "4px 8px",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {isExpanded ? "▼" : "▶"}
+                            </button>
+                          </div>
+
+                          {/* Card Body (Expanded) */}
+                          {isExpanded && (
+                            <div
+                              style={{
+                                padding: "0 16px 16px 46px",
+                                borderTop: "1px solid #f3f4f6",
+                                paddingTop: "16px",
+                              }}
+                            >
+                              {/* WCAG Criterion */}
+                              <div style={{ marginBottom: "16px" }}>
+                                <h4
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    color: "#9ca3af",
+                                    letterSpacing: "0.5px",
+                                    margin: "0 0 8px 0",
+                                  }}
+                                >
+                                  WCAG CRITERION
+                                </h4>
+                                <a
+                                  href={`https://www.w3.org/WAI/WCAG21/Understanding/${violation.wcagCriterion}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "13px",
+                                    color: "#7c8da0",
+                                    textDecoration: "none",
+                                    fontWeight: "500",
+                                  }}
+                                >
+                                  {violation.wcagCriterion || violation.id}
+                                </a>
+                              </div>
+
+                              {/* Problem Description */}
+                              <div style={{ marginBottom: "16px" }}>
+                                <h4
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    color: "#9ca3af",
+                                    letterSpacing: "0.5px",
+                                    margin: "0 0 8px 0",
+                                  }}
+                                >
+                                  PROBLEM DESCRIPTION
+                                </h4>
+                                <p
+                                  style={{
+                                    fontSize: "13px",
+                                    lineHeight: "1.6",
+                                    color: "#4b5563",
+                                    margin: 0,
+                                  }}
+                                >
+                                  {violation.description ||
+                                    violation.help ||
+                                    "No description available."}
+                                </p>
+                              </div>
+
+                              {/* Step-by-step Fix */}
+                              <div style={{ marginBottom: "16px" }}>
+                                <h4
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    color: "#9ca3af",
+                                    letterSpacing: "0.5px",
+                                    margin: "0 0 8px 0",
+                                  }}
+                                >
+                                  STEP-BY-STEP FIX
+                                </h4>
+                                <ol
+                                  style={{
+                                    margin: 0,
+                                    paddingLeft: "20px",
+                                    fontSize: "13px",
+                                    lineHeight: "1.8",
+                                    color: "#4b5563",
+                                  }}
+                                >
+                                  <li style={{ marginBottom: "6px" }}>
+                                    Review the highlighted element in the
+                                    preview
+                                  </li>
+                                  <li style={{ marginBottom: "6px" }}>
+                                    Apply the suggested accessibility
+                                    improvements
+                                  </li>
+                                  <li>
+                                    Test with keyboard navigation and screen
+                                    readers
+                                  </li>
+                                </ol>
+                              </div>
+
+                              {/* Affected Elements */}
+                              <div>
+                                <h4
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: "700",
+                                    color: "#9ca3af",
+                                    letterSpacing: "0.5px",
+                                    margin: "0 0 8px 0",
+                                  }}
+                                >
+                                  AFFECTED ELEMENTS
+                                </h4>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(3, 1fr)",
+                                    gap: "8px",
+                                  }}
+                                >
+                                  {violation.nodes?.slice(0, 3).map(
+                                    (node, nIdx) =>
+                                      node.screenshot && (
+                                        <div
+                                          key={nIdx}
+                                          onClick={() => {
+                                            // Use existing lightbox logic
+                                            const aiFeedback = {
+                                              summary:
+                                                violation.description ||
+                                                violation.help,
+                                              recommendation: violation.help,
+                                            };
+                                            setSelectedViolation(violation);
+                                            setLightbox({
+                                              idx: vIdx,
+                                              screenshot: node.screenshot,
+                                              violation: violation,
+                                              violations: [violation],
+                                              severityColor,
+                                              aiFeedback,
+                                              scrollY: node.scrollY || 0,
+                                              url: analysis.url || url,
+                                            });
+                                          }}
+                                          style={{
+                                            position: "relative",
+                                            aspectRatio: "16 / 10",
+                                            borderRadius: "6px",
+                                            overflow: "hidden",
+                                            cursor: "pointer",
+                                            border: "2px solid #e5e7eb",
+                                            transition: "all 0.2s",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.borderColor =
+                                              "#7c8da0";
+                                            e.currentTarget.style.transform =
+                                              "scale(1.05)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.borderColor =
+                                              "#e5e7eb";
+                                            e.currentTarget.style.transform =
+                                              "scale(1)";
+                                          }}
+                                        >
+                                          <img
+                                            src={node.screenshot}
+                                            alt={`Violation screenshot ${nIdx + 1}`}
+                                            style={{
+                                              width: "100%",
+                                              height: "100%",
+                                              objectFit: "cover",
+                                              display: "block",
+                                            }}
+                                          />
+                                        </div>
+                                      ),
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
             <div className="scores">
               <h2>Scores</h2>
               <div className="score-body">
@@ -1784,7 +2983,7 @@ function Complete() {
                               style={{
                                 margin: "0 0 12px 0",
                                 fontSize: "13px",
-                                color: "#189B97",
+                                color: "#7c8da0",
                               }}
                             >
                               Score Calculation Breakdown
@@ -1919,10 +3118,10 @@ function Complete() {
                                         marginBottom: "12px",
                                         fontSize: "13px",
                                         lineHeight: "1.6",
-                                        borderLeft: "4px solid #189B97",
+                                        borderLeft: "4px solid #7c8da0",
                                       }}
                                     >
-                                      <strong style={{ color: "#189B97" }}>
+                                      <strong style={{ color: "#7c8da0" }}>
                                         Why this score:
                                       </strong>
                                       <p
@@ -2401,7 +3600,7 @@ function Complete() {
                           >
                             <p
                               className="lightbox-text"
-                              style={{ fontWeight: 600, color: "#189B97" }}
+                              style={{ fontWeight: 600, color: "#7c8da0" }}
                             >
                               Other issues in this screenshot
                             </p>
