@@ -195,7 +195,7 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
           {clamped}
         </text>
       </svg>
-      {label && <p className="score-circle-label">{label}</p>}
+      {label && <p className="score-circle-label">{label}%</p>}
     </div>
   );
 }
@@ -1727,6 +1727,84 @@ function Complete() {
     });
   };
 
+  const InfoTooltip = ({ label, description }) => {
+    return (
+      <span
+        tabIndex={0}
+        aria-label={label}
+        style={{
+          position: "relative",
+          display: "inline-flex",
+          alignItems: "center",
+          cursor: "help",
+          outline: "none",
+        }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.querySelector(".tooltip").style.display = "block")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.querySelector(".tooltip").style.display = "none")
+        }
+        onFocus={(e) =>
+          (e.currentTarget.querySelector(".tooltip").style.display = "block")
+        }
+        onBlur={(e) =>
+          (e.currentTarget.querySelector(".tooltip").style.display = "none")
+        }
+      >
+        {/* Info Icon */}
+        <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
+          <circle
+            cx="10"
+            cy="10"
+            r="9"
+            fill="#ffffff"
+            stroke="#64748b"
+            strokeWidth="2"
+          />
+          <text
+            x="10"
+            y="14"
+            textAnchor="middle"
+            fontSize="12"
+            fontFamily="Arial"
+            fontWeight="bold"
+            fill="#64748b"
+          >
+            i
+          </text>
+        </svg>
+
+        {/* Tooltip */}
+        <div
+          className="tooltip"
+          role="tooltip"
+          style={{
+            display: "none",
+            position: "absolute",
+            top: "130%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#ffffff",
+            color: "#1f2937",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            padding: "10px 12px",
+            fontSize: "12px",
+            lineHeight: 1.5,
+            width: "220px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+            zIndex: 100,
+            pointerEvents: "none",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 4 }}>{label}</strong>
+          {description}
+        </div>
+      </span>
+    );
+  };
+
   const categories = [
     { key: "Perceivable", score: perceivableScore },
     { key: "Operable", score: operableScore },
@@ -1769,6 +1847,10 @@ function Complete() {
     return friendlyTitles[key] || criterion || id || "Accessibility Issue";
   };
 
+  // --- Donut hover state for HCI keyword donut ---
+  const [donutHover, setDonutHover] = React.useState(null); // { label, percent, x, y }
+  // Website Preview toggle state
+  const [previewMode, setPreviewMode] = React.useState("highlighted");
   return (
     <>
       <div className="navbar">
@@ -1975,10 +2057,10 @@ function Complete() {
                 className="preview-panel"
                 style={{
                   flex: 1,
-                  background: "var(--white)",
+                  background: "#fff",
                   borderRadius: "16px",
-                  padding: "32px 28px",
-                  boxShadow: "0 6px 32px rgba(30,127,78,0.08)",
+                  padding: "20px 24px",
+                  boxShadow: "var(--color-accent)",
                   overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
@@ -2043,10 +2125,10 @@ function Complete() {
                             className="overall-score-text"
                             style={{
                               flex: 1,
-                              background: "rgb(255, 255, 255)",
+                              background: "var(--white)",
                               borderRadius: "10px",
                               padding: "14px 18px",
-                              boxShadow: "0 2px 8px rgba(30,127,78,0.07)",
+                              boxShadow: "var(--color-accent)",
                             }}
                           >
                             <p
@@ -2217,9 +2299,9 @@ function Complete() {
                                     }
                                   }}
                                   style={{
-                                    background: "#fff",
+                                    background: "var(--white)",
                                     borderRadius: "8px",
-                                    boxShadow: "0 2px 8px rgba(30,127,78,0.07)",
+                                    boxShadow: "var(--color-accent)",
                                     padding: "12px 10px",
                                     border: "1px solid #e0e7ef",
                                     cursor: "pointer",
@@ -2253,7 +2335,7 @@ function Complete() {
                                       >
                                         {cat.key}
                                       </span>
-                                      <span
+                                      {/* <span
                                         className="category-score-label"
                                         style={{
                                           fontSize: "15px",
@@ -2262,7 +2344,7 @@ function Complete() {
                                         }}
                                       >
                                         {cat.score}%
-                                      </span>
+                                      </span> */}
                                     </div>
                                     <span
                                       className={
@@ -2391,555 +2473,438 @@ function Complete() {
                 </div>
               </div>
 
-              {/* RIGHT PANEL - Accessibility Issues */}
+              {/* RIGHT PANEL – Accessibility Issues */}
               <div
                 style={{
                   width: "480px",
-                  background: "#fff",
-                  borderRadius: "12px",
+                  background: "#ffffff",
+                  borderRadius: "14px",
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                  boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
                 }}
               >
-                {/* Fixed Header */}
+                {/* ================= SUMMARY HEADER ================= */}
                 <div
                   style={{
-                    padding: "24px",
+                    padding: "20px 24px",
+                    background: "linear-gradient(180deg, #f8fafc, #ffffff)",
                     borderBottom: "1px solid #e5e7eb",
-                    flexShrink: 0,
                   }}
                 >
                   <h2
                     style={{
-                      margin: "0 0 20px 0",
-                      fontSize: "13px",
-                      color: "#4B5563",
+                      margin: "0 0 16px 0",
+                      fontSize: 22,
+                      fontWeight: 700,
+                      letterSpacing: "-0.5px",
+                      color: "var(--color-accent)",
                     }}
                   >
-                    <strong>Total Issues:</strong> {totalIssues}
-                    <br />
-                    <span style={{ fontSize: "12px", color: "#4B5563" }}>
-                      <strong>Conformance Levels:</strong>
-                      {levelAScore !== null && (
-                        <>
-                          {" "}
-                          Level A: <strong>{levelAScore}</strong>%
-                        </>
-                      )}
-                      {levelAAScore !== null && (
-                        <>
-                          {" "}
-                          &nbsp;Level AA: <strong>{levelAAScore}</strong>%
-                        </>
-                      )}
-                      {levelAAAScore !== null && (
-                        <>
-                          {" "}
-                          &nbsp;Level AAA: <strong>{levelAAAScore}</strong>%
-                        </>
-                      )}
-                    </span>
                     Accessibility Issues
                   </h2>
-                  <p
-                    style={{
-                      margin: "0 0 20px 0",
-                      fontSize: "13px",
-                      color: "#4B5563",
-                    }}
-                  >
-                    {totalIssuesCount} issue{totalIssuesCount !== 1 ? "s" : ""}{" "}
-                    found • Sorted by {sortBy}
-                  </p>
 
-                  {/* Score Circle */}
                   <div
                     style={{
                       display: "flex",
+                      justifyContent: "space-between",
                       alignItems: "center",
-                      gap: "24px",
-                      marginBottom: "24px",
-                      padding: "20px",
-                      background: "#E5E7EB",
-                      borderRadius: "12px",
+                      gap: "16px",
                     }}
                   >
-                    <div style={{ flexShrink: 0 }}>
-                      {/* Segmented Donut for Issue Counts */}
-                      <SegmentedDonut
-                        critical={
-                          severityCountsFiltered.critical +
-                          severityCountsFiltered.serious
-                        }
-                        warning={severityCountsFiltered.moderate}
-                        minor={severityCountsFiltered.minor}
-                        size={100}
-                        strokeWidth={10}
-                      />
-                    </div>
+                    {/* Total Issues */}
                     <div
                       style={{
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
+                        background: "#f1f5f9",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        minWidth: "120px",
+                        boxShadow: "var(--color-accent)",
                       }}
                     >
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#64748b",
                         }}
                       >
-                        <span
-                          style={{
-                            width: "12px",
-                            height: "12px",
-                            borderRadius: "50%",
-                            background: "#B3261E",
-                          }}
-                        ></span>
-                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
-                          {severityCountsFiltered.critical +
-                            severityCountsFiltered.serious}{" "}
-                          Critical issues
-                        </span>
+                        TOTAL ISSUES
                       </div>
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
+                          fontSize: 28,
+                          fontWeight: 900,
+                          lineHeight: 1,
+                          color: totalIssuesCount === 0 ? "#16a34a" : "#b3261e",
                         }}
                       >
-                        <span
-                          style={{
-                            width: "12px",
-                            height: "12px",
-                            borderRadius: "50%",
-                            background: "#B45309",
-                          }}
-                        ></span>
-                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
-                          {severityCountsFiltered.moderate} Warnings
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: "12px",
-                            height: "12px",
-                            borderRadius: "50%",
-                            background: "#475569",
-                          }}
-                        ></span>
-                        <span style={{ fontSize: "13px", fontWeight: "500" }}>
-                          {severityCountsFiltered.minor} Minor issues
-                        </span>
+                        {totalIssuesCount}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Filter Controls */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: "4px", flex: 1 }}>
-                      {["all", "critical", "warnings", "minor"].map(
-                        (filter) => (
-                          <button
-                            key={filter}
-                            onClick={() => setFilterSeverity(filter)}
-                            style={{
-                              padding: "8px 16px",
-                              background:
-                                filterSeverity === filter
-                                  ? "#1f2937"
-                                  : "transparent",
-                              color:
-                                filterSeverity === filter ? "#fff" : "#6b7280",
-                              border: "none",
-                              borderRadius: "6px",
-                              fontSize: "13px",
-                              fontWeight: "500",
-                              cursor: "pointer",
-                              transition: "all 0.2s",
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {filter}
-                          </button>
-                        ),
-                      )}
+                    {/* Conformance Levels */}
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#64748b",
+                          marginBottom: 6,
+                        }}
+                      >
+                        CONFORMANCE LEVELS
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {/* Level A */}
+                        <span
+                          style={{
+                            background: "#f1f5f9",
+                            border: "1px solid #475569",
+                            color: "#475569",
+                            padding: "6px 12px",
+                            borderRadius: "999px",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          A: {levelAScore ?? "-"}%
+                          <InfoTooltip
+                            label="Level A"
+                            description="The minimum WCAG conformance level. Addresses the most basic accessibility barriers that prevent some users from accessing content."
+                          />
+                        </span>
+
+                        {/* Level AA */}
+                        <span
+                          style={{
+                            background: "#fff7ed",
+                            border: "1px solid #b45309",
+                            color: "#b45309",
+                            padding: "6px 12px",
+                            borderRadius: "999px",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          AA: {levelAAScore ?? "-"}%
+                          <InfoTooltip
+                            label="Level AA"
+                            description="The most widely adopted WCAG level. Addresses the most common and impactful accessibility issues affecting users with disabilities."
+                          />
+                        </span>
+
+                        {/* Level AAA */}
+                        <span
+                          style={{
+                            background: "#ecfeff",
+                            border: "1px solid #0ea5a4",
+                            color: "#0ea5a4",
+                            padding: "6px 12px",
+                            borderRadius: "999px",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          AAA: {levelAAAScore ?? "-"}%
+                          <InfoTooltip
+                            label="Level AAA"
+                            description="The highest WCAG conformance level. Represents optimal accessibility but can be difficult to achieve across all content."
+                          />
+                        </span>
+                      </div>
                     </div>
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
-                      style={{
-                        padding: "8px 12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        fontSize: "13px",
-                        background: "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="priority">Sort: Priority</option>
-                      <option value="name">Sort: Name</option>
-                    </select>
                   </div>
                 </div>
 
-                {/* Scrollable Issues List */}
+                {/* ================= DONUT + LEGEND ================= */}
+                <div
+                  style={{
+                    padding: "20px 24px",
+                    borderBottom: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "#f8fafc",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "14px",
+                      padding: "16px",
+                      display: "flex",
+                      gap: "20px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <SegmentedDonut
+                      critical={
+                        severityCountsFiltered.critical +
+                        severityCountsFiltered.serious
+                      }
+                      warning={severityCountsFiltered.moderate}
+                      minor={severityCountsFiltered.minor}
+                      size={96}
+                      strokeWidth={10}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                      }}
+                    >
+                      {[
+                        {
+                          label: "Critical",
+                          value:
+                            severityCountsFiltered.critical +
+                            severityCountsFiltered.serious,
+                          color: "#B3261E",
+                        },
+                        {
+                          label: "Warnings",
+                          value: severityCountsFiltered.moderate,
+                          color: "#B45309",
+                        },
+                        {
+                          label: "Minor",
+                          value: severityCountsFiltered.minor,
+                          color: "#475569",
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: item.color,
+                            }}
+                          />
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>
+                            {item.value} {item.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ================= FILTERS ================= */}
+                <div
+                  style={{
+                    padding: "16px 24px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {["all", "critical", "warnings", "minor"].map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setFilterSeverity(filter)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "999px",
+                          border: "none",
+                          background:
+                            filterSeverity === filter ? "#1f2937" : "#f1f5f9",
+                          color:
+                            filterSeverity === filter ? "#ffffff" : "#475569",
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: "8px",
+                      border: "1px solid #d1d5db",
+                      fontSize: 13,
+                      background: "#ffffff",
+                    }}
+                  >
+                    <option value="priority">Sort: Priority</option>
+                    <option value="name">Sort: Name</option>
+                  </select>
+                </div>
+
+                {/* ================= ISSUES LIST ================= */}
                 <div
                   style={{
                     flex: 1,
                     overflowY: "auto",
-                    padding: "16px 24px 24px",
+                    padding: "0 24px 24px",
                   }}
                 >
-                  {filteredViolations.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "60px 20px",
-                        textAlign: "center",
-                        color: "#9ca3af",
-                      }}
-                    >
-                      <p style={{ margin: 0, fontSize: "14px" }}>
-                        No issues found matching the current filter.
-                      </p>
-                    </div>
-                  ) : (
-                    filteredViolations.map((violation, vIdx) => {
-                      const itemKey = `violation-${vIdx}`;
-                      const isExpanded = expandedItems[itemKey];
-                      const friendlyTitle = getFriendlyTitle(
-                        violation.wcagCriterion,
-                        violation.id,
-                      );
-                      const severityColor =
-                        violation.impact === "critical" ||
-                        violation.impact === "serious"
-                          ? "#B3261E"
-                          : violation.impact === "moderate"
-                            ? "#B45309"
-                            : "#475569";
+                  {filteredViolations.map((violation, vIdx) => {
+                    const key = `violation-${vIdx}`;
+                    const isExpanded = expandedItems[key];
+                    const severityColor =
+                      violation.impact === "critical" ||
+                      violation.impact === "serious"
+                        ? "#B3261E"
+                        : violation.impact === "moderate"
+                          ? "#B45309"
+                          : "#475569";
 
-                      return (
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderLeft: `4px solid ${severityColor}`,
+                          borderRadius: "12px",
+                          marginBottom: "12px",
+                          background: "#ffffff",
+                          transition: "box-shadow 0.2s",
+                        }}
+                      >
+                        {/* Card Header */}
                         <div
-                          key={itemKey}
+                          onClick={() => toggleExpanded(key)}
                           style={{
-                            background: "#fff",
-                            border: "1px solid #e5e7eb",
-                            borderLeft: `4px solid ${severityColor}`,
-                            borderRadius: "8px",
-                            marginBottom: "12px",
-                            overflow: "hidden",
+                            padding: "14px 16px",
+                            cursor: "pointer",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
                           }}
                         >
-                          {/* Card Header */}
-                          <div
-                            onClick={() => toggleExpanded(itemKey)}
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              justifyContent: "space-between",
-                              padding: "16px",
-                              cursor: "pointer",
-                            }}
-                          >
+                          <div>
                             <div
                               style={{
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: "12px",
-                                flex: 1,
+                                fontSize: 15,
+                                fontWeight: 700,
+                                marginBottom: 6,
                               }}
                             >
-                              <input
-                                type="checkbox"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                  marginTop: "4px",
-                                  width: "18px",
-                                  height: "18px",
-                                  cursor: "pointer",
-                                }}
-                              />
-                              <div style={{ flex: 1 }}>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "10px",
-                                    marginBottom: "8px",
-                                  }}
-                                >
-                                  <h3
-                                    style={{
-                                      margin: 0,
-                                      fontSize: "15px",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    {friendlyTitle}
-                                  </h3>
-                                  <span
-                                    style={{
-                                      padding: "2px 8px",
-                                      borderRadius: "4px",
-                                      fontSize: "10px",
-                                      fontWeight: "700",
-                                      color: "#fff",
-                                      background: severityColor,
-                                      letterSpacing: "0.5px",
-                                    }}
-                                  >
-                                    {(
-                                      violation.impact || "MINOR"
-                                    ).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: "12px",
-                                    fontSize: "12px",
-                                    color: "#4B5563",
-                                  }}
-                                >
-                                  <span>⏱️ ~5 min fix</span>
-                                  <span>
-                                    📋 {violation.wcagCriterion || violation.id}
-                                  </span>
-                                  <span>🌐 All pages</span>
-                                </div>
-                              </div>
+                              {getFriendlyTitle(
+                                violation.wcagCriterion,
+                                violation.id,
+                              )}
                             </div>
-                            <button
+                            <div
                               style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "#9ca3af",
-                                fontSize: "12px",
-                                cursor: "pointer",
-                                padding: "4px 8px",
-                                marginTop: "4px",
+                                fontSize: 12,
+                                color: "#64748b",
                               }}
                             >
-                              {isExpanded ? "▼" : "▶"}
-                            </button>
+                              {violation.wcagCriterion || violation.id}
+                            </div>
                           </div>
 
-                          {/* Card Body (Expanded) */}
-                          {isExpanded && (
-                            <div
-                              style={{
-                                padding: "0 16px 16px 46px",
-                                borderTop: "1px solid #f3f4f6",
-                                paddingTop: "16px",
-                              }}
-                            >
-                              {/* WCAG Criterion */}
-                              <div style={{ marginBottom: "16px" }}>
-                                <h4
-                                  style={{
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    color: "#9ca3af",
-                                    letterSpacing: "0.5px",
-                                    margin: "0 0 8px 0",
-                                  }}
-                                >
-                                  WCAG CRITERION
-                                </h4>
-                                <a
-                                  href={`https://www.w3.org/WAI/WCAG21/Understanding/${violation.wcagCriterion}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    fontSize: "13px",
-                                    color: "#7c8da0",
-                                    textDecoration: "none",
-                                    fontWeight: "500",
-                                  }}
-                                >
-                                  {violation.wcagCriterion || violation.id}
-                                </a>
-                              </div>
-
-                              {/* Problem Description */}
-                              <div style={{ marginBottom: "16px" }}>
-                                <h4
-                                  style={{
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    color: "#9ca3af",
-                                    letterSpacing: "0.5px",
-                                    margin: "0 0 8px 0",
-                                  }}
-                                >
-                                  PROBLEM DESCRIPTION
-                                </h4>
-                                <p
-                                  style={{
-                                    fontSize: "13px",
-                                    lineHeight: "1.6",
-                                    color: "#4b5563",
-                                    margin: 0,
-                                  }}
-                                >
-                                  {violation.description ||
-                                    violation.help ||
-                                    "No description available."}
-                                </p>
-                              </div>
-
-                              {/* Step-by-step Fix */}
-                              <div style={{ marginBottom: "16px" }}>
-                                <h4
-                                  style={{
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    color: "#9ca3af",
-                                    letterSpacing: "0.5px",
-                                    margin: "0 0 8px 0",
-                                  }}
-                                >
-                                  STEP-BY-STEP FIX
-                                </h4>
-                                <ol
-                                  style={{
-                                    margin: 0,
-                                    paddingLeft: "20px",
-                                    fontSize: "13px",
-                                    lineHeight: "1.8",
-                                    color: "#4b5563",
-                                  }}
-                                >
-                                  <li style={{ marginBottom: "6px" }}>
-                                    Review the highlighted element in the
-                                    preview
-                                  </li>
-                                  <li style={{ marginBottom: "6px" }}>
-                                    Apply the suggested accessibility
-                                    improvements
-                                  </li>
-                                  <li>
-                                    Test with keyboard navigation and screen
-                                    readers
-                                  </li>
-                                </ol>
-                              </div>
-
-                              {/* Affected Elements */}
-                              <div>
-                                <h4
-                                  style={{
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    color: "#9ca3af",
-                                    letterSpacing: "0.5px",
-                                    margin: "0 0 8px 0",
-                                  }}
-                                >
-                                  AFFECTED ELEMENTS
-                                </h4>
-                                <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(3, 1fr)",
-                                    gap: "8px",
-                                  }}
-                                >
-                                  {violation.nodes?.slice(0, 3).map(
-                                    (node, nIdx) =>
-                                      node.screenshot && (
-                                        <div
-                                          key={nIdx}
-                                          onClick={() => {
-                                            // Use existing lightbox logic
-                                            const aiFeedback = {
-                                              summary:
-                                                violation.description ||
-                                                violation.help,
-                                              recommendation: violation.help,
-                                            };
-                                            setSelectedViolation(violation);
-                                            setLightbox({
-                                              idx: vIdx,
-                                              screenshot: node.screenshot,
-                                              violation: violation,
-                                              violations: [violation],
-                                              severityColor,
-                                              aiFeedback,
-                                              scrollY: node.scrollY || 0,
-                                              url: analysis.url || url,
-                                            });
-                                          }}
-                                          style={{
-                                            position: "relative",
-                                            aspectRatio: "16 / 10",
-                                            borderRadius: "6px",
-                                            overflow: "hidden",
-                                            cursor: "pointer",
-                                            border: "2px solid #e5e7eb",
-                                            transition: "all 0.2s",
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            e.currentTarget.style.borderColor =
-                                              "#7c8da0";
-                                            e.currentTarget.style.transform =
-                                              "scale(1.05)";
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            e.currentTarget.style.borderColor =
-                                              "#e5e7eb";
-                                            e.currentTarget.style.transform =
-                                              "scale(1)";
-                                          }}
-                                        >
-                                          <img
-                                            src={node.screenshot}
-                                            alt={`Violation screenshot ${nIdx + 1}`}
-                                            style={{
-                                              width: "100%",
-                                              height: "100%",
-                                              objectFit: "cover",
-                                              display: "block",
-                                            }}
-                                          />
-                                        </div>
-                                      ),
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 800,
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              background: severityColor,
+                              color: "#ffffff",
+                              height: "fit-content",
+                            }}
+                          >
+                            {(violation.impact || "minor").toUpperCase()}
+                          </span>
                         </div>
-                      );
-                    })
-                  )}
+
+                        {/* Expanded */}
+                        {isExpanded && (
+                          <div
+                            style={{
+                              padding: "14px 16px",
+                              borderTop: "1px solid #f1f5f9",
+                              fontSize: 13,
+                              color: "#4b5563",
+                            }}
+                          >
+                            {violation.description ||
+                              violation.help ||
+                              "No description available."}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
-            <div className="scores">
+            {/* Website Preview Section */}
+            <div className="website-preview-panel">
+              <h2 className="website-preview-title">Website Preview</h2>
+              <div className="website-preview-toggle-group">
+                <button
+                  className={
+                    "website-preview-toggle-btn" +
+                    (previewMode === "highlighted" ? " active" : "")
+                  }
+                  onClick={() => setPreviewMode("highlighted")}
+                  type="button"
+                >
+                  Highlighted
+                </button>
+                <button
+                  className={
+                    "website-preview-toggle-btn" +
+                    (previewMode === "sidebyside" ? " active" : "")
+                  }
+                  onClick={() => setPreviewMode("sidebyside")}
+                  type="button"
+                >
+                  Side to side
+                </button>
+              </div>
+              <div className="website-preview-screenshot-wrapper">
+                {analysis?.screenshot ? (
+                  <img
+                    src={analysis.screenshot}
+                    alt="Website full preview"
+                    className="website-preview-screenshot"
+                  />
+                ) : (
+                  <div className="website-preview-screenshot-placeholder">
+                    No screenshot available.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* <div className="scores">
               <h2>Scores</h2>
               <div className="score-body">
                 <div className="score-content">
@@ -2954,8 +2919,6 @@ function Complete() {
                       {analysis.url || url}
                     </a>
                   </p>
-
-                  {/* Overall score donut */}
                   {score !== null && (
                     <div className="overall-score">
                       <ScoreCircle value={score} label="Overall WCAG Score" />
@@ -3050,8 +3013,6 @@ function Complete() {
                       </div>
                     </div>
                   )}
-
-                  {/* Category donuts + dropdowns */}
                   <div className="category-section">
                     <p className="subheader">
                       Category Scores (WCAG 2.2 – POUR)
@@ -3073,7 +3034,6 @@ function Complete() {
                                 }
                               }}
                             >
-                              {/* Header (title + % + chevron) */}
                               <div className="category-header">
                                 <div className="category-header-main">
                                   <span className="category-title">
@@ -3096,7 +3056,6 @@ function Complete() {
                                 </span>
                               </div>
 
-                              {/* Donut circle for the category */}
                               <div className="category-circle-wrapper">
                                 <ScoreCircle
                                   value={cat.score}
@@ -3106,7 +3065,6 @@ function Complete() {
                                 />
                               </div>
 
-                              {/* Dropdown content */}
                               {expandedCategories[cat.key] && (
                                 <div className="category-details category-details-open">
                                   {categoryExplanations[cat.key] && (
@@ -3196,14 +3154,13 @@ function Complete() {
                     </div>
                   </div>
 
-                  {/* Conformance level scores */}
                   {(levelAScore !== null ||
                     levelAAScore !== null ||
                     levelAAAScore !== null) && (
                     <div className="level-scores">
                       <p className="subheader">Conformance Levels</p>
 
-                      {/* Level A */}
+               
                       {levelAScore !== null && (
                         <div className="level-row">
                           <p>
@@ -3218,7 +3175,7 @@ function Complete() {
                         </div>
                       )}
 
-                      {/* Level AA */}
+    
                       {levelAAScore !== null && (
                         <div className="level-row">
                           <p>
@@ -3233,7 +3190,7 @@ function Complete() {
                         </div>
                       )}
 
-                      {/* Level AAA */}
+       
                       {levelAAAScore !== null && (
                         <div className="level-row">
                           <p>
@@ -3258,16 +3215,146 @@ function Complete() {
                   <p>Low Severity: {severityCounts.low}</p>
                 </div>
               </div>
-            </div>
+            </div> */}
             {/* Visual Improvements Card: after score, before HCI, Next Steps, etc. */}
             {/* <VisualImprovementsCard
               violationScreenshots={violationScreenshots}
             /> */}
-            <div className="hci-report">
-              <h2>HCI Report</h2>
-              {hciParagraphs.length > 0 ? (
-                hciParagraphs.map((para, idx) => {
-                  // List of keywords to bold
+            {/* HCI Report and Keyword Frequency Panel */}
+            <div
+              style={{
+                display: "flex",
+                gap: "24px",
+                marginTop: "32px",
+                // marginBottom: "32px",
+                width: "100%",
+                alignItems: "stretch",
+              }}
+            >
+              {/* HCI Report Section */}
+              <div
+                style={{
+                  flex: 1,
+                  background: "#f9fafb",
+                  borderRadius: "12px",
+                  boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                  padding: "24px",
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <h2
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 700,
+                    color: "#7c8da0",
+                    marginBottom: "18px",
+                    letterSpacing: "-0.5px",
+                  }}
+                >
+                  HCI Report
+                </h2>
+                {hciParagraphs.length > 0 ? (
+                  hciParagraphs.map((para, idx) => {
+                    // List of keywords to bold
+                    const keywords = [
+                      "accessibility",
+                      "usability",
+                      "contrast",
+                      "keyboard",
+                      "screen reader",
+                      "color blindness",
+                      "navigation",
+                      "focus",
+                      "label",
+                      "alt text",
+                      "ARIA",
+                      "compliance",
+                      "WCAG",
+                      "AODA",
+                      "error",
+                      "form",
+                      "structure",
+                      "heading",
+                      "landmark",
+                      "semantic",
+                      "cognitive",
+                      "perceivable",
+                      "operable",
+                      "understandable",
+                      "robust",
+                    ];
+                    // Regex to match keywords (case-insensitive, word boundaries)
+                    const regex = new RegExp(
+                      `\\b(${keywords.join("|")})\\b`,
+                      "gi",
+                    );
+                    // Replace keywords with bolded version (no emoji)
+                    const highlighted = para.replace(regex, (match) => {
+                      return `<strong style='color:#7c8da0;'>${match}</strong>`;
+                    });
+                    return (
+                      <p
+                        key={idx}
+                        style={{
+                          fontSize: "15px",
+                          color: "#475569",
+                          marginBottom: "14px",
+                          lineHeight: 1.7,
+                        }}
+                        dangerouslySetInnerHTML={{ __html: highlighted }}
+                      />
+                    );
+                  })
+                ) : (
+                  <p
+                    style={{
+                      fontSize: "15px",
+                      color: "#475569",
+                      marginBottom: "14px",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {hciText}
+                  </p>
+                )}
+              </div>
+
+              {/* Keyword Frequency Panel */}
+              <div
+                style={{
+                  flex: 1,
+                  background: "#f9fafb",
+                  borderRadius: "12px",
+                  boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                  padding: "24px",
+                  minWidth: "220px",
+                  maxWidth: "320px",
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                }}
+              >
+                <h2
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 700,
+                    color: "#7c8da0",
+                    marginBottom: "18px",
+                    letterSpacing: "-0.5px",
+                  }}
+                >
+                  Keyword Frequency
+                </h2>
+                {(() => {
+                  // Collect all text from paragraphs
+                  const text =
+                    hciParagraphs.length > 0
+                      ? hciParagraphs.join(" ")
+                      : hciText;
                   const keywords = [
                     "accessibility",
                     "usability",
@@ -3295,28 +3382,228 @@ function Complete() {
                     "understandable",
                     "robust",
                   ];
-                  // Regex to match keywords (case-insensitive, word boundaries)
-                  const regex = new RegExp(
-                    `\\b(${keywords.join("|")})\\b`,
-                    "gi",
-                  );
-                  // Replace keywords with bolded version
-                  const highlighted = para.replace(
-                    regex,
-                    (match) => `<strong>${match}</strong>`,
-                  );
-                  return (
-                    <p
-                      key={idx}
-                      dangerouslySetInnerHTML={{ __html: highlighted }}
-                    />
-                  );
-                })
-              ) : (
-                <p>{hciText}</p>
-              )}
-            </div>
+                  // Colorblind-friendly palette (ColorBrewer Set2)
+                  const palette = [
+                    "#66c2a5", // teal
+                    "#fc8d62", // orange
+                    "#8da0cb", // blue
+                    "#e78ac3", // pink
+                    "#a6d854", // green
+                    "#ffd92f", // yellow
+                    "#e5c494", // tan
+                    "#b3b3b3", // gray
+                    "#1b9e77", // dark teal
+                    "#d95f02", // dark orange
+                    "#7570b3", // dark blue
+                    "#e7298a", // dark pink
+                    "#a6761d", // brown
+                    "#666666", // dark gray
+                  ];
+                  // Count keyword occurrences
+                  const counts = {};
+                  let totalKeywordCount = 0;
+                  keywords.forEach((kw) => {
+                    const regex = new RegExp(`\\b${kw}\\b`, "gi");
+                    const matches = text.match(regex);
+                    counts[kw] = matches ? matches.length : 0;
+                    totalKeywordCount += counts[kw];
+                  });
+                  // Only show keywords that appear at least once
+                  const shownKeywords = keywords.filter((kw) => counts[kw] > 0);
+                  if (shownKeywords.length === 0) {
+                    return (
+                      <p style={{ color: "#475569", fontSize: "14px" }}>
+                        No keywords found in report.
+                      </p>
+                    );
+                  }
 
+                  // Donut chart data
+                  const donutData = shownKeywords.map((kw, i) => ({
+                    label: kw,
+                    value: counts[kw],
+                    color: palette[i % palette.length],
+                  }));
+
+                  // Donut chart component (SVG, hover popup above cursor)
+                  function DonutChart({ data, size = 120, strokeWidth = 24 }) {
+                    const total = data.reduce((sum, d) => sum + d.value, 0);
+                    let startAngle = 0;
+                    const center = size / 2;
+                    const radius = center - strokeWidth / 2;
+                    const segments = data.map((d, idx) => {
+                      const angle = (d.value / total) * 360;
+                      const endAngle = startAngle + angle;
+                      // Convert angles to radians
+                      const startRadians = (startAngle - 90) * (Math.PI / 180);
+                      const endRadians = (endAngle - 90) * (Math.PI / 180);
+                      // Calculate arc points
+                      const x1 = center + radius * Math.cos(startRadians);
+                      const y1 = center + radius * Math.sin(startRadians);
+                      const x2 = center + radius * Math.cos(endRadians);
+                      const y2 = center + radius * Math.sin(endRadians);
+                      const largeArcFlag = angle > 180 ? 1 : 0;
+                      const pathData = [
+                        `M ${x1} ${y1}`,
+                        `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                      ].join(" ");
+                      const percent = ((d.value / total) * 100).toFixed(1);
+                      startAngle = endAngle;
+                      return (
+                        <path
+                          key={d.label}
+                          d={pathData}
+                          stroke={d.color}
+                          strokeWidth={strokeWidth}
+                          fill="none"
+                          style={{
+                            filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.07))",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) => {
+                            setDonutHover({
+                              label: d.label,
+                              percent,
+                              x: e.clientX,
+                              y: e.clientY,
+                              color: d.color,
+                            });
+                          }}
+                          onMouseMove={(e) => {
+                            setDonutHover({
+                              label: d.label,
+                              percent,
+                              x: e.clientX,
+                              y: e.clientY,
+                              color: d.color,
+                            });
+                          }}
+                        />
+                      );
+                    });
+                    return (
+                      <svg
+                        width={size}
+                        height={size}
+                        style={{
+                          margin: "0 auto 16px auto",
+                          display: "block",
+                          position: "relative",
+                          zIndex: 1,
+                        }}
+                        onMouseLeave={() => setDonutHover(null)}
+                      >
+                        {segments}
+                        {/* Center circle for donut effect */}
+                        <circle
+                          cx={center}
+                          cy={center}
+                          r={radius - strokeWidth / 2}
+                          fill="#f9fafb"
+                        />
+                      </svg>
+                    );
+                  }
+
+                  // Render popup absolutely in the document, above cursor
+                  const popup = donutHover ? (
+                    <div
+                      style={{
+                        position: "fixed",
+                        left: donutHover.x,
+                        top: donutHover.y - 48,
+                        transform: "translate(-50%, -100%)",
+                        background: "#fff",
+                        color: "#7c8da0",
+                        border: `1.5px solid ${donutHover.color}`,
+                        borderRadius: 8,
+                        boxShadow: "0 2px 12px rgba(124,138,160,0.13)",
+                        padding: "8px 16px",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        pointerEvents: "none",
+                        zIndex: 9999,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span style={{ color: "#7c8da0", fontWeight: 700 }}>
+                        {donutHover.label}
+                      </span>
+                      {": "}
+                      <span>{donutHover.percent}%</span>
+                    </div>
+                  ) : null;
+
+                  return (
+                    <>
+                      {popup}
+                      <div style={{ position: "relative" }}>
+                        <DonutChart
+                          data={donutData}
+                          size={120}
+                          strokeWidth={24}
+                        />
+                      </div>
+                      <div style={{ height: 18 }} />
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: "#7c8da0",
+                          fontWeight: 600,
+                          marginBottom: 10,
+                        }}
+                      >
+                        Total Keywords: {totalKeywordCount}
+                      </div>
+                      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                        {shownKeywords.map((kw, i) => (
+                          <li
+                            key={kw}
+                            style={{
+                              marginBottom: "10px",
+                              fontSize: "14px",
+                              color: "#475569",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: "16px",
+                                height: "16px",
+                                borderRadius: "50%",
+                                background: palette[i % palette.length],
+                                display: "inline-block",
+                                marginRight: "6px",
+                                border: "1px solid #e0e7ef",
+                              }}
+                              aria-label={`Color for ${kw}`}
+                            ></span>
+                            <span
+                              style={{
+                                fontWeight: 600,
+                                color: "#7c8da0",
+                                minWidth: "80px",
+                              }}
+                            >
+                              {kw}
+                            </span>
+                            <span style={{ fontWeight: 500 }}>
+                              {counts[kw]} (
+                              {((counts[kw] / totalKeywordCount) * 100).toFixed(
+                                1,
+                              )}
+                              %)
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
             <div className="next-steps">
               <h2>Next Steps</h2>
               {nextSteps.length === 0 ? (
@@ -3330,7 +3617,6 @@ function Complete() {
               )}
             </div>
             {/* Before and After card: after HCI Report, before Visual Feedback, only in main results */}
-
             {/* NEW: Violation Screenshots with Interactive Feedback */}
             {violationScreenshots && violationScreenshots.length > 0 && (
               <div className="visual-feedback">
@@ -3491,7 +3777,6 @@ function Complete() {
                 </div>
               </div>
             )}
-
             {lightbox && (
               <div
                 className="lightbox-backdrop"
@@ -3632,7 +3917,6 @@ function Complete() {
                 </div>
               </div>
             )}
-
             {/* MAIN FEEDBACK SCREENSHOT WITH HIGHLIGHTS */}
             {!loading &&
               !animating &&
@@ -3685,7 +3969,6 @@ function Complete() {
                   )}
                 </div>
               )}
-
             {/* Visual Segments section removed to fix empty JSX block */}
           </>
         )}
