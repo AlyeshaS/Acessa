@@ -1040,6 +1040,8 @@ function LightboxBeforeAfter({
 }
 
 function Complete() {
+  // --- Add state for highlighted screenshot navigation ---
+  const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const url = location.state?.url;
@@ -1091,6 +1093,11 @@ function Complete() {
 
   // AbortController stored in a ref so we can cancel on Back
   const abortRef = useRef(null);
+
+  // Reset currentScreenshotIdx to 0 whenever violationScreenshots changes
+  useEffect(() => {
+    setCurrentScreenshotIdx(0);
+  }, [violationScreenshots]);
 
   const handleAfterClick = async (idx, violation) => {
     const feedback = {
@@ -2889,8 +2896,269 @@ function Complete() {
                   Side to side
                 </button>
               </div>
-              <div className="website-preview-screenshot-wrapper">
-                {analysis?.screenshot ? (
+              <div
+                className="website-preview-screenshot-wrapper"
+                style={{
+                  display: previewMode === "highlighted" ? "flex" : undefined,
+                  alignItems: "stretch",
+                  position: "relative",
+                  minHeight: 420,
+                  width: "100%",
+                  height: 480,
+                  gap: 0,
+                  background: "#fff",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                {previewMode === "highlighted" &&
+                violationScreenshots &&
+                violationScreenshots.length > 0 ? (
+                  <>
+                    {/* Left arrow */}
+                    <button
+                      aria-label="Previous screenshot"
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        zIndex: 20,
+                        background: "rgba(255,255,255,0.85)",
+                        border: "none",
+                        borderRadius: "50%",
+                        width: 40,
+                        height: 40,
+                        fontSize: 24,
+                        cursor:
+                          currentScreenshotIdx > 0 ? "pointer" : "not-allowed",
+                        opacity: currentScreenshotIdx > 0 ? 1 : 0.4,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      }}
+                      onClick={() =>
+                        setCurrentScreenshotIdx((idx) => Math.max(0, idx - 1))
+                      }
+                      disabled={currentScreenshotIdx === 0}
+                    >
+                      &#8592;
+                    </button>
+
+                    {/* Screenshot with highlight overlays */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "stretch",
+                        width: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "relative",
+                          flex: 1,
+                          minWidth: 0,
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "stretch",
+                          justifyContent: "stretch",
+                          background: "#f8fafc",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <img
+                          src={
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.screenshot
+                          }
+                          alt={`Screenshot ${currentScreenshotIdx + 1}`}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            display: "block",
+                          }}
+                        />
+                        {/* Highlight overlays */}
+                        {Array.isArray(
+                          violationScreenshots[currentScreenshotIdx]?.markers,
+                        ) &&
+                          violationScreenshots[
+                            currentScreenshotIdx
+                          ].markers.map((m, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                position: "absolute",
+                                left: m.x,
+                                top: m.y,
+                                width: m.width,
+                                height: m.height,
+                                border: "2px solid #ff4d4f",
+                                background: "rgba(255,77,79,0.12)",
+                                borderRadius: 8,
+                                zIndex: 10,
+                                pointerEvents: "none",
+                              }}
+                              title={
+                                m.summary ||
+                                m.recommendation ||
+                                "Accessibility issue"
+                              }
+                            />
+                          ))}
+                      </div>
+                      {/* Feedback panel */}
+                      <aside
+                        style={{
+                          width: 340,
+                          maxWidth: 380,
+                          minWidth: 260,
+                          background: "#f8fafc",
+                          borderRadius: 10,
+                          border: "1px solid #e5e7eb",
+                          padding: 18,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "flex-start",
+                          boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                          marginLeft: 0,
+                          height: "100%",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            color: "#7c8da0",
+                            marginBottom: 8,
+                          }}
+                        >
+                          {violationScreenshots[
+                            currentScreenshotIdx
+                          ]?.violations?.[0]?.impact?.toUpperCase() || "ISSUE"}
+                        </div>
+                        <h3
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 700,
+                            margin: 0,
+                            color: "#475569",
+                          }}
+                        >
+                          {getFriendlyTitle(
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.violations?.[0]?.wcagCriterion,
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.violations?.[0]?.id,
+                          )}
+                        </h3>
+                        <p
+                          style={{
+                            color: "#475569",
+                            margin: "10px 0 0 0",
+                            fontSize: 15,
+                          }}
+                        >
+                          {violationScreenshots[currentScreenshotIdx]
+                            ?.aiFeedback?.summary ||
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.violations?.[0]?.help ||
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.violations?.[0]?.description ||
+                            "This area shows a visual concern that may affect user understanding or ease of use."}
+                        </p>
+                        {violationScreenshots[currentScreenshotIdx]?.aiFeedback
+                          ?.recommendation && (
+                          <p style={{ marginTop: 8, color: "#7c8da0" }}>
+                            <strong>Suggested fix:</strong>{" "}
+                            {
+                              violationScreenshots[currentScreenshotIdx]
+                                .aiFeedback.recommendation
+                            }
+                          </p>
+                        )}
+                        {Array.isArray(
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations,
+                        ) &&
+                          violationScreenshots[currentScreenshotIdx].violations
+                            .length > 1 && (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                paddingTop: 12,
+                                borderTop: "1px solid #ddd",
+                              }}
+                            >
+                              <p style={{ fontWeight: 600, color: "#7c8da0" }}>
+                                Other issues in this screenshot
+                              </p>
+                              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                                {violationScreenshots[
+                                  currentScreenshotIdx
+                                ].violations
+                                  .slice(1)
+                                  .map((v, i) => (
+                                    <li
+                                      key={i}
+                                      style={{
+                                        marginTop: 6,
+                                        color: "#475569",
+                                        fontSize: 14,
+                                      }}
+                                    >
+                                      <strong>
+                                        {v.tags?.find((t) =>
+                                          String(t).match(/^wcag\d/),
+                                        ) || v.id}
+                                      </strong>
+                                      {v.impact
+                                        ? ` • ${String(v.impact).toUpperCase()} severity`
+                                        : ""}
+                                      {v.help ? ` — ${v.help}` : ""}
+                                    </li>
+                                  ))}
+                              </ul>
+                            </div>
+                          )}
+                      </aside>
+                    </div>
+                    {/* Right arrow */}
+                    <button
+                      aria-label="Next screenshot"
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        zIndex: 20,
+                        background: "rgba(255,255,255,0.85)",
+                        border: "none",
+                        borderRadius: "50%",
+                        width: 40,
+                        height: 40,
+                        fontSize: 24,
+                        cursor:
+                          currentScreenshotIdx < violationScreenshots.length - 1
+                            ? "pointer"
+                            : "not-allowed",
+                        opacity:
+                          currentScreenshotIdx < violationScreenshots.length - 1
+                            ? 1
+                            : 0.4,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      }}
+                      onClick={() =>
+                        setCurrentScreenshotIdx((idx) =>
+                          Math.min(violationScreenshots.length - 1, idx + 1),
+                        )
+                      }
+                      disabled={
+                        currentScreenshotIdx === violationScreenshots.length - 1
+                      }
+                    >
+                      &#8594;
+                    </button>
+                  </>
+                ) : analysis?.screenshot ? (
                   <img
                     src={analysis.screenshot}
                     alt="Website full preview"
