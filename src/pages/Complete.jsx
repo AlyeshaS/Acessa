@@ -212,6 +212,56 @@ function SegmentedDonut({
     </svg>
   );
 }
+
+function PreviewArrow({ direction, disabled, onClick }) {
+  const isLeft = direction === "left";
+
+  return (
+    <button
+      aria-label={isLeft ? "Previous screenshot" : "Next screenshot"}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        alignSelf: "center",
+        justifySelf: "center",
+        width: 56,
+        height: 96,
+        borderRadius: 999,
+        border: "1px solid rgba(203,213,225,0.8)",
+        background: "rgba(255,255,255,0.75)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.35 : 1,
+        transition: "all 0.18s ease",
+        boxShadow: disabled ? "none" : "0 8px 24px rgba(0,0,0,0.08)",
+        userSelect: "none",
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = "rgba(255,255,255,0.9)";
+        e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.12)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "rgba(255,255,255,0.75)";
+        e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.08)";
+      }}
+    >
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <path
+          d={isLeft ? "M15 18L9 12L15 6" : "M9 6L15 12L9 18"}
+          stroke="#334155"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
   const clamped = Math.max(0, Math.min(100, value)); // 0–100 safety
   const radius = (size - strokeWidth) / 2;
@@ -1102,6 +1152,234 @@ function LightboxBeforeAfter({
   );
 }
 
+// --- Accessibility Violations Filter UI ---
+function ViolationsFilterSection({ violations = [] }) {
+  const [filter, setFilter] = useState("all");
+
+  // Group violations by type
+  const grouped = {
+    critical: [],
+    warning: [],
+    minor: [],
+  };
+  violations.forEach((v) => {
+    const impact = (v.impact || "minor").toLowerCase();
+    if (impact === "critical" || impact === "serious") grouped.critical.push(v);
+    else if (impact === "moderate") grouped.warning.push(v);
+    else grouped.minor.push(v);
+  });
+
+  // Filtered and sorted
+  let displayGroups = [];
+  if (filter === "all") {
+    displayGroups = [
+      { label: "Critical", type: "critical", items: grouped.critical },
+      { label: "Warning", type: "warning", items: grouped.warning },
+      { label: "Minor", type: "minor", items: grouped.minor },
+    ];
+  } else {
+    displayGroups = [
+      {
+        label:
+          filter === "critical"
+            ? "Critical"
+            : filter === "warning"
+              ? "Warning"
+              : "Minor",
+        type: filter,
+        items: grouped[filter],
+      },
+    ];
+  }
+
+  // Button counts
+  const counts = {
+    critical: grouped.critical.length,
+    warning: grouped.warning.length,
+    minor: grouped.minor.length,
+    all: violations.length,
+  };
+
+  // Button styles
+  const btnStyle = (active, color) => ({
+    padding: "6px 18px",
+    borderRadius: 20,
+    border: active ? `2px solid ${color}` : "1px solid #d1d5db",
+    background: active ? color : "#f8fafc",
+    color: active ? "#fff" : color,
+    fontWeight: active ? 700 : 400,
+    marginRight: 12,
+    cursor: "pointer",
+    outline: "none",
+    minWidth: 80,
+    transition: "all 0.18s",
+  });
+
+  return (
+    <div
+      style={{
+        background: "#f9fafb",
+        borderRadius: 12,
+        padding: 24,
+        marginTop: 24,
+      }}
+    >
+      {/* Filter Buttons */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <button
+          style={btnStyle(filter === "all", "#334155")}
+          onClick={() => setFilter("all")}
+        >
+          All ({counts.all})
+        </button>
+        <button
+          style={btnStyle(filter === "critical", "#B3261E")}
+          onClick={() => setFilter("critical")}
+        >
+          Critical ({counts.critical})
+        </button>
+        <button
+          style={btnStyle(filter === "warning", "#B45309")}
+          onClick={() => setFilter("warning")}
+        >
+          Warning ({counts.warning})
+        </button>
+        <button
+          style={btnStyle(filter === "minor", "#475569")}
+          onClick={() => setFilter("minor")}
+        >
+          Minor ({counts.minor})
+        </button>
+      </div>
+      {/* Violations List */}
+      {displayGroups.map(
+        (group) =>
+          group.items.length > 0 && (
+            <div key={group.type} style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: 17,
+                  color:
+                    group.type === "critical"
+                      ? "#B3261E"
+                      : group.type === "warning"
+                        ? "#B45309"
+                        : "#475569",
+                  marginBottom: 8,
+                }}
+              >
+                {group.label} ({group.items.length})
+              </div>
+              <div>
+                {group.items.map((v, idx) => (
+                  <div
+                    key={v.id || v.description || idx}
+                    style={{
+                      background: "#fff",
+                      borderRadius: 10,
+                      border: `1.5px solid ${
+                        group.type === "critical"
+                          ? "#B3261E22"
+                          : group.type === "warning"
+                            ? "#B4530922"
+                            : "#47556922"
+                      }`,
+                      marginBottom: 10,
+                      padding: "16px 18px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 18,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                    }}
+                  >
+                    {/* Severity icon */}
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        background:
+                          group.type === "critical"
+                            ? "#B3261E"
+                            : group.type === "warning"
+                              ? "#B45309"
+                              : "#475569",
+                        marginRight: 8,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 15,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {v.description || v.help || v.id}
+                      </div>
+                      <div
+                        style={{
+                          color: "#64748b",
+                          fontSize: 13,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {v.affected ||
+                          v.nodes?.[0]?.target?.join(", ") ||
+                          v.selector ||
+                          "Section"}
+                      </div>
+                      {v.fixTime && (
+                        <div style={{ color: "#b45309", fontSize: 12 }}>
+                          ~{v.fixTime} min fix
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      style={{
+                        background: "#e0e7ef",
+                        color: "#334155",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 14px",
+                        fontWeight: 500,
+                        marginRight: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Show
+                    </button>
+                    <button
+                      style={{
+                        background: "#f3f4f6",
+                        color: "#64748b",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 14px",
+                        fontWeight: 400,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Expand
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ),
+      )}
+      {/* No issues */}
+      {displayGroups.every((g) => g.items.length === 0) && (
+        <div style={{ color: "#64748b", textAlign: "center", marginTop: 32 }}>
+          No accessibility issues found.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Complete() {
   // --- Add state for highlighted screenshot navigation ---
   const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState(0);
@@ -1874,6 +2152,8 @@ function Complete() {
       </span>
     );
   };
+
+  console.log("Violations:", analysis?.violations);
 
   const categories = [
     { key: "Perceivable", score: perceivableScore },
@@ -2703,7 +2983,6 @@ function Complete() {
                     </div>
                   </div>
                 </div>
-
                 {/* ================= DONUT + LEGEND ================= */}
                 <div
                   style={{
@@ -2783,155 +3062,13 @@ function Complete() {
                     </div>
                   </div>
                 </div>
-
-                {/* ================= FILTERS ================= */}
-                <div
-                  style={{
-                    padding: "16px 24px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "12px",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    {["all", "critical", "warnings", "minor"].map((filter) => (
-                      <button
-                        key={filter}
-                        onClick={() => setFilterSeverity(filter)}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: "999px",
-                          border: "none",
-                          background:
-                            filterSeverity === filter ? "#1f2937" : "#f1f5f9",
-                          color:
-                            filterSeverity === filter ? "#ffffff" : "#475569",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {filter}
-                      </button>
-                    ))}
-                  </div>
-
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "8px",
-                      border: "1px solid #d1d5db",
-                      fontSize: 13,
-                      background: "#ffffff",
-                    }}
-                  >
-                    <option value="priority">Sort: Priority</option>
-                    <option value="name">Sort: Name</option>
-                  </select>
-                </div>
-
-                {/* ================= ISSUES LIST ================= */}
-                <div
-                  style={{
-                    flex: 1,
-                    overflowY: "auto",
-                    padding: "0 24px 24px",
-                  }}
-                >
-                  {filteredViolations.map((violation, vIdx) => {
-                    const key = `violation-${vIdx}`;
-                    const isExpanded = expandedItems[key];
-                    const severityColor =
-                      violation.impact === "critical" ||
-                      violation.impact === "serious"
-                        ? "#B3261E"
-                        : violation.impact === "moderate"
-                          ? "#B45309"
-                          : "#475569";
-
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderLeft: `4px solid ${severityColor}`,
-                          borderRadius: "12px",
-                          marginBottom: "12px",
-                          background: "#ffffff",
-                          transition: "box-shadow 0.2s",
-                        }}
-                      >
-                        {/* Card Header */}
-                        <div
-                          onClick={() => toggleExpanded(key)}
-                          style={{
-                            padding: "14px 16px",
-                            cursor: "pointer",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 12,
-                          }}
-                        >
-                          <div>
-                            <div
-                              style={{
-                                fontSize: 15,
-                                fontWeight: 700,
-                                marginBottom: 6,
-                              }}
-                            >
-                              {getFriendlyTitle(
-                                violation.wcagCriterion,
-                                violation.id,
-                              )}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: "#64748b",
-                              }}
-                            >
-                              {violation.wcagCriterion || violation.id}
-                            </div>
-                          </div>
-
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 800,
-                              padding: "4px 8px",
-                              borderRadius: "6px",
-                              background: severityColor,
-                              color: "#ffffff",
-                              height: "fit-content",
-                            }}
-                          >
-                            {(violation.impact || "minor").toUpperCase()}
-                          </span>
-                        </div>
-
-                        {/* Expanded */}
-                        {isExpanded && (
-                          <div
-                            style={{
-                              padding: "14px 16px",
-                              borderTop: "1px solid #f1f5f9",
-                              fontSize: 13,
-                              color: "#4b5563",
-                            }}
-                          >
-                            {violation.description ||
-                              violation.help ||
-                              "No description available."}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* ================= VIOLATION LIST ================= */}
+                <ViolationsFilterSection
+                  violations={analysis?.violations || []}
+                />
+                {/* ...existing code... */}
+                {/* Move explanation and WCAG issues inside the .map loop, so cat is always defined */}
+                {/* ...existing code... */}
               </div>
             </div>
             {/* Website Preview Section */}
@@ -2980,53 +3117,13 @@ function Complete() {
                 violationScreenshots.length > 0 ? (
                   <>
                     {/* Left arrow */}
-                    <button
-                      aria-label="Previous screenshot"
-                      type="button"
+                    <PreviewArrow
+                      direction="left"
                       disabled={currentScreenshotIdx === 0}
                       onClick={() =>
-                        setCurrentScreenshotIdx((idx) => Math.max(0, idx - 1))
+                        setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
                       }
-                      style={{
-                        alignSelf: "center",
-                        justifySelf: "center",
-                        width: 48,
-                        height: 48,
-                        borderRadius: "50%",
-                        border: "2px solid #cbd5e1",
-                        background:
-                          "radial-gradient(circle at 60% 40%, #f1f5f9 70%, #e0e7ef 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "0 4px 16px rgba(60,72,100,0.13)",
-                        cursor:
-                          currentScreenshotIdx === 0
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity: currentScreenshotIdx === 0 ? 0.45 : 1,
-                        color:
-                          currentScreenshotIdx === 0 ? "#b0b8c1" : "#475569",
-                        transition: "all 0.18s ease",
-                        userSelect: "none",
-                      }}
-                    >
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 22 22"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M13.5 16L8.5 11L13.5 6"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
+                    />
 
                     {/* Screenshot + highlights + panel */}
                     {/* Screenshot (fills the image grid column) */}
@@ -3114,66 +3211,17 @@ function Complete() {
                       )}
                     </aside>
 
-                    {/* Right arrow */}
-                    <button
-                      aria-label="Next screenshot"
-                      type="button"
+                    <PreviewArrow
+                      direction="right"
                       disabled={
                         currentScreenshotIdx === violationScreenshots.length - 1
                       }
                       onClick={() =>
-                        setCurrentScreenshotIdx((idx) =>
-                          Math.min(violationScreenshots.length - 1, idx + 1),
+                        setCurrentScreenshotIdx((i) =>
+                          Math.min(violationScreenshots.length - 1, i + 1),
                         )
                       }
-                      style={{
-                        alignSelf: "center",
-                        justifySelf: "center",
-                        width: 48,
-                        height: 48,
-                        borderRadius: "50%",
-                        border: "2px solid #cbd5e1",
-                        background:
-                          "radial-gradient(circle at 40% 40%, #f1f5f9 70%, #e0e7ef 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "0 4px 16px rgba(60,72,100,0.13)",
-                        cursor:
-                          currentScreenshotIdx ===
-                          violationScreenshots.length - 1
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity:
-                          currentScreenshotIdx ===
-                          violationScreenshots.length - 1
-                            ? 0.45
-                            : 1,
-                        color:
-                          currentScreenshotIdx ===
-                          violationScreenshots.length - 1
-                            ? "#b0b8c1"
-                            : "#475569",
-                        transition: "all 0.18s ease",
-                        userSelect: "none",
-                      }}
-                    >
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 22 22"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M8.5 6L13.5 11L8.5 16"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
+                    />
                   </>
                 ) : analysis?.screenshot ? (
                   <img
