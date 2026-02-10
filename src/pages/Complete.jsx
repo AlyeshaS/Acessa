@@ -1153,8 +1153,65 @@ function LightboxBeforeAfter({
 }
 
 // --- Accessibility Violations Filter UI ---
-function ViolationsFilterSection({ violations = [] }) {
-  const [filter, setFilter] = useState("all");
+function ViolationsFilterSection({
+  violations = [],
+  groupedByPrinciple = {
+    Perceivable: [],
+    Operable: [],
+    Understandable: [],
+    Robust: [],
+  },
+}) {
+  // --- Grouped by Principle Section ---
+  const principles = [
+    { key: "Perceivable", color: "#7c8da0" },
+    { key: "Operable", color: "#b45309" },
+    { key: "Understandable", color: "#0ea5a4" },
+    { key: "Robust", color: "#475569" },
+  ];
+
+  // Use groupedByPrinciple prop directly, do not redefine or reference analysis
+  // Button styles
+  const btnStyle = (active, color) => ({
+    padding: "6px 18px",
+    borderRadius: 20,
+    border: active ? `2px solid ${color}` : "1px solid #d1d5db",
+    background: active ? color : "#f8fafc",
+    color: active ? "#fff" : color,
+    fontWeight: active ? 700 : 400,
+    marginRight: 12,
+    cursor: "pointer",
+    outline: "none",
+    minWidth: 80,
+    transition: "all 0.18s",
+  });
+
+  const [filter, setFilter] = React.useState("all");
+  // Helper to filter a group of violations by impact
+  const filterBySeverity = (arr) => {
+    if (filter === "all") return arr;
+    if (filter === "critical")
+      return arr.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        // Show for critical button: critical, high
+        return impact === "critical" || impact === "high";
+      });
+    if (filter === "warning")
+      return arr.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        // Show for warning button: warning, moderate, medium
+        return (
+          impact === "warning" || impact === "moderate" || impact === "medium"
+        );
+      });
+    if (filter === "minor")
+      return arr.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        // Show for minor button: minor, low
+        return impact === "minor" || impact === "low";
+      });
+    return arr;
+  };
 
   // Group violations by type
   const grouped = {
@@ -1163,9 +1220,11 @@ function ViolationsFilterSection({ violations = [] }) {
     minor: [],
   };
   violations.forEach((v) => {
-    const impact = (v.impact || "minor").toLowerCase();
-    if (impact === "critical" || impact === "serious") grouped.critical.push(v);
-    else if (impact === "moderate") grouped.warning.push(v);
+    const impact = (v.impact || v.severity || "minor").toLowerCase();
+    if (impact === "critical" || impact === "serious" || impact === "high")
+      grouped.critical.push(v);
+    else if (impact === "moderate" || impact === "medium")
+      grouped.warning.push(v);
     else grouped.minor.push(v);
   });
 
@@ -1192,28 +1251,40 @@ function ViolationsFilterSection({ violations = [] }) {
     ];
   }
 
-  // Button counts
-  const counts = {
-    critical: grouped.critical.length,
-    warning: grouped.warning.length,
-    minor: grouped.minor.length,
-    all: violations.length,
+  // Button counts based on what will be displayed for each filter
+  const getCountForFilter = (filterType) => {
+    const allViolations = Object.values(groupedByPrinciple).flat();
+    if (filterType === "all") return allViolations.length;
+    if (filterType === "critical") {
+      return allViolations.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        return impact === "critical" || impact === "high";
+      }).length;
+    }
+    if (filterType === "warning") {
+      return allViolations.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        return (
+          impact === "warning" || impact === "moderate" || impact === "medium"
+        );
+      }).length;
+    }
+    if (filterType === "minor") {
+      return allViolations.filter((v) => {
+        const impact = (v.impact || v.severity || "minor").toLowerCase();
+        return impact === "minor" || impact === "low";
+      }).length;
+    }
+    return 0;
   };
 
-  // Button styles
-  const btnStyle = (active, color) => ({
-    padding: "6px 18px",
-    borderRadius: 20,
-    border: active ? `2px solid ${color}` : "1px solid #d1d5db",
-    background: active ? color : "#f8fafc",
-    color: active ? "#fff" : color,
-    fontWeight: active ? 700 : 400,
-    marginRight: 12,
-    cursor: "pointer",
-    outline: "none",
-    minWidth: 80,
-    transition: "all 0.18s",
-  });
+  // Define counts object for button labels
+  const counts = {
+    all: getCountForFilter("all"),
+    critical: getCountForFilter("critical"),
+    warning: getCountForFilter("warning"),
+    minor: getCountForFilter("minor"),
+  };
 
   return (
     <div
@@ -1224,6 +1295,10 @@ function ViolationsFilterSection({ violations = [] }) {
         marginTop: 24,
       }}
     >
+      {/* Total Issues */}
+      <div style={{ fontWeight: 700, fontSize: 18, color: "#334155", marginBottom: 12 }}>
+        Total Issues: {counts.all}
+      </div>
       {/* Filter Buttons */}
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <button
@@ -1251,127 +1326,75 @@ function ViolationsFilterSection({ violations = [] }) {
           Minor ({counts.minor})
         </button>
       </div>
-      {/* Violations List */}
-      {displayGroups.map(
-        (group) =>
-          group.items.length > 0 && (
-            <div key={group.type} style={{ marginBottom: 18 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: 17,
-                  color:
-                    group.type === "critical"
-                      ? "#B3261E"
-                      : group.type === "warning"
-                        ? "#B45309"
-                        : "#475569",
-                  marginBottom: 8,
-                }}
-              >
-                {group.label} ({group.items.length})
-              </div>
-              <div>
-                {group.items.map((v, idx) => (
-                  <div
-                    key={v.id || v.description || idx}
-                    style={{
-                      background: "#fff",
-                      borderRadius: 10,
-                      border: `1.5px solid ${
-                        group.type === "critical"
-                          ? "#B3261E22"
-                          : group.type === "warning"
-                            ? "#B4530922"
-                            : "#47556922"
-                      }`,
-                      marginBottom: 10,
-                      padding: "16px 18px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 18,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-                    }}
-                  >
-                    {/* Severity icon */}
-                    <div
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        background:
-                          group.type === "critical"
-                            ? "#B3261E"
-                            : group.type === "warning"
-                              ? "#B45309"
-                              : "#475569",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          fontSize: 15,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {v.description || v.help || v.id}
-                      </div>
-                      <div
-                        style={{
-                          color: "#64748b",
-                          fontSize: 13,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {v.affected ||
-                          v.nodes?.[0]?.target?.join(", ") ||
-                          v.selector ||
-                          "Section"}
-                      </div>
-                      {v.fixTime && (
-                        <div style={{ color: "#b45309", fontSize: 12 }}>
-                          ~{v.fixTime} min fix
-                        </div>
+
+      {/* Grouped by Principle */}
+      <div style={{ marginTop: 24 }}>
+        {principles.map((cat) => (
+          <div key={cat.key} style={{ marginBottom: 24 }}>
+            <h3
+              style={{
+                color: cat.color,
+                fontWeight: 700,
+                fontSize: 18,
+                marginBottom: 8,
+              }}
+            >
+              {cat.key}
+            </h3>
+            {groupedByPrinciple[cat.key] &&
+            groupedByPrinciple[cat.key].length > 0 ? (
+              filterBySeverity(groupedByPrinciple[cat.key]).length > 0 ? (
+                filterBySeverity(groupedByPrinciple[cat.key]).map((g, idx) => (
+                  <div key={idx} className="issue-item">
+                    <p>
+                      <strong>
+                        {g.wcagCriterion || "Unspecified criterion"}
+                      </strong>{" "}
+                      {g.severity && (
+                        <>
+                          • <span>{g.severity} severity</span>
+                        </>
                       )}
-                    </div>
-                    <button
-                      style={{
-                        background: "#e0e7ef",
-                        color: "#334155",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 14px",
-                        fontWeight: 500,
-                        marginRight: 6,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Show
-                    </button>
-                    <button
-                      style={{
-                        background: "#f3f4f6",
-                        color: "#64748b",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 14px",
-                        fontWeight: 400,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Expand
-                    </button>
+                      {typeof g.count === "number" && (
+                        <>
+                          {" "}
+                          • approx. {g.count} occurrence
+                          {g.count === 1 ? "" : "s"}
+                        </>
+                      )}
+                    </p>
+                    {g.problem && (
+                      <p className="issue-problem">
+                        <strong>Problem:</strong> {g.problem}
+                      </p>
+                    )}
+                    {g.recommendation && (
+                      <p className="issue-recommendation">
+                        <strong>Recommendation:</strong> {g.recommendation}
+                      </p>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          ),
-      )}
-      {/* No issues */}
-      {displayGroups.every((g) => g.items.length === 0) && (
+                ))
+              ) : (
+                <p className="no-issues">
+                  No issues for selected severity in this category.
+                </p>
+              )
+            ) : (
+              <p className="no-issues">
+                No specific WCAG issues were identified for this category.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* No issues overall */}
+      {principles.every(
+        (cat) =>
+          !groupedByPrinciple[cat.key] ||
+          filterBySeverity(groupedByPrinciple[cat.key]).length === 0,
+      ) && (
         <div style={{ color: "#64748b", textAlign: "center", marginTop: 32 }}>
           No accessibility issues found.
         </div>
@@ -2417,6 +2440,7 @@ function Complete() {
                   border: "1px solid #e0e7ef",
                   minHeight: "520px",
                   marginRight: "auto",
+                  width: "340px",
                 }}
               >
                 <div className="scores">
@@ -2887,10 +2911,10 @@ function Complete() {
                           fontSize: 28,
                           fontWeight: 900,
                           lineHeight: 1,
-                          color: totalIssuesCount === 0 ? "#16a34a" : "#b3261e",
+                          color: (Object.values(groupedByPrinciple || {}).flat().length === 0) ? "#16a34a" : "#b3261e",
                         }}
                       >
-                        {totalIssuesCount}
+                        {Object.values(groupedByPrinciple || {}).flat().length}
                       </div>
                     </div>
 
@@ -3062,13 +3086,39 @@ function Complete() {
                     </div>
                   </div>
                 </div>
-                {/* ================= VIOLATION LIST ================= */}
-                <ViolationsFilterSection
-                  violations={analysis?.violations || []}
-                />
-                {/* ...existing code... */}
-                {/* Move explanation and WCAG issues inside the .map loop, so cat is always defined */}
-                {/* ...existing code... */}
+
+                {(() => {
+                  // Debugging output
+                  console.log("analysis:", analysis);
+                  console.log("analysis.groupedByPrinciple:", analysis?.groups);
+                  const fallback = (() => {
+                    const violations = analysis?.violations || [];
+                    const result = {
+                      Perceivable: [],
+                      Operable: [],
+                      Understandable: [],
+                      Robust: [],
+                    };
+                    violations.forEach((v) => {
+                      const p =
+                        v.principle ||
+                        v.pourPrinciple ||
+                        v.category ||
+                        v.wcagPrinciple;
+                      if (p && result[p]) {
+                        result[p].push(v);
+                      }
+                    });
+                    return result;
+                  })();
+                  console.log("fallback groupedByPrinciple:", fallback);
+                  return (
+                    <ViolationsFilterSection
+                      violations={analysis?.violations || []}
+                      groupedByPrinciple={groupedByPrinciple}
+                    />
+                  );
+                })()}
               </div>
             </div>
             {/* Website Preview Section */}
