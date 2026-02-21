@@ -3323,7 +3323,9 @@ function Complete() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
+                    previewMode === "sidebyside"
+                      ? "1fr 1fr"
+                      : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
                   alignItems: "stretch",
                   height: "100%",
                   width: "100%",
@@ -3508,6 +3510,85 @@ function Complete() {
                         )
                       }
                     />
+                  </>
+                ) : previewMode === "sidebyside" &&
+                  violationScreenshots &&
+                  violationScreenshots.length > 0 ? (
+                  <>
+                    {/* Side by side: left original, right AI-modified */}
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRight: "1px solid #e5e7eb",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#fff",
+                      }}
+                    >
+                      <img
+                        src={
+                          violationScreenshots[currentScreenshotIdx]?.screenshot
+                        }
+                        alt="Original screenshot"
+                        style={{
+                          width: "auto",
+                          height: "auto",
+                          maxWidth: "95%",
+                          maxHeight: "400px",
+                          objectFit: "contain",
+                          borderRadius: "8px",
+                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                          border: "1px solid #e5e7eb",
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#fff",
+                      }}
+                    >
+                      {violationScreenshots[currentScreenshotIdx]?.aiFeedback
+                        ?.editedImageBase64 ? (
+                        <img
+                          src={
+                            violationScreenshots[currentScreenshotIdx]
+                              ?.aiFeedback?.editedImageBase64
+                          }
+                          alt="AI-modified screenshot"
+                          style={{
+                            width: "auto",
+                            height: "auto",
+                            maxWidth: "95%",
+                            maxHeight: "400px",
+                            objectFit: "contain",
+                            borderRadius: "8px",
+                            boxShadow: "0 2px 8px rgba(24,155,151,0.13)",
+                            border: "1px solid #e5e7eb",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            color: "#7c8da0",
+                            fontWeight: 600,
+                            fontSize: 16,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "100%",
+                          }}
+                        >
+                          AI-modified screenshot not available.
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : analysis?.screenshot ? (
                   <img
