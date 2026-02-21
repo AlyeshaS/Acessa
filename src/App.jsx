@@ -40,7 +40,7 @@ function App() {
     <>
       <div className="main-container">
         <div className="title">
-          <h1>Welcome to Acessa!</h1>
+          <h1>Welcome to Accessa!</h1>
           <p className="subheader">Design Smarter. Design Accessible</p>
         </div>
 
@@ -60,7 +60,7 @@ function App() {
           </div>
 
           <div className="cards">
-            <h2>What Acessa does:</h2>
+            <h2>What Accessa does:</h2>
             <div className="feature-grid">
               {/* WCAG Score */}
               <div className="feature-card">

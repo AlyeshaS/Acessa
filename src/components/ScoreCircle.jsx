@@ -25,11 +25,11 @@ export default function ScoreCircle({
           strokeWidth={strokeWidth}
           fill="none"
         />
-        <circle
+            <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#10b981"
+              stroke="#267e57"
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={circumference}

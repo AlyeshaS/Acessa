@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -323,10 +323,32 @@ async function fetchPageContent(url) {
 
     const html = await page.content();
 
-    const screenshotBuffer = await page.screenshot({ fullPage: true });
-    const screenshot = `data:image/png;base64,${screenshotBuffer.toString(
-      "base64",
-    )}`;
+    // When taking a violation screenshot at a specific scrollY:
+    const screenshotBuffer = await page.screenshot({
+      type: "jpeg",
+      quality: 85,
+      fullPage: false, // Only capture viewport
+    });
+
+    // Store the scroll position with the screenshot
+    violationScreenshot.scrollY = currentScrollY;
+    violationScreenshot.viewport = { width: 1280, height: 720 };
+
+    // Adjust bounding boxes relative to this screenshot's scroll position
+    violationScreenshot.markers = violations
+      .map((v) => {
+        const bbox = v.nodes[0]?.boundingBox;
+        if (!bbox) return null;
+
+        return {
+          ...bbox,
+          // Convert page coordinates to screenshot coordinates
+          x: bbox.pageX - currentScrollX,
+          y: bbox.pageY - currentScrollY,
+          issueId: v.id,
+        };
+      })
+      .filter(Boolean);
 
     const text = await page.evaluate(() => document.body.innerText || "");
 
@@ -887,13 +909,12 @@ async function captureViolationScreenshots(page, axeViolations) {
             node?.summary || violation?.help || violation?.description || "";
           let recommendation =
             node?.recommendation || violation?.recommendation || "";
-          // Defensive: always string
           summary = typeof summary === "string" ? summary : "";
           recommendation =
             typeof recommendation === "string" ? recommendation : "";
           return {
             ...m,
-            issueId: violation.id,
+            issueId: `${violation.id}__${m.selector || i}`,
             summary,
             recommendation,
             source: "axe-node",
@@ -1500,11 +1521,14 @@ app.post("/api/wcag-check", async (req, res) => {
     // --- MERGING LOGIC (existing) ---
     const axeGroups = axeViolations.map((v) => {
       const wcagTag = v.tags?.find((t) => t.match(/^wcag\d/)) || v.id;
-
-      // If boundingBoxes were attached by Playwright, use them; else empty array
       const boundingBoxes = Array.isArray(v.boundingBoxes)
         ? v.boundingBoxes
         : [];
+      // Use the first node's selector for the group issueId, fallback to 0
+      const firstSelector =
+        v.nodes && v.nodes[0] && v.nodes[0].target
+          ? v.nodes[0].target.join(" ")
+          : "0";
       return {
         wcagCriterion: wcagTag,
         severity: v.impact
@@ -1515,6 +1539,7 @@ app.post("/api/wcag-check", async (req, res) => {
         recommendation: "Fix syntax issues reported by Axe-core.",
         type: "automated",
         boundingBoxes,
+        issueId: `${v.id}__${firstSelector}`,
       };
     });
 

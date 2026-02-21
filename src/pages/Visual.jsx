@@ -228,7 +228,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           color: "#9ca3af",
         }}
       >
-        Acessa is visually replaying how it reviewed this page for
+        Accessa is visually replaying how it reviewed this page for
         accessibility.
       </p>
     </div>
@@ -444,7 +444,23 @@ function Visual() {
 
       <div className="card-body">
         {loading && (
-          <div className="hci-report">
+          <div
+            className="hci-report"
+            style={{
+              background: "rgba(255,255,255,0.75)",
+              borderRadius: 999,
+              border: "1px solid rgba(203,213,225,0.8)",
+              backdropFilter: "blur(6px)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "32px 24px",
+              margin: "32px auto",
+              width: "min(420px, 90%)",
+            }}
+          >
             <h2>Running visual analysis…</h2>
             <p className="subheader">
               Analyzing: <strong>{url}</strong>
@@ -487,9 +503,25 @@ function Visual() {
         )}
 
         {!loading && error && (
-          <div className="hci-report">
-            <h2>Error</h2>
-            <p>{error}</p>
+          <div
+            className="hci-report"
+            style={{
+              background: "rgba(255,255,255,0.75)",
+              borderRadius: 999,
+              border: "1px solid rgba(203,213,225,0.8)",
+              backdropFilter: "blur(6px)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              padding: "32px 24px",
+              margin: "32px auto",
+              width: "min(1000px, 90%)",
+            }}
+          >
+            <h2 style={{ color: '#7c8da0', fontWeight: 700 }}>Something went wrong</h2>
+            <p style={{ color: '#7c8da0', fontSize: '1.1rem', marginTop: 8 }}>{error}</p>
           </div>
         )}
 
@@ -579,7 +611,7 @@ function Visual() {
       </div>
 
       <footer>
-        <h2>Acessa</h2>
+        <h2>Accessa</h2>
       </footer>
     </>
   );

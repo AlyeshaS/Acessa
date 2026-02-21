@@ -631,6 +631,8 @@
   gap: 15px;
   background: var(--white);
   padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
 }
 
 /* Visual Improvements card: match HCI report styling */
@@ -920,7 +922,6 @@ main {
 
 .score-circle-progress {
   fill: none;
-  stroke: #7c8da0;
   stroke-linecap: round;
   transform: rotate(-90deg);
   transform-origin: 50% 50%;

@@ -3,7 +3,7 @@ import type { AnalysisResult, AnalysisStep } from "../types/analysis";
 
 interface AnalysisPlayerProps {
   result: AnalysisResult;
-  onComplete?: () => void; // callback when animation finishes
+  onComplete?: () => void;
 }
 
 export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
@@ -15,9 +15,7 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
 
   useEffect(() => {
     if (!steps.length) return;
-
     setCurrentIndex(0);
-
     const interval = setInterval(() => {
       setCurrentIndex((prev) => {
         const next = prev + 1;
@@ -28,8 +26,7 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
         }
         return next;
       });
-    }, 1400); // change every 1.4s – tweak for vibe
-
+    }, 1400);
     return () => clearInterval(interval);
   }, [steps, onComplete]);
 
@@ -44,9 +41,8 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
           alt="Analyzed page preview"
           className="w-full h-auto block"
         />
-
         {/* Click circle */}
-        {currentStep?.type === "click" && (
+        {currentStep && currentStep.type === "click" && (
           <div
             className="absolute pointer-events-none"
             style={{
@@ -61,34 +57,53 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
             }}
           />
         )}
-
         {/* Highlight box */}
-        {currentStep?.type === "highlight" && (
+        {currentStep && currentStep.type === "highlight" && (
           <div
-            className="absolute pointer-events-none"
+            className="absolute group"
             style={{
               left: currentStep.x,
               top: currentStep.y,
               width: currentStep.width,
               height: currentStep.height,
               borderRadius: "10px",
-              border: "3px solid #7c8da0",
-              boxShadow: "0 0 0 4px rgba(124,138,160,0.3)",
-              background: "rgba(124,138,160,0.08)",
+              border: "3px solid #e11d48",
+              boxShadow: "0 0 12px 4px rgba(225,29,72,0.25)",
+              background: "rgba(225,29,72,0.10)",
+              animation: "pulse-highlight 1.2s infinite alternate",
               transition: "all 0.25s ease-out",
+              zIndex: 20,
             }}
-          />
+          >
+            {/* Tooltip on hover */}
+            <div
+              className="absolute left-full top-1/2 -translate-y-1/2 ml-3 bg-slate-900 text-white text-xs rounded-lg shadow-lg px-3 py-2 opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity duration-200 w-64 z-30"
+              style={{ minWidth: 180 }}
+            >
+              <div className="font-semibold mb-1">
+                {"issue" in currentStep &&
+                typeof (currentStep as any).issue === "string"
+                  ? (currentStep as any).issue
+                  : "Potential issue"}
+              </div>
+              {"recommendation" in currentStep &&
+                typeof (currentStep as any).recommendation === "string" &&
+                (currentStep as any).recommendation && (
+                  <div className="text-amber-200">
+                    {(currentStep as any).recommendation}
+                  </div>
+                )}
+            </div>
+          </div>
         )}
       </div>
-
       {/* RIGHT: Step text */}
       <div className="space-y-3 text-sm">
         <p className="text-xs uppercase tracking-wide text-slate-400">
           Analyzing your page… Step {Math.min(currentIndex + 1, steps.length)}{" "}
           of {steps.length}
         </p>
-
-        {currentStep?.type === "click" && (
+        {currentStep && currentStep.type === "click" && (
           <div>
             <h3 className="font-semibold text-slate-50 mb-1">
               Simulating user interaction
@@ -99,17 +114,20 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
             </p>
           </div>
         )}
-
-        {currentStep?.type === "highlight" && (
+        {currentStep && currentStep.type === "highlight" && (
           <div>
             <h3 className="font-semibold text-slate-50 mb-1">
               Focusing on a potential issue
             </h3>
-            <p className="text-slate-300">{currentStep.issue}</p>
+            <p className="text-slate-300">
+              {"issue" in currentStep &&
+              typeof (currentStep as any).issue === "string"
+                ? (currentStep as any).issue
+                : "Potential issue"}
+            </p>
           </div>
         )}
-
-        {currentStep?.type === "issue" && (
+        {currentStep && currentStep.type === "issue" && (
           <div className="border border-slate-700 rounded-lg p-3 bg-slate-900/40">
             <h3 className="font-semibold text-slate-50 mb-1">
               {currentStep.summary}
@@ -117,7 +135,6 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
             <p className="text-xs text-slate-400 mt-1">{currentStep.wcag}</p>
           </div>
         )}
-
         {!currentStep && (
           <p className="text-slate-400">Preparing accessibility insights…</p>
         )}
@@ -125,3 +142,14 @@ export const AnalysisPlayer: React.FC<AnalysisPlayerProps> = ({
     </div>
   );
 };
+
+// Add keyframes for highlight animation (inject into global CSS if not present)
+if (typeof window !== "undefined") {
+  const styleId = "analysis-player-highlight-anim";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.innerHTML = `@keyframes pulse-highlight { 0% { box-shadow: 0 0 12px 4px rgba(225,29,72,0.25); } 100% { box-shadow: 0 0 24px 8px rgba(225,29,72,0.35); } }`;
+    document.head.appendChild(style);
+  }
+}

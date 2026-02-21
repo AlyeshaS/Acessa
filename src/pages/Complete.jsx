@@ -50,22 +50,45 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
         }}
       />
 
-      {markers.map((m, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            left: m.x * scaleX,
-            top: m.y * scaleY,
-            width: m.width * scaleX,
-            height: m.height * scaleY,
-            border: "2px solid #ff4d4f",
-            background: "rgba(255,77,79,0.18)",
-            borderRadius: 6,
-            pointerEvents: "none",
-          }}
-        />
-      ))}
+      {markers.flatMap((m, i) => {
+        if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
+          return m.boundingBoxes.map((b, j) => (
+            <div
+              key={`${m.issueId || i}-bb-${j}`}
+              data-issueid={m.issueId || ""}
+              style={{
+                position: "absolute",
+                left: b.x * scaleX,
+                top: b.y * scaleY,
+                width: b.width * scaleX,
+                height: b.height * scaleY,
+                border: "2px solid #ff4d4f",
+                background: "rgba(255,77,79,0.18)",
+                borderRadius: 6,
+                pointerEvents: "none",
+              }}
+            />
+          ));
+        } else {
+          return (
+            <div
+              key={m.issueId || i}
+              data-issueid={m.issueId || ""}
+              style={{
+                position: "absolute",
+                left: m.x * scaleX,
+                top: m.y * scaleY,
+                width: m.width * scaleX,
+                height: m.height * scaleY,
+                border: "2px solid #ff4d4f",
+                background: "rgba(255,77,79,0.18)",
+                borderRadius: 6,
+                pointerEvents: "none",
+              }}
+            />
+          );
+        }
+      })}
     </div>
   );
 }
@@ -267,6 +290,11 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
+  // Color logic
+  let color = "#B3261E"; // red
+  if (clamped >= 80)
+    color = "#22c55e"; // green
+  else if (clamped >= 60) color = "#eab308"; // yellow
 
   return (
     <div
@@ -289,6 +317,7 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
         {/* progress arc */}
         <circle
           className="score-circle-progress"
+          stroke={color}
           strokeWidth={strokeWidth}
           r={radius}
           cx={size / 2}
@@ -303,7 +332,6 @@ function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
           dominantBaseline="middle"
           textAnchor="middle"
           className="score-circle-text"
-          // style={{ fill: "var(--background)" }}
         >
           {clamped}
         </text>
@@ -382,7 +410,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           maxWidth: "600px",
           margin: "0 auto",
           borderRadius: "14px",
-          overflow: "hidden",
+          overflow: "auto",
           border: "2px solid var(--color-accent)",
           background: "rgba(15,23,42,0.8)",
           boxShadow: "0 4px 20px rgba(124,138,160,0.3)",
@@ -767,6 +795,17 @@ function LightboxBeforeAfter({
                 feedbackToSend?.recommendation ||
                 feedbackToSend?.summary ||
                 "Improve accessibility of this image.";
+              // Send bounding box and selector info for highlighted element(s)
+              const highlightedMarkers = Array.isArray(markers)
+                ? markers.filter(
+                    (m) => m.boundingBoxes && m.boundingBoxes.length > 0,
+                  )
+                : [];
+              const highlightInfo = highlightedMarkers.map((m) => ({
+                boundingBoxes: m.boundingBoxes,
+                selector: m.selector || m.selectors?.[0] || null,
+                issueId: m.issueId || null,
+              }));
               const res = await fetch(
                 "http://localhost:4000/api/ai/image-edit",
                 {
@@ -775,6 +814,7 @@ function LightboxBeforeAfter({
                   body: JSON.stringify({
                     screenshot,
                     prompt,
+                    highlightInfo,
                   }),
                 },
               );
@@ -1289,16 +1329,12 @@ function ViolationsFilterSection({
   return (
     <div
       style={{
-        background: "#f9fafb",
+        background: "#ffffff",
         borderRadius: 12,
         padding: 24,
         marginTop: 24,
       }}
     >
-      {/* Total Issues */}
-      <div style={{ fontWeight: 700, fontSize: 18, color: "#334155", marginBottom: 12 }}>
-        Total Issues: {counts.all}
-      </div>
       {/* Filter Buttons */}
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <button
@@ -1404,6 +1440,28 @@ function ViolationsFilterSection({
 }
 
 function Complete() {
+  React.useEffect(() => {
+    if (!document.head.querySelector("style[data-highlight-feedback]")) {
+      const style = document.createElement("style");
+      style.innerHTML = `
+          .pulse-highlight-once {
+            animation: pulse-highlight 1.1s cubic-bezier(0.4,0,0.2,1);
+          }
+          @keyframes pulse-highlight {
+            0% { box-shadow: 0 0 0 0 rgba(225,29,72,0.25); border-width: 2px; }
+            50% { box-shadow: 0 0 0 8px rgba(225,29,72,0.18); border-width: 4px; }
+            100% { box-shadow: 0 0 0 0 rgba(225,29,72,0.25); border-width: 2px; }
+          }
+          .highlight-hover {
+            border-color: #0ea5a4 !important;
+            box-shadow: 0 0 0 6px rgba(14,165,164,0.18) !important;
+            z-index: 30 !important;
+          }
+        `;
+      style.setAttribute("data-highlight-feedback", "true");
+      document.head.appendChild(style);
+    }
+  }, []);
   // --- Add state for highlighted screenshot navigation ---
   const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState(0);
   const navigate = useNavigate();
@@ -2429,7 +2487,6 @@ function Complete() {
               <div
                 className="preview-panel"
                 style={{
-                  flex: 1,
                   background: "#fff",
                   borderRadius: "16px",
                   padding: "20px 24px",
@@ -2440,7 +2497,7 @@ function Complete() {
                   border: "1px solid #e0e7ef",
                   minHeight: "520px",
                   marginRight: "auto",
-                  width: "340px",
+                  width: "480px",
                 }}
               >
                 <div className="scores">
@@ -2790,41 +2847,112 @@ function Complete() {
                                             <div
                                               key={idx}
                                               className="issue-item"
+                                              style={{
+                                                background: "#f9fafb",
+                                                borderRadius: 10,
+                                                boxShadow:
+                                                  "0 1px 6px rgba(124,138,160,0.06)",
+                                                padding: "14px 14px 10px 14px",
+                                                marginBottom: 14,
+                                                borderLeft:
+                                                  g.severity === "High"
+                                                    ? "5px solid #e11d48"
+                                                    : g.severity === "Medium"
+                                                      ? "5px solid #fbbf24"
+                                                      : "5px solid #10b981",
+                                                position: "relative",
+                                              }}
                                             >
-                                              <p>
-                                                <strong>
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: 10,
+                                                  marginBottom: 4,
+                                                }}
+                                              >
+                                                {/* Severity badge */}
+                                                <span
+                                                  style={{
+                                                    display: "inline-block",
+                                                    width: 14,
+                                                    height: 14,
+                                                    borderRadius: "50%",
+                                                    background:
+                                                      g.severity === "High"
+                                                        ? "#e11d48"
+                                                        : g.severity ===
+                                                            "Medium"
+                                                          ? "#fbbf24"
+                                                          : "#10b981",
+                                                    border: "2px solid #fff",
+                                                    boxShadow:
+                                                      "0 0 0 1px #e5e7eb",
+                                                  }}
+                                                  title={
+                                                    g.severity + " severity"
+                                                  }
+                                                />
+                                                <strong
+                                                  style={{
+                                                    color: "#334155",
+                                                    fontWeight: 700,
+                                                  }}
+                                                >
                                                   {g.wcagCriterion ||
                                                     "Unspecified criterion"}
                                                 </strong>
-                                                {g.severity && (
-                                                  <span>
-                                                    {" "}
-                                                    • {g.severity} severity
-                                                  </span>
-                                                )}
                                                 {typeof g.count ===
                                                   "number" && (
-                                                  <span>
-                                                    {" "}
+                                                  <span
+                                                    style={{
+                                                      color: "#64748b",
+                                                      fontSize: 13,
+                                                    }}
+                                                  >
                                                     • approx. {g.count}{" "}
                                                     occurrence
                                                     {g.count === 1 ? "" : "s"}
                                                   </span>
                                                 )}
-                                              </p>
+                                              </div>
                                               {g.problem && (
-                                                <p className="issue-problem">
-                                                  <strong>Problem:</strong>{" "}
+                                                <div
+                                                  className="issue-problem"
+                                                  style={{
+                                                    color: "#b3261e",
+                                                    fontWeight: 500,
+                                                    marginBottom: 4,
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{ fontWeight: 600 }}
+                                                  >
+                                                    Problem:
+                                                  </span>{" "}
                                                   {g.problem}
-                                                </p>
+                                                </div>
                                               )}
                                               {g.recommendation && (
-                                                <p className="issue-recommendation">
-                                                  <strong>
+                                                <div
+                                                  className="issue-recommendation"
+                                                  style={{
+                                                    background: "#fff7ed",
+                                                    color: "#b45309",
+                                                    borderRadius: 6,
+                                                    padding: "7px 10px",
+                                                    fontWeight: 500,
+                                                    fontSize: 14,
+                                                    marginTop: 2,
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{ fontWeight: 700 }}
+                                                  >
                                                     Recommendation:
-                                                  </strong>{" "}
+                                                  </span>{" "}
                                                   {g.recommendation}
-                                                </p>
+                                                </div>
                                               )}
                                             </div>
                                           ),
@@ -2850,7 +2978,7 @@ function Complete() {
               {/* RIGHT PANEL – Accessibility Issues */}
               <div
                 style={{
-                  width: "480px",
+                  width: "100%",
                   background: "#ffffff",
                   borderRadius: "14px",
                   display: "flex",
@@ -2863,7 +2991,7 @@ function Complete() {
                 <div
                   style={{
                     padding: "20px 24px",
-                    background: "linear-gradient(180deg, #f8fafc, #ffffff)",
+                    background: "#ffffff",
                     borderBottom: "1px solid #e5e7eb",
                   }}
                 >
@@ -2911,7 +3039,11 @@ function Complete() {
                           fontSize: 28,
                           fontWeight: 900,
                           lineHeight: 1,
-                          color: (Object.values(groupedByPrinciple || {}).flat().length === 0) ? "#16a34a" : "#b3261e",
+                          color:
+                            Object.values(groupedByPrinciple || {}).flat()
+                              .length === 0
+                              ? "#16a34a"
+                              : "#b3261e",
                         }}
                       >
                         {Object.values(groupedByPrinciple || {}).flat().length}
@@ -3008,7 +3140,7 @@ function Complete() {
                   </div>
                 </div>
                 {/* ================= DONUT + LEGEND ================= */}
-                <div
+                {/* <div
                   style={{
                     padding: "20px 24px",
                     borderBottom: "1px solid #e5e7eb",
@@ -3025,16 +3157,32 @@ function Complete() {
                       alignItems: "center",
                     }}
                   >
-                    <SegmentedDonut
-                      critical={
-                        severityCountsFiltered.critical +
-                        severityCountsFiltered.serious
-                      }
-                      warning={severityCountsFiltered.moderate}
-                      minor={severityCountsFiltered.minor}
-                      size={96}
-                      strokeWidth={10}
-                    />
+                    {(() => {
+                      const group = analysis?.groups || [];
+                      const criticalArr = group.filter(
+                        (v) =>
+                          v.severity === "High" || v.severity === "serious",
+                      );
+                      const warningArr = group.filter(
+                        (v) => v.severity === "Moderate",
+                      );
+                      const minorArr = group.filter(
+                        (v) => v.severity === "Low",
+                      );
+                      console.log("analysis.group", group);
+                      console.log("critical", criticalArr);
+                      console.log("warning", warningArr);
+                      console.log("minor", minorArr);
+                      return (
+                        <SegmentedDonut
+                          critical={criticalArr.length}
+                          warning={warningArr.length}
+                          minor={minorArr.length}
+                          size={96}
+                          strokeWidth={10}
+                        />
+                      );
+                    })()}
 
                     <div
                       style={{
@@ -3043,49 +3191,71 @@ function Complete() {
                         gap: 10,
                       }}
                     >
-                      {[
-                        {
-                          label: "Critical",
-                          value:
-                            severityCountsFiltered.critical +
-                            severityCountsFiltered.serious,
-                          color: "#B3261E",
-                        },
-                        {
-                          label: "Warnings",
-                          value: severityCountsFiltered.moderate,
-                          color: "#B45309",
-                        },
-                        {
-                          label: "Minor",
-                          value: severityCountsFiltered.minor,
-                          color: "#475569",
-                        },
-                      ].map((item) => (
-                        <div
-                          key={item.label}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <span
+                      {(() => {
+                        // Compute severity arrays from analysis.violations
+                        const violations =
+                          (analysis && analysis.violations) || [];
+                        const criticalArr = violations.filter(
+                          (v) =>
+                            v.severity === "High" ||
+                            v.severity === "serious" ||
+                            v.impact === "critical" ||
+                            v.impact === "serious",
+                        );
+                        const warningArr = violations.filter(
+                          (v) =>
+                            v.severity === "Moderate" ||
+                            v.impact === "moderate" ||
+                            v.severity === "Medium",
+                        );
+                        const minorArr = violations.filter(
+                          (v) =>
+                            v.severity === "Low" ||
+                            v.impact === "minor" ||
+                            v.impact === "low",
+                        );
+                        return [
+                          {
+                            label: "Critical",
+                            value: criticalArr.length,
+                            color: "#B3261E",
+                          },
+                          {
+                            label: "Warnings",
+                            value: warningArr.length,
+                            color: "#B45309",
+                          },
+                          {
+                            label: "Minor",
+                            value: minorArr.length,
+                            color: "#475569",
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
                             style={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: "50%",
-                              background: item.color,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
                             }}
-                          />
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>
-                            {item.value} {item.label}
-                          </span>
-                        </div>
-                      ))}
+                          >
+                            <span
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                background: item.color,
+                              }}
+                            />
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>
+                              {item.value} {item.label}
+                            </span>
+                          </div>
+                        ));
+                      })()}
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 {(() => {
                   // Debugging output
@@ -3191,6 +3361,13 @@ function Complete() {
 
                     {/* Feedback panel (fills the panel grid column) */}
                     <aside
+                      data-issueid={
+                        violationScreenshots[currentScreenshotIdx]?.markers?.[0]
+                          ?.issueId ||
+                        violationScreenshots[currentScreenshotIdx]
+                          ?.violations?.[0]?.issueId ||
+                        ""
+                      }
                       style={{
                         width: "100%",
                         height: "100%",
@@ -3203,6 +3380,65 @@ function Complete() {
                         justifyContent: "flex-start",
                         boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
                         overflowY: "auto",
+                        cursor: "pointer",
+                        transition: "box-shadow 0.2s, border 0.2s",
+                      }}
+                      onClick={() => {
+                        // Find the highlight with the same issueId and pulse it
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.add("pulse-highlight-once");
+                          setTimeout(() => {
+                            highlight.classList.remove("pulse-highlight-once");
+                          }, 1200);
+                          // Scroll into view if needed
+                          if (typeof highlight.scrollIntoView === "function") {
+                            highlight.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
+                          }
+                        }
+                      }}
+                      onMouseEnter={() => {
+                        // Optionally, add a hover effect to the highlight
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.add("highlight-hover");
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.remove("highlight-hover");
+                        }
                       }}
                     >
                       <div
@@ -3618,7 +3854,7 @@ function Complete() {
               <div
                 style={{
                   flex: 1,
-                  background: "#f9fafb",
+                  background: "#ffffff",
                   borderRadius: "12px",
                   boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
                   padding: "24px",
@@ -3709,7 +3945,7 @@ function Complete() {
               <div
                 style={{
                   flex: 1,
-                  background: "#f9fafb",
+                  background: "#ffffff",
                   borderRadius: "12px",
                   boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
                   padding: "24px",
@@ -4207,7 +4443,12 @@ function Complete() {
                         markers={
                           selectedViolation?.screenshotOnly
                             ? []
-                            : selectedViolation?.markers || []
+                            : selectedViolation?.markers
+                              ? selectedViolation.markers.filter(
+                                  (m) =>
+                                    m.issueId === selectedViolation.issueId,
+                                )
+                              : []
                         }
                         onAfterClick={() =>
                           handleAfterClick(
@@ -4325,6 +4566,7 @@ function Complete() {
                     }}
                   />
                   {/* Overlay all bounding boxes */}
+                  {/* Overlay all bounding boxes */}
                   {analysis.violations.map(
                     (v, vi) =>
                       Array.isArray(v.nodes) &&
@@ -4335,10 +4577,11 @@ function Complete() {
                               key={`main-fbbox-${vi}-${ni}`}
                               style={{
                                 position: "absolute",
-                                left: node.boundingBox.x,
-                                top: node.boundingBox.y,
-                                width: node.boundingBox.width,
-                                height: node.boundingBox.height,
+                                // Use pageX/pageY if available, otherwise fall back to x/y
+                                left: `${((node.boundingBox.pageX || node.boundingBox.x) / (analysis.viewportSize?.width || 1280)) * 100}%`,
+                                top: `${((node.boundingBox.pageY || node.boundingBox.y) / (analysis.viewportSize?.height || 720)) * 100}%`,
+                                width: `${(node.boundingBox.width / (analysis.viewportSize?.width || 1280)) * 100}%`,
+                                height: `${(node.boundingBox.height / (analysis.viewportSize?.height || 720)) * 100}%`,
                                 borderRadius: 8,
                                 border: "2px dashed #7c8da0",
                                 background: "rgba(124,138,160,0.10)",
@@ -4358,7 +4601,7 @@ function Complete() {
       </div>
 
       <footer>
-        <h2>Acessa</h2>
+        <h2>Accessa</h2>
       </footer>
     </>
   );
