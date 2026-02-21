@@ -4223,7 +4223,16 @@ function Complete() {
                 })()}
               </div>
             </div>
-            <div className="next-steps">
+            <div
+              className="next-steps"
+              style={{
+                background: "#fff",
+                borderRadius: "12px",
+                padding: "24px",
+                boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                marginTop: "32px",
+              }}
+            >
               <h2>Next Steps</h2>
               {nextSteps.length === 0 ? (
                 <p>No specific recommendations were generated.</p>
