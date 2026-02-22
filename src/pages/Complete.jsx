@@ -27,6 +27,27 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
     });
   };
 
+  // --- AI Image Cache Hook & Helper ---
+
+  function getAIImageKey(url, idx) {
+    return `aiImageCache_${url}_${idx}`;
+  }
+
+  function useAIImageCache(url, idx, aiImage) {
+    const [cachedImage, setCachedImage] = useState(null);
+    useEffect(() => {
+      const key = getAIImageKey(url, idx);
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        setCachedImage(stored);
+      } else if (aiImage) {
+        sessionStorage.setItem(key, aiImage);
+        setCachedImage(aiImage);
+      }
+    }, [url, idx, aiImage]);
+    return cachedImage;
+  }
+
   React.useEffect(() => {
     const onResize = () => handleImgLoad();
     window.addEventListener("resize", onResize);
@@ -2286,44 +2307,76 @@ function Complete() {
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
 
-  // When switching to sidebyside, send screenshot to AI generator
+  // Helper for cache key
+  function getAIImageKey(url, idx) {
+    return `aiImageCache_${url}_${idx}`;
+  }
+
+  // When switching to sidebyside, send screenshot to AI generator or use cache
   useEffect(() => {
+    const cacheKey = getAIImageKey(url, currentScreenshotIdx);
     if (
       previewMode === "sidebyside" &&
       violationScreenshots &&
       violationScreenshots.length > 0 &&
-      !sideBySideAIImage &&
       !sideBySideLoading
     ) {
-      const screenshot = violationScreenshots[currentScreenshotIdx]?.screenshot;
-      if (!screenshot) return;
-      setSideBySideLoading(true);
-      // Send screenshot to backend for AI visual fix
-      fetch("http://localhost:4000/api/ai/image-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          screenshot,
-          prompt: "Improve accessibility of this image.",
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.editedImageBase64) {
-            setSideBySideAIImage(data.editedImageBase64);
-          } else if (data.editedImageUrl) {
-            setSideBySideAIImage(data.editedImageUrl);
-          }
+      // Try cache first
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        setSideBySideAIImage(cached);
+        setSideBySideLoading(false);
+        return;
+      }
+      if (!sideBySideAIImage) {
+        const screenshot =
+          violationScreenshots[currentScreenshotIdx]?.screenshot;
+        if (!screenshot) return;
+        setSideBySideLoading(true);
+        fetch("http://localhost:4000/api/ai/image-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            screenshot,
+            prompt: "Improve accessibility of this image.",
+          }),
         })
-        .catch(() => {})
-        .finally(() => setSideBySideLoading(false));
+          .then((res) => res.json())
+          .then((data) => {
+            let img = null;
+            if (data.editedImageBase64) {
+              img = data.editedImageBase64;
+            } else if (data.editedImageUrl) {
+              img = data.editedImageUrl;
+            }
+            if (img) {
+              sessionStorage.setItem(cacheKey, img);
+              setSideBySideAIImage(img);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setSideBySideLoading(false));
+      }
     }
     // Reset AI image if switching away
     if (previewMode !== "sidebyside") {
       setSideBySideAIImage(null);
       setSideBySideLoading(false);
     }
-  }, [previewMode, violationScreenshots, currentScreenshotIdx]);
+  }, [previewMode, violationScreenshots, currentScreenshotIdx, url]);
+
+  // Clear AI image cache when returning to home page
+  useEffect(() => {
+    // Only clear cache if on home page
+    if (location.pathname === "/") {
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith("aiImageCache_")) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    }
+  }, [location.pathname]);
   return (
     <>
       <div className="navbar">
@@ -2515,6 +2568,335 @@ function Complete() {
 
         {!loading && !error && !animating && analysis && (
           <>
+            {/* Website Preview Section */}
+            <div className="website-preview-panel">
+              <h2 className="website-preview-title">Website Preview</h2>
+
+              <div className="website-preview-toggle-group">
+                <button
+                  className={
+                    "website-preview-toggle-btn" +
+                    (previewMode === "highlighted" ? " active" : "")
+                  }
+                  onClick={() => setPreviewMode("highlighted")}
+                  type="button"
+                >
+                  Highlighted
+                </button>
+                <button
+                  className={
+                    "website-preview-toggle-btn" +
+                    (previewMode === "sidebyside" ? " active" : "")
+                  }
+                  onClick={() => setPreviewMode("sidebyside")}
+                  type="button"
+                >
+                  Side to side
+                </button>
+              </div>
+
+              <div
+                className="website-preview-screenshot-wrapper"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    previewMode === "sidebyside"
+                      ? "1fr 1fr"
+                      : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
+                  alignItems: "stretch",
+                  height: "100%",
+                  width: "100%",
+                  background: "#fff",
+                  borderRadius: 12,
+                  overflow: "clip",
+                }}
+              >
+                {previewMode === "highlighted" &&
+                violationScreenshots &&
+                violationScreenshots.length > 0 ? (
+                  <>
+                    {/* Left arrow */}
+                    <PreviewArrow
+                      direction="left"
+                      disabled={currentScreenshotIdx === 0}
+                      onClick={() =>
+                        setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
+                      }
+                    />
+
+                    {/* Screenshot + highlights + panel */}
+                    {/* Screenshot (fills the image grid column) */}
+                    <div style={{ width: "100%", height: "100%" }}>
+                      <ScreenshotWithHighlights
+                        screenshot={
+                          violationScreenshots[currentScreenshotIdx]?.screenshot
+                        }
+                        markers={
+                          violationScreenshots[currentScreenshotIdx]?.markers ||
+                          []
+                        }
+                      />
+                    </div>
+
+                    {/* Feedback panel (fills the panel grid column) */}
+                    <aside
+                      data-issueid={
+                        violationScreenshots[currentScreenshotIdx]?.markers?.[0]
+                          ?.issueId ||
+                        violationScreenshots[currentScreenshotIdx]
+                          ?.violations?.[0]?.issueId ||
+                        ""
+                      }
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: "#f8fafc",
+                        borderRadius: 10,
+                        border: "1px solid #e5e7eb",
+                        padding: 18,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "flex-start",
+                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                        overflowY: "auto",
+                        cursor: "pointer",
+                        transition: "box-shadow 0.2s, border 0.2s",
+                      }}
+                      onClick={() => {
+                        // Find the highlight with the same issueId and pulse it
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.add("pulse-highlight-once");
+                          setTimeout(() => {
+                            highlight.classList.remove("pulse-highlight-once");
+                          }, 1200);
+                          // Scroll into view if needed
+                          if (typeof highlight.scrollIntoView === "function") {
+                            highlight.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
+                          }
+                        }
+                      }}
+                      onMouseEnter={() => {
+                        // Optionally, add a hover effect to the highlight
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.add("highlight-hover");
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        const issueId =
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.markers?.[0]?.issueId ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.issueId ||
+                          "";
+                        if (!issueId) return;
+                        const highlight = document.querySelector(
+                          `[data-issueid="${issueId}"]`,
+                        );
+                        if (highlight) {
+                          highlight.classList.remove("highlight-hover");
+                        }
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          color: "#7c8da0",
+                          marginBottom: 8,
+                        }}
+                      >
+                        {violationScreenshots[
+                          currentScreenshotIdx
+                        ]?.violations?.[0]?.impact?.toUpperCase() || "ISSUE"}
+                      </div>
+
+                      <h3
+                        style={{
+                          fontSize: 18,
+                          fontWeight: 700,
+                          margin: 0,
+                          color: "#475569",
+                        }}
+                      >
+                        {getFriendlyTitle(
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.wcagCriterion,
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.id,
+                        )}
+                      </h3>
+
+                      <p
+                        style={{
+                          color: "#475569",
+                          marginTop: 10,
+                          fontSize: 15,
+                        }}
+                      >
+                        {violationScreenshots[currentScreenshotIdx]?.aiFeedback
+                          ?.summary ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.help ||
+                          violationScreenshots[currentScreenshotIdx]
+                            ?.violations?.[0]?.description ||
+                          "This area shows a visual concern that may affect user understanding or ease of use."}
+                      </p>
+
+                      {violationScreenshots[currentScreenshotIdx]?.aiFeedback
+                        ?.recommendation && (
+                        <p style={{ marginTop: 8, color: "#7c8da0" }}>
+                          <strong>Suggested fix:</strong>{" "}
+                          {
+                            violationScreenshots[currentScreenshotIdx]
+                              .aiFeedback.recommendation
+                          }
+                        </p>
+                      )}
+                    </aside>
+
+                    <PreviewArrow
+                      direction="right"
+                      disabled={
+                        currentScreenshotIdx === violationScreenshots.length - 1
+                      }
+                      onClick={() =>
+                        setCurrentScreenshotIdx((i) =>
+                          Math.min(violationScreenshots.length - 1, i + 1),
+                        )
+                      }
+                    />
+                  </>
+                ) : previewMode === "sidebyside" &&
+                  violationScreenshots &&
+                  violationScreenshots.length > 0 ? (
+                  <>
+                    {/* Side by side: left original, right AI-modified */}
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRight: "1px solid #e5e7eb",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#fff",
+                      }}
+                    >
+                      <img
+                        src={
+                          violationScreenshots[currentScreenshotIdx]?.screenshot
+                        }
+                        alt="Original screenshot"
+                        style={{
+                          width: "auto",
+                          height: "auto",
+                          maxWidth: "95%",
+                          maxHeight: "400px",
+                          objectFit: "contain",
+                          borderRadius: "8px",
+                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                          border: "1px solid #e5e7eb",
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#fff",
+                      }}
+                    >
+                      {(() => {
+                        const aiImageToShow = useAIImageCache(
+                          violationScreenshots[currentScreenshotIdx]?.url ||
+                            analysis?.url ||
+                            url,
+                          currentScreenshotIdx,
+                          sideBySideAIImage,
+                        );
+                        if (sideBySideLoading) {
+                          return (
+                            <div
+                              style={{
+                                color: "#7c8da0",
+                                fontWeight: 600,
+                                fontSize: 16,
+                              }}
+                            >
+                              Generating AI-modified screenshot…
+                            </div>
+                          );
+                        } else if (aiImageToShow) {
+                          return (
+                            <img
+                              src={aiImageToShow}
+                              alt="AI-modified screenshot"
+                              style={{
+                                width: "auto",
+                                height: "auto",
+                                maxWidth: "95%",
+                                maxHeight: "400px",
+                                objectFit: "contain",
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 8px rgba(24,155,151,0.13)",
+                                border: "1px solid #e5e7eb",
+                              }}
+                            />
+                          );
+                        } else {
+                          return (
+                            <div
+                              style={{
+                                color: "#7c8da0",
+                                fontWeight: 600,
+                                fontSize: 16,
+                              }}
+                            >
+                              AI-modified screenshot not available.
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  </>
+                ) : analysis?.screenshot ? (
+                  <img
+                    src={analysis.screenshot}
+                    alt="Website full preview"
+                    className="website-preview-screenshot"
+                  />
+                ) : (
+                  <div className="website-preview-screenshot-placeholder">
+                    No screenshot available.
+                  </div>
+                )}
+              </div>
+            </div>
             {/* NEW: Two-Column Results Layout */}
             <div
               className="results-layout"
@@ -3333,321 +3715,6 @@ function Complete() {
                 })()}
               </div>
             </div>
-            {/* Website Preview Section */}
-            <div className="website-preview-panel">
-              <h2 className="website-preview-title">Website Preview</h2>
-
-              <div className="website-preview-toggle-group">
-                <button
-                  className={
-                    "website-preview-toggle-btn" +
-                    (previewMode === "highlighted" ? " active" : "")
-                  }
-                  onClick={() => setPreviewMode("highlighted")}
-                  type="button"
-                >
-                  Highlighted
-                </button>
-                <button
-                  className={
-                    "website-preview-toggle-btn" +
-                    (previewMode === "sidebyside" ? " active" : "")
-                  }
-                  onClick={() => setPreviewMode("sidebyside")}
-                  type="button"
-                >
-                  Side to side
-                </button>
-              </div>
-
-              <div
-                className="website-preview-screenshot-wrapper"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    previewMode === "sidebyside"
-                      ? "1fr 1fr"
-                      : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
-                  alignItems: "stretch",
-                  height: "100%",
-                  width: "100%",
-                  background: "#fff",
-                  borderRadius: 12,
-                  overflow: "clip",
-                }}
-              >
-                {previewMode === "highlighted" &&
-                violationScreenshots &&
-                violationScreenshots.length > 0 ? (
-                  <>
-                    {/* Left arrow */}
-                    <PreviewArrow
-                      direction="left"
-                      disabled={currentScreenshotIdx === 0}
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
-                      }
-                    />
-
-                    {/* Screenshot + highlights + panel */}
-                    {/* Screenshot (fills the image grid column) */}
-                    <div style={{ width: "100%", height: "100%" }}>
-                      <ScreenshotWithHighlights
-                        screenshot={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
-                        }
-                        markers={
-                          violationScreenshots[currentScreenshotIdx]?.markers ||
-                          []
-                        }
-                      />
-                    </div>
-
-                    {/* Feedback panel (fills the panel grid column) */}
-                    <aside
-                      data-issueid={
-                        violationScreenshots[currentScreenshotIdx]?.markers?.[0]
-                          ?.issueId ||
-                        violationScreenshots[currentScreenshotIdx]
-                          ?.violations?.[0]?.issueId ||
-                        ""
-                      }
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "#f8fafc",
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        padding: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "flex-start",
-                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                        overflowY: "auto",
-                        cursor: "pointer",
-                        transition: "box-shadow 0.2s, border 0.2s",
-                      }}
-                      onClick={() => {
-                        // Find the highlight with the same issueId and pulse it
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.add("pulse-highlight-once");
-                          setTimeout(() => {
-                            highlight.classList.remove("pulse-highlight-once");
-                          }, 1200);
-                          // Scroll into view if needed
-                          if (typeof highlight.scrollIntoView === "function") {
-                            highlight.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center",
-                            });
-                          }
-                        }
-                      }}
-                      onMouseEnter={() => {
-                        // Optionally, add a hover effect to the highlight
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.add("highlight-hover");
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.remove("highlight-hover");
-                        }
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#7c8da0",
-                          marginBottom: 8,
-                        }}
-                      >
-                        {violationScreenshots[
-                          currentScreenshotIdx
-                        ]?.violations?.[0]?.impact?.toUpperCase() || "ISSUE"}
-                      </div>
-
-                      <h3
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 700,
-                          margin: 0,
-                          color: "#475569",
-                        }}
-                      >
-                        {getFriendlyTitle(
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.wcagCriterion,
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.id,
-                        )}
-                      </h3>
-
-                      <p
-                        style={{
-                          color: "#475569",
-                          marginTop: 10,
-                          fontSize: 15,
-                        }}
-                      >
-                        {violationScreenshots[currentScreenshotIdx]?.aiFeedback
-                          ?.summary ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.help ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.description ||
-                          "This area shows a visual concern that may affect user understanding or ease of use."}
-                      </p>
-
-                      {violationScreenshots[currentScreenshotIdx]?.aiFeedback
-                        ?.recommendation && (
-                        <p style={{ marginTop: 8, color: "#7c8da0" }}>
-                          <strong>Suggested fix:</strong>{" "}
-                          {
-                            violationScreenshots[currentScreenshotIdx]
-                              .aiFeedback.recommendation
-                          }
-                        </p>
-                      )}
-                    </aside>
-
-                    <PreviewArrow
-                      direction="right"
-                      disabled={
-                        currentScreenshotIdx === violationScreenshots.length - 1
-                      }
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) =>
-                          Math.min(violationScreenshots.length - 1, i + 1),
-                        )
-                      }
-                    />
-                  </>
-                ) : previewMode === "sidebyside" &&
-                  violationScreenshots &&
-                  violationScreenshots.length > 0 ? (
-                  <>
-                    {/* Side by side: left original, right AI-modified */}
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRight: "1px solid #e5e7eb",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      <img
-                        src={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
-                        }
-                        alt="Original screenshot"
-                        style={{
-                          width: "auto",
-                          height: "auto",
-                          maxWidth: "95%",
-                          maxHeight: "400px",
-                          objectFit: "contain",
-                          borderRadius: "8px",
-                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      {sideBySideLoading ? (
-                        <div
-                          style={{
-                            color: "#7c8da0",
-                            fontWeight: 600,
-                            fontSize: 16,
-                          }}
-                        >
-                          Generating AI-modified screenshot…
-                        </div>
-                      ) : sideBySideAIImage ? (
-                        <img
-                          src={sideBySideAIImage}
-                          alt="AI-modified screenshot"
-                          style={{
-                            width: "auto",
-                            height: "auto",
-                            maxWidth: "95%",
-                            maxHeight: "400px",
-                            objectFit: "contain",
-                            borderRadius: "8px",
-                            boxShadow: "0 2px 8px rgba(24,155,151,0.13)",
-                            border: "1px solid #e5e7eb",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            color: "#7c8da0",
-                            fontWeight: 600,
-                            fontSize: 16,
-                          }}
-                        >
-                          AI-modified screenshot not available.
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : analysis?.screenshot ? (
-                  <img
-                    src={analysis.screenshot}
-                    alt="Website full preview"
-                    className="website-preview-screenshot"
-                  />
-                ) : (
-                  <div className="website-preview-screenshot-placeholder">
-                    No screenshot available.
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* <div className="scores">
               <h2>Scores</h2>
               <div className="score-body">
@@ -4369,367 +4436,6 @@ function Complete() {
                 </ul>
               )}
             </div>
-            {/* Before and After card: after HCI Report, before Visual Feedback, only in main results */}
-            {/* NEW: Violation Screenshots with Interactive Feedback */}
-            {violationScreenshots && violationScreenshots.length > 0 && (
-              <div className="visual-feedback">
-                <h2>Visual Accessibility Feedback</h2>
-                <p className="subheader" style={{ marginBottom: 16 }}>
-                  Click the expand button (⤢) on each screenshot to view
-                  detailed accessibility feedback.
-                </p>
-                <div className="violation-scroll">
-                  {violationScreenshots
-                    .filter(
-                      (vs) =>
-                        Array.isArray(vs?.violations) &&
-                        vs.violations.length > 0,
-                    )
-                    .map((vs, idx) => {
-                      const violation = vs.violations?.[0];
-                      const bounds = vs.bounds || {};
-                      const validMarkers = (
-                        Array.isArray(vs.markers) ? vs.markers : []
-                      ).filter(
-                        (m) =>
-                          Number.isFinite(m?.x) &&
-                          Number.isFinite(m?.y) &&
-                          m?.width !== undefined &&
-                          m?.height !== undefined,
-                      );
-
-                      const markers = validMarkers;
-                      const severityColor = {
-                        1: "#FFA500", // Low - Orange
-                        2: "#FF6B6B", // Medium - Red
-                        3: "#CC0000", // High - Dark Red
-                      }[
-                        violation?.impact === "critical" ||
-                        violation?.impact === "serious"
-                          ? 3
-                          : violation?.impact === "moderate"
-                            ? 2
-                            : 1
-                      ];
-
-                      // Pull AI feedback from visual segment analysis for this area
-                      const getAiFeedback = (marker) => {
-                        if (
-                          vs &&
-                          vs.aiFeedback &&
-                          (vs.aiFeedback.summary ||
-                            vs.aiFeedback.recommendation)
-                        ) {
-                          return {
-                            summary: vs.aiFeedback.summary || "",
-                            recommendation: vs.aiFeedback.recommendation || "",
-                          };
-                        }
-                        if (
-                          !marker ||
-                          !Array.isArray(segments) ||
-                          segments.length === 0
-                        ) {
-                          return null;
-                        }
-                        const centerY =
-                          (marker?.y || 0) + (marker?.height || 0) / 2;
-                        const candidate = segments.find((seg) => {
-                          const clip = seg?.clip;
-                          return (
-                            clip &&
-                            centerY >= clip.y &&
-                            centerY <= clip.y + clip.height
-                          );
-                        });
-                        const aiAnalysis = candidate?.aiAnalysis;
-                        if (!aiAnalysis) return null;
-
-                        // Try to match WCAG criterion for more specific guidance
-                        const wcagKey = vs.wcagCriterion || violation?.id;
-                        let matched = null;
-                        if (Array.isArray(aiAnalysis.groups)) {
-                          matched = aiAnalysis.groups.find(
-                            (g) =>
-                              g?.wcagCriterion === wcagKey ||
-                              g?.wcagCriterion?.includes(wcagKey || ""),
-                          );
-                        }
-                        const summary =
-                          matched?.problem ||
-                          aiAnalysis.overallSummary ||
-                          aiAnalysis.hciSummary ||
-                          "";
-                        const recommendation =
-                          matched?.recommendation ||
-                          (Array.isArray(aiAnalysis.nextSteps)
-                            ? aiAnalysis.nextSteps[0]
-                            : "");
-                        return { summary, recommendation };
-                      };
-
-                      const openLightbox = (marker) => {
-                        const aiFeedback = getAiFeedback(marker || markers[0]);
-
-                        // setAfterData(null);
-                        // setLoadingAfter(false);
-
-                        setSelectedViolation(vs);
-
-                        // Capture current URL and scrollY for this screenshot
-                        const scrollY =
-                          typeof vs.scrollY === "number"
-                            ? vs.scrollY
-                            : window.scrollY ||
-                              document.documentElement.scrollTop ||
-                              0;
-                        const currentUrl = window.location.href;
-
-                        setLightbox({
-                          idx,
-                          screenshot: vs.screenshot,
-                          violation: violation || vs,
-                          violations: Array.isArray(vs.violations)
-                            ? vs.violations
-                            : [],
-                          marker: marker || markers[0],
-                          severityColor,
-                          aiFeedback,
-                          scrollY,
-                          url: currentUrl,
-                        });
-                      };
-
-                      // --- AI-powered Interactive Preview Logic ---
-                      const aiMod = aiModResults[idx];
-                      return (
-                        <div key={idx} className="violation-card">
-                          <div
-                            style={{
-                              position: "relative",
-                              background: "#f0f0f0",
-                              marginBottom: 16,
-                            }}
-                          >
-                            {/* Single expand button per screenshot to fullscreen */}
-                            <button
-                              className="violation-fullscreen"
-                              type="button"
-                              aria-label="Expand screenshot and view accessibility feedback"
-                              title="Expand"
-                              onClick={() => openLightbox(markers[0])}
-                            >
-                              ⤢
-                            </button>
-                            <img src={vs.screenshot} alt={`violation-${idx}`} />
-                          </div>
-                          {/* ...existing code... */}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-            {lightbox && (
-              <div
-                className="lightbox-backdrop"
-                role="dialog"
-                aria-modal="true"
-              >
-                <div className="lightbox-content">
-                  <button
-                    className="lightbox-close"
-                    type="button"
-                    aria-label="Close fullscreen view"
-                    onClick={() => setLightbox(null)}
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
-                      background: "rgba(0,0,0,0.6)",
-                      color: "#fff",
-                      border: "2px solid #fff",
-                      fontSize: 24,
-                      fontWeight: 700,
-                      lineHeight: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      zIndex: 1000,
-                      boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
-                    }}
-                  >
-                    ×
-                  </button>
-
-                  <div className="lightbox-body">
-                    {/* BEGIN: Additive Before/After Toggle UI */}
-                    <div className="lightbox-image-wrapper">
-                      {/* Toggle state for before/after view */}
-                      <LightboxBeforeAfter
-                        screenshot={lightbox.screenshot}
-                        loadingAfter={aiModLoading[lightbox.idx]}
-                        afterData={aiModResults[lightbox.idx]}
-                        markers={
-                          selectedViolation?.screenshotOnly
-                            ? []
-                            : selectedViolation?.markers
-                              ? selectedViolation.markers.filter(
-                                  (m) =>
-                                    m.issueId === selectedViolation.issueId,
-                                )
-                              : []
-                        }
-                        onAfterClick={() =>
-                          handleAfterClick(
-                            lightbox.idx,
-                            lightbox.violation,
-                            lightbox.scrollY,
-                          )
-                        }
-                        selectedViolation={selectedViolation}
-                        generatedFeedback={lightbox?.aiFeedback}
-                      />
-                    </div>
-                    {/* END: Additive Before/After Toggle UI */}
-
-                    <aside className="lightbox-panel">
-                      <div
-                        className="lightbox-chip"
-                        style={{
-                          background: lightbox.severityColor || "#7C8DA0",
-                        }}
-                      >
-                        {lightbox.violation?.impact?.toUpperCase() || "ISSUE"}
-                      </div>
-                      <h3 className="lightbox-title">
-                        {getFriendlyTitle(
-                          lightbox.violation?.wcagCriterion,
-                          lightbox.violation?.id,
-                        )}
-                      </h3>
-                      <p className="lightbox-text">
-                        {lightbox?.aiFeedback?.summary ||
-                          lightbox.violation?.help ||
-                          lightbox.violation?.description ||
-                          "This area shows a visual concern that may affect user understanding or ease of use."}
-                      </p>
-                      {lightbox?.aiFeedback?.recommendation && (
-                        <p className="lightbox-text" style={{ marginTop: 8 }}>
-                          <strong>Suggested fix:</strong>{" "}
-                          {lightbox.aiFeedback.recommendation}
-                        </p>
-                      )}
-                      {/* {aiModResults[lightbox.idx]?.css &&
-                        aiModResults[lightbox.idx].css.trim() && (
-                          <div style={{ marginTop: 16 }}>
-                            <h4>Suggested CSS</h4>
-                            <pre>{aiModResults[lightbox.idx].css}</pre>
-                          </div>
-                        )} */}
-
-                      {Array.isArray(lightbox.violations) &&
-                        lightbox.violations.length > 1 && (
-                          <div
-                            style={{
-                              marginTop: 12,
-                              paddingTop: 12,
-                              borderTop: "1px solid #ddd",
-                            }}
-                          >
-                            <p
-                              className="lightbox-text"
-                              style={{ fontWeight: 600, color: "#7c8da0" }}
-                            >
-                              Other issues in this screenshot
-                            </p>
-                            <ul style={{ paddingLeft: 18, margin: 0 }}>
-                              {lightbox.violations.slice(1).map((v, i) => (
-                                <li
-                                  key={i}
-                                  className="lightbox-text"
-                                  style={{ marginTop: 6 }}
-                                >
-                                  <strong>
-                                    {v.tags?.find((t) =>
-                                      String(t).match(/^wcag\d/),
-                                    ) || v.id}
-                                  </strong>
-                                  {v.impact
-                                    ? ` • ${String(
-                                        v.impact,
-                                      ).toUpperCase()} severity`
-                                    : ""}
-                                  {v.help ? ` — ${v.help}` : ""}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                    </aside>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* MAIN FEEDBACK SCREENSHOT WITH HIGHLIGHTS */}
-            {!loading &&
-              !animating &&
-              analysis &&
-              analysis.screenshot &&
-              analysis.violations && (
-                <div
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    maxWidth: 900,
-                    margin: "32px auto",
-                  }}
-                >
-                  <img
-                    src={analysis.screenshot}
-                    alt="Analyzed page with feedback highlights"
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid #111",
-                      display: "block",
-                    }}
-                  />
-                  {/* Overlay all bounding boxes */}
-                  {/* Overlay all bounding boxes */}
-                  {analysis.violations.map(
-                    (v, vi) =>
-                      Array.isArray(v.nodes) &&
-                      v.nodes.map(
-                        (node, ni) =>
-                          node.boundingBox && (
-                            <div
-                              key={`main-fbbox-${vi}-${ni}`}
-                              style={{
-                                position: "absolute",
-                                // Use pageX/pageY if available, otherwise fall back to x/y
-                                left: `${((node.boundingBox.pageX || node.boundingBox.x) / (analysis.viewportSize?.width || 1280)) * 100}%`,
-                                top: `${((node.boundingBox.pageY || node.boundingBox.y) / (analysis.viewportSize?.height || 720)) * 100}%`,
-                                width: `${(node.boundingBox.width / (analysis.viewportSize?.width || 1280)) * 100}%`,
-                                height: `${(node.boundingBox.height / (analysis.viewportSize?.height || 720)) * 100}%`,
-                                borderRadius: 8,
-                                border: "2px dashed #7c8da0",
-                                background: "rgba(124,138,160,0.10)",
-                                zIndex: 10,
-                                pointerEvents: "none",
-                              }}
-                              title={v.description || v.help || v.id}
-                            />
-                          ),
-                      ),
-                  )}
-                </div>
-              )}
-            {/* Visual Segments section removed to fix empty JSX block */}
           </>
         )}
       </div>
