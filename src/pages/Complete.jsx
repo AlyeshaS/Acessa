@@ -2282,6 +2282,48 @@ function Complete() {
   const [donutHover, setDonutHover] = React.useState(null); // { label, percent, x, y }
   // Website Preview toggle state
   const [previewMode, setPreviewMode] = React.useState("highlighted");
+  // Side-by-side AI image state
+  const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
+  const [sideBySideLoading, setSideBySideLoading] = useState(false);
+
+  // When switching to sidebyside, send screenshot to AI generator
+  useEffect(() => {
+    if (
+      previewMode === "sidebyside" &&
+      violationScreenshots &&
+      violationScreenshots.length > 0 &&
+      !sideBySideAIImage &&
+      !sideBySideLoading
+    ) {
+      const screenshot = violationScreenshots[currentScreenshotIdx]?.screenshot;
+      if (!screenshot) return;
+      setSideBySideLoading(true);
+      // Send screenshot to backend for AI visual fix
+      fetch("http://localhost:4000/api/ai/image-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          screenshot,
+          prompt: "Improve accessibility of this image.",
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.editedImageBase64) {
+            setSideBySideAIImage(data.editedImageBase64);
+          } else if (data.editedImageUrl) {
+            setSideBySideAIImage(data.editedImageUrl);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setSideBySideLoading(false));
+    }
+    // Reset AI image if switching away
+    if (previewMode !== "sidebyside") {
+      setSideBySideAIImage(null);
+      setSideBySideLoading(false);
+    }
+  }, [previewMode, violationScreenshots, currentScreenshotIdx]);
   return (
     <>
       <div className="navbar">
@@ -3554,13 +3596,19 @@ function Complete() {
                         background: "#fff",
                       }}
                     >
-                      {violationScreenshots[currentScreenshotIdx]?.aiFeedback
-                        ?.editedImageBase64 ? (
+                      {sideBySideLoading ? (
+                        <div
+                          style={{
+                            color: "#7c8da0",
+                            fontWeight: 600,
+                            fontSize: 16,
+                          }}
+                        >
+                          Generating AI-modified screenshot…
+                        </div>
+                      ) : sideBySideAIImage ? (
                         <img
-                          src={
-                            violationScreenshots[currentScreenshotIdx]
-                              ?.aiFeedback?.editedImageBase64
-                          }
+                          src={sideBySideAIImage}
                           alt="AI-modified screenshot"
                           style={{
                             width: "auto",
@@ -3579,10 +3627,6 @@ function Complete() {
                             color: "#7c8da0",
                             fontWeight: 600,
                             fontSize: 16,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
                           }}
                         >
                           AI-modified screenshot not available.
