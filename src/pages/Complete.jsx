@@ -7,6 +7,26 @@ import "../styles/index.css";
 import { getHighlightTargets } from "../utils/highlightTargets";
 // import VisualImprovementsCard from "../components/VisualImprovementsCard.jsx";
 
+// --- AI Image Cache Hook & Helper ---
+function getAIImageKey(url, idx) {
+  return `aiImageCache_${url}_${idx}`;
+}
+
+function useAIImageCache(url, idx, aiImage) {
+  const [cachedImage, setCachedImage] = useState(null);
+  useEffect(() => {
+    const key = getAIImageKey(url, idx);
+    const stored = sessionStorage.getItem(key);
+    if (stored) {
+      setCachedImage(stored);
+    } else if (aiImage) {
+      sessionStorage.setItem(key, aiImage);
+      setCachedImage(aiImage);
+    }
+  }, [url, idx, aiImage]);
+  return cachedImage;
+}
+
 // ScreenshotWithHighlights: renders a screenshot with highlight overlays
 function ScreenshotWithHighlights({ screenshot, markers }) {
   const imgRef = React.useRef(null);
@@ -2831,57 +2851,42 @@ function Complete() {
                         background: "#fff",
                       }}
                     >
-                      {(() => {
-                        const aiImageToShow = useAIImageCache(
-                          violationScreenshots[currentScreenshotIdx]?.url ||
-                            analysis?.url ||
-                            url,
-                          currentScreenshotIdx,
-                          sideBySideAIImage,
-                        );
-                        if (sideBySideLoading) {
-                          return (
-                            <div
-                              style={{
-                                color: "#7c8da0",
-                                fontWeight: 600,
-                                fontSize: 16,
-                              }}
-                            >
-                              Generating AI-modified screenshot…
-                            </div>
-                          );
-                        } else if (aiImageToShow) {
-                          return (
-                            <img
-                              src={aiImageToShow}
-                              alt="AI-modified screenshot"
-                              style={{
-                                width: "auto",
-                                height: "auto",
-                                maxWidth: "95%",
-                                maxHeight: "400px",
-                                objectFit: "contain",
-                                borderRadius: "8px",
-                                boxShadow: "0 2px 8px rgba(24,155,151,0.13)",
-                                border: "1px solid #e5e7eb",
-                              }}
-                            />
-                          );
-                        } else {
-                          return (
-                            <div
-                              style={{
-                                color: "#7c8da0",
-                                fontWeight: 600,
-                                fontSize: 16,
-                              }}
-                            >
-                              AI-modified screenshot not available.
-                            </div>
-                          );
-                        }
-                      })()}
+                      {sideBySideLoading ? (
+                        <div
+                          style={{
+                            color: "#7c8da0",
+                            fontWeight: 600,
+                            fontSize: 16,
+                          }}
+                        >
+                          Generating AI-modified screenshot…
+                        </div>
+                      ) : sideBySideAIImage ? (
+                        <img
+                          src={sideBySideAIImage}
+                          alt="AI-modified screenshot"
+                          style={{
+                            width: "auto",
+                            height: "auto",
+                            maxWidth: "95%",
+                            maxHeight: "400px",
+                            objectFit: "contain",
+                            borderRadius: "8px",
+                            boxShadow: "0 2px 8px rgba(124,138,160,0.10)", // match original
+                            border: "1px solid #e5e7eb",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            color: "#7c8da0",
+                            fontWeight: 600,
+                            fontSize: 16,
+                          }}
+                        >
+                          AI-modified screenshot not available.
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : analysis?.screenshot ? (
