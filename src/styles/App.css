@@ -1,3 +1,49 @@
+/* Lense Panel and Filter Buttons */
+.lense-panel {
+  width: 100%;
+  height: 100%;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(124, 138, 160, 0.08);
+  overflow-y: auto;
+  margin-left: 16px;
+  gap: 12px;
+}
+.lense-filter-btn {
+  margin-bottom: 8px;
+  width: 100%;
+  padding: 10px 0;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    color 0.18s;
+}
+.lense-filter-btn:last-child {
+  margin-bottom: 0;
+}
+.lense-filter-btn.protanopia {
+  color: #b3261e;
+}
+.lense-filter-btn.deuteranopia {
+  color: #189b97;
+}
+.lense-filter-btn.tritanopia {
+  color: #475569;
+}
+.lense-filter-btn.achromatopsia {
+  color: #7c8da0;
+}
 /* Modern Accessibility Issues Header (right panel) */
 .modern-accessibility-header {
   background: #f9fafb;
