@@ -21,8 +21,20 @@ import { openaiImageEdit } from "./openaiImageEdit.js";
  * Body: { screenshot: base64 string, prompt: string }
  * Returns: { editedImageUrl, editedImageBase64 }
  */
+
+app.post("/api/log-colorblind-btn", (req, res) => {
+  // Log the request body to the terminal
+  console.log("[LENS BUTTON] Colorblind filter pressed:", req.body);
+  res.status(204).end(); // No Content
+});
+
 app.post("/api/ai/image-edit", async (req, res) => {
   const { screenshot, prompt } = req.body || {};
+  // Explicit log for color blindness filter AI call
+  console.log(
+    "[AI COLORBLIND] /api/ai/image-edit called with prompt:",
+    prompt && prompt.slice(0, 100),
+  );
   if (!screenshot || typeof screenshot !== "string") {
     return res
       .status(400)

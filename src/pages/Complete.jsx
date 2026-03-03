@@ -1481,6 +1481,7 @@ function ViolationsFilterSection({
 }
 
 function Complete() {
+  const [colorBlindError, setColorBlindError] = useState(null);
   React.useEffect(() => {
     if (!document.head.querySelector("style[data-highlight-feedback]")) {
       const style = document.createElement("style");
@@ -2327,6 +2328,80 @@ function Complete() {
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
 
+  // Color blindness filter state for Lense mode
+  const [colorBlindFilter, setColorBlindFilter] = useState(null); // null | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia'
+  const [colorBlindLoading, setColorBlindLoading] = useState(false);
+  const [colorBlindImage, setColorBlindImage] = useState(null);
+
+  // Helper for color blindness cache key
+  function getColorBlindKey(url, type) {
+    return `aiColorBlindCache_${url}_${type}`;
+  }
+  // Color blindness prompts
+  const colorBlindPrompts = {
+    protanopia:
+      "Simulate this screenshot as it would appear to someone with Protanopia (red-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Protanopia.",
+    deuteranopia:
+      "Simulate this screenshot as it would appear to someone with Deuteranopia (green-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Deuteranopia.",
+    tritanopia:
+      "Simulate this screenshot as it would appear to someone with Tritanopia (blue-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Tritanopia.",
+    achromatopsia:
+      "Simulate this screenshot as it would appear to someone with Achromatopsia (total color blindness, grayscale). Do not change layout, only adjust colors to grayscale as perceived by someone with Achromatopsia.",
+  };
+
+  // Handle color blindness filter button click
+  const handleColorBlindClick = async (type) => {
+    // Debug: log analysis and url state
+    console.log("[Lens Button Click] analysis:", analysis, "url:", url);
+    // Log to terminal (non-blocking)
+    try {
+      await fetch("/api/log-colorblind-btn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filter: type,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch (e) {}
+    // ...existing code...
+    if (!analysis?.screenshot || !url) return;
+    if (colorBlindFilter === type) {
+      // Toggle off
+      setColorBlindFilter(null);
+      setColorBlindImage(null);
+      return;
+    }
+    setColorBlindFilter(type);
+    setColorBlindLoading(true);
+    setColorBlindImage(null);
+    const cacheKey = getColorBlindKey(url, type);
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      setColorBlindImage(cached);
+      setColorBlindLoading(false);
+      return;
+    }
+    try {
+      const prompt = colorBlindPrompts[type];
+      const res = await fetch("http://localhost:4000/api/ai/image-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screenshot: analysis.screenshot, prompt }),
+      });
+      const data = await res.json();
+      const img = data.editedImageBase64 || data.editedImageUrl || null;
+      if (img) {
+        sessionStorage.setItem(cacheKey, img);
+        setColorBlindImage(img);
+      }
+    } catch (err) {
+      setColorBlindImage(null);
+    } finally {
+      setColorBlindLoading(false);
+    }
+  };
+
   // Helper for cache key
   function getAIImageKey(url, idx) {
     return `aiImageCache_${url}_${idx}`;
@@ -2871,7 +2946,6 @@ Return the edited screenshot with minimal localized edits only.
                         setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
                       }
                     />
-
                     {/* Screenshot (fills the image grid column) */}
                     <div
                       style={{
@@ -2884,9 +2958,16 @@ Return the edited screenshot with minimal localized edits only.
                     >
                       <img
                         src={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
+                          colorBlindFilter && colorBlindImage
+                            ? colorBlindImage
+                            : violationScreenshots[currentScreenshotIdx]
+                                ?.screenshot
                         }
-                        alt="Original screenshot"
+                        alt={
+                          colorBlindFilter && colorBlindImage
+                            ? `Screenshot simulated for ${colorBlindFilter}`
+                            : "Original screenshot"
+                        }
                         style={{
                           width: "100%",
                           height: "auto",
@@ -2910,21 +2991,272 @@ Return the edited screenshot with minimal localized edits only.
                       >
                         Color Vision Filters
                       </div>
-                      <button className="lense-filter-btn protanopia">
-                        Protanopia (red-blind)
+                      <button
+                        className={
+                          "lense-filter-btn original" +
+                          (!colorBlindFilter ? " active" : "")
+                        }
+                        onClick={() => {
+                          if (colorBlindLoading || !colorBlindFilter) return;
+                          setColorBlindFilter(null);
+                          setColorBlindImage(null);
+                          setColorBlindError(null);
+                        }}
+                        aria-pressed={!colorBlindFilter}
+                        disabled={colorBlindLoading}
+                      >
+                        Original
                       </button>
-                      <button className="lense-filter-btn deuteranopia">
-                        Deuteranopia (green-blind)
+                      <button
+                        className={
+                          "lense-filter-btn protanopia" +
+                          (colorBlindFilter === "protanopia" ? " active" : "")
+                        }
+                        onClick={async () => {
+                          if (
+                            colorBlindLoading ||
+                            colorBlindFilter === "protanopia"
+                          )
+                            return;
+                          setColorBlindFilter("protanopia");
+                          setColorBlindLoading(true);
+                          setColorBlindError(null);
+                          // Use sessionStorage to cache images by filter and screenshot
+                          try {
+                            const prompt =
+                              "Simulate protanopia (red-blind) color vision on this screenshot.";
+                            const screenshot =
+                              previewResult?.screenshot || analysis?.screenshot;
+                            const cacheKey = `cbimg-protanopia-${btoa(screenshot || "")}`;
+                            const cached = sessionStorage.getItem(cacheKey);
+                            if (cached) {
+                              setColorBlindImage(cached);
+                              setColorBlindLoading(false);
+                              return;
+                            }
+                            const aiImage = await fetch(
+                              "http://localhost:4000/api/ai/image-edit",
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  screenshot,
+                                  prompt,
+                                }),
+                              },
+                            ).then((r) => r.json());
+                            const resultImg =
+                              aiImage?.editedImageBase64 ||
+                              aiImage?.editedImageUrl ||
+                              null;
+                            setColorBlindImage(resultImg);
+                            if (resultImg) {
+                              sessionStorage.setItem(cacheKey, resultImg);
+                            }
+                          } catch (e) {
+                            setColorBlindImage(null);
+                            setColorBlindError(
+                              "Failed to generate simulation.",
+                            );
+                          } finally {
+                            setColorBlindLoading(false);
+                          }
+                        }}
+                        aria-pressed={colorBlindFilter === "protanopia"}
+                        disabled={colorBlindLoading}
+                      >
+                        {colorBlindLoading && colorBlindFilter === "protanopia"
+                          ? "Loading…"
+                          : "Protanopia (red-blind)"}
                       </button>
-                      <button className="lense-filter-btn tritanopia">
-                        Tritanopia (blue-blind)
+                      <button
+                        className={
+                          "lense-filter-btn deuteranopia" +
+                          (colorBlindFilter === "deuteranopia" ? " active" : "")
+                        }
+                        onClick={async () => {
+                          if (
+                            colorBlindLoading ||
+                            colorBlindFilter === "deuteranopia"
+                          )
+                            return;
+                          setColorBlindFilter("deuteranopia");
+                          setColorBlindLoading(true);
+                          setColorBlindError(null);
+                          try {
+                            const prompt =
+                              "Simulate deuteranopia (green-blind) color vision on this screenshot.";
+                            const screenshot =
+                              previewResult?.screenshot || analysis?.screenshot;
+                            const cacheKey = `cbimg-deuteranopia-${btoa(screenshot || "")}`;
+                            const cached = sessionStorage.getItem(cacheKey);
+                            if (cached) {
+                              setColorBlindImage(cached);
+                              setColorBlindLoading(false);
+                              return;
+                            }
+                            const aiImage = await fetch(
+                              "http://localhost:4000/api/ai/image-edit",
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  screenshot,
+                                  prompt,
+                                }),
+                              },
+                            ).then((r) => r.json());
+                            const resultImg =
+                              aiImage?.editedImageBase64 ||
+                              aiImage?.editedImageUrl ||
+                              null;
+                            setColorBlindImage(resultImg);
+                            if (resultImg) {
+                              sessionStorage.setItem(cacheKey, resultImg);
+                            }
+                          } catch (e) {
+                            setColorBlindImage(null);
+                            setColorBlindError(
+                              "Failed to generate simulation.",
+                            );
+                          } finally {
+                            setColorBlindLoading(false);
+                          }
+                        }}
+                        aria-pressed={colorBlindFilter === "deuteranopia"}
+                        disabled={colorBlindLoading}
+                      >
+                        {colorBlindLoading &&
+                        colorBlindFilter === "deuteranopia"
+                          ? "Loading…"
+                          : "Deuteranopia (green-blind)"}
                       </button>
-                      <button className="lense-filter-btn achromatopsia">
-                        Achromatopsia (grayscale)
+                      <button
+                        className={
+                          "lense-filter-btn tritanopia" +
+                          (colorBlindFilter === "tritanopia" ? " active" : "")
+                        }
+                        onClick={async () => {
+                          if (
+                            colorBlindLoading ||
+                            colorBlindFilter === "tritanopia"
+                          )
+                            return;
+                          setColorBlindFilter("tritanopia");
+                          setColorBlindLoading(true);
+                          setColorBlindError(null);
+                          try {
+                            const prompt =
+                              "Simulate tritanopia (blue-blind) color vision on this screenshot.";
+                            const screenshot =
+                              previewResult?.screenshot || analysis?.screenshot;
+                            const cacheKey = `cbimg-tritanopia-${btoa(screenshot || "")}`;
+                            const cached = sessionStorage.getItem(cacheKey);
+                            if (cached) {
+                              setColorBlindImage(cached);
+                              setColorBlindLoading(false);
+                              return;
+                            }
+                            const aiImage = await fetch(
+                              "http://localhost:4000/api/ai/image-edit",
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  screenshot,
+                                  prompt,
+                                }),
+                              },
+                            ).then((r) => r.json());
+                            const resultImg =
+                              aiImage?.editedImageBase64 ||
+                              aiImage?.editedImageUrl ||
+                              null;
+                            setColorBlindImage(resultImg);
+                            if (resultImg) {
+                              sessionStorage.setItem(cacheKey, resultImg);
+                            }
+                          } catch (e) {
+                            setColorBlindImage(null);
+                            setColorBlindError(
+                              "Failed to generate simulation.",
+                            );
+                          } finally {
+                            setColorBlindLoading(false);
+                          }
+                        }}
+                        aria-pressed={colorBlindFilter === "tritanopia"}
+                        disabled={colorBlindLoading}
+                      >
+                        {colorBlindLoading && colorBlindFilter === "tritanopia"
+                          ? "Loading…"
+                          : "Tritanopia (blue-blind)"}
+                      </button>
+                      <button
+                        className={
+                          "lense-filter-btn achromatopsia" +
+                          (colorBlindFilter === "achromatopsia"
+                            ? " active"
+                            : "")
+                        }
+                        onClick={async () => {
+                          if (
+                            colorBlindLoading ||
+                            colorBlindFilter === "achromatopsia"
+                          )
+                            return;
+                          setColorBlindFilter("achromatopsia");
+                          setColorBlindLoading(true);
+                          setColorBlindError(null);
+                          try {
+                            const prompt =
+                              "Simulate achromatopsia (grayscale) color vision on this screenshot.";
+                            const screenshot =
+                              previewResult?.screenshot || analysis?.screenshot;
+                            const cacheKey = `cbimg-achromatopsia-${btoa(screenshot || "")}`;
+                            const cached = sessionStorage.getItem(cacheKey);
+                            if (cached) {
+                              setColorBlindImage(cached);
+                              setColorBlindLoading(false);
+                              return;
+                            }
+                            const aiImage = await fetch(
+                              "http://localhost:4000/api/ai/image-edit",
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  screenshot,
+                                  prompt,
+                                }),
+                              },
+                            ).then((r) => r.json());
+                            const resultImg =
+                              aiImage?.editedImageBase64 ||
+                              aiImage?.editedImageUrl ||
+                              null;
+                            setColorBlindImage(resultImg);
+                            if (resultImg) {
+                              sessionStorage.setItem(cacheKey, resultImg);
+                            }
+                          } catch (e) {
+                            setColorBlindImage(null);
+                            setColorBlindError(
+                              "Failed to generate simulation.",
+                            );
+                          } finally {
+                            setColorBlindLoading(false);
+                          }
+                        }}
+                        aria-pressed={colorBlindFilter === "achromatopsia"}
+                        disabled={colorBlindLoading}
+                      >
+                        {colorBlindLoading &&
+                        colorBlindFilter === "achromatopsia"
+                          ? "Loading…"
+                          : "Achromatopsia (grayscale)"}
                       </button>
                     </aside>
-
-                    {/* Right arrow */}
                     <PreviewArrow
                       direction="right"
                       disabled={
@@ -3073,68 +3405,202 @@ Return the edited screenshot with minimal localized edits only.
                       >
                         Color Vision Filters
                       </div>
-                      <button
+                      {/* Removed duplicate non-interactive filter buttons. Only interactive, AI-calling buttons remain below. */}
+                    </aside>
+                  </>
+                ) : analysis?.screenshot && previewMode === "lense" ? (
+                  <>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#fff",
+                      }}
+                    >
+                      {colorBlindFilter ? (
+                        colorBlindLoading ? (
+                          <div
+                            style={{
+                              color: "#7c8da0",
+                              fontWeight: 600,
+                              fontSize: 16,
+                            }}
+                          >
+                            Generating {colorBlindFilter} simulation…
+                          </div>
+                        ) : colorBlindImage ? (
+                          <img
+                            src={colorBlindImage}
+                            alt={`Screenshot simulated for ${colorBlindFilter}`}
+                            style={{
+                              width: "100%",
+                              height: "auto",
+                              borderRadius: "8px",
+                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                              border: "1px solid #e5e7eb",
+                              display: "block",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              color: "#7c8da0",
+                              fontWeight: 600,
+                              fontSize: 16,
+                            }}
+                          >
+                            Failed to generate simulation.
+                          </div>
+                        )
+                      ) : (
+                        <img
+                          src={analysis.screenshot}
+                          alt="Original screenshot"
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            borderRadius: "8px",
+                            boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                            border: "1px solid #e5e7eb",
+                            display: "block",
+                          }}
+                        />
+                      )}
+                    </div>
+                    <aside
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: "#f8fafc",
+                        borderRadius: 10,
+                        border: "1px solid #e5e7eb",
+                        padding: 18,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "flex-start",
+                        alignItems: "flex-start",
+                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                        overflowY: "auto",
+                        marginLeft: 16,
+                        gap: 12,
+                      }}
+                    >
+                      <div
                         style={{
-                          marginBottom: 8,
-                          width: "100%",
-                          padding: "10px 0",
-                          borderRadius: 6,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
-                          color: "#B3261E",
-                          fontWeight: 600,
-                          fontSize: 15,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Protanopia (red-blind)
-                      </button>
-                      <button
-                        style={{
-                          marginBottom: 8,
-                          width: "100%",
-                          padding: "10px 0",
-                          borderRadius: 6,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
-                          color: "#189b97",
-                          fontWeight: 600,
-                          fontSize: 15,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Deuteranopia (green-blind)
-                      </button>
-                      <button
-                        style={{
-                          marginBottom: 8,
-                          width: "100%",
-                          padding: "10px 0",
-                          borderRadius: 6,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
-                          color: "#475569",
-                          fontWeight: 600,
-                          fontSize: 15,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Tritanopia (blue-blind)
-                      </button>
-                      <button
-                        style={{
-                          width: "100%",
-                          padding: "10px 0",
-                          borderRadius: 6,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
+                          fontWeight: 700,
                           color: "#7c8da0",
-                          fontWeight: 600,
-                          fontSize: 15,
-                          cursor: "pointer",
+                          marginBottom: 8,
+                          fontSize: 16,
                         }}
                       >
-                        Achromatopsia (grayscale)
+                        Color Vision Filters
+                      </div>
+                      <button
+                        className={
+                          "lense-filter-btn protanopia" +
+                          (colorBlindFilter === "protanopia" ? " active" : "")
+                        }
+                        onClick={() => handleColorBlindClick("protanopia")}
+                        aria-pressed={colorBlindFilter === "protanopia"}
+                        disabled={colorBlindLoading}
+                        style={{
+                          opacity:
+                            colorBlindLoading &&
+                            colorBlindFilter === "protanopia"
+                              ? 0.7
+                              : 1,
+                          cursor:
+                            colorBlindLoading &&
+                            colorBlindFilter === "protanopia"
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {colorBlindLoading && colorBlindFilter === "protanopia"
+                          ? "Loading…"
+                          : "Protanopia (red-blind)"}
+                      </button>
+                      <button
+                        className={
+                          "lense-filter-btn deuteranopia" +
+                          (colorBlindFilter === "deuteranopia" ? " active" : "")
+                        }
+                        onClick={() => handleColorBlindClick("deuteranopia")}
+                        aria-pressed={colorBlindFilter === "deuteranopia"}
+                        disabled={colorBlindLoading}
+                        style={{
+                          opacity:
+                            colorBlindLoading &&
+                            colorBlindFilter === "deuteranopia"
+                              ? 0.7
+                              : 1,
+                          cursor:
+                            colorBlindLoading &&
+                            colorBlindFilter === "deuteranopia"
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {colorBlindLoading &&
+                        colorBlindFilter === "deuteranopia"
+                          ? "Loading…"
+                          : "Deuteranopia (green-blind)"}
+                      </button>
+                      <button
+                        className={
+                          "lense-filter-btn tritanopia" +
+                          (colorBlindFilter === "tritanopia" ? " active" : "")
+                        }
+                        onClick={() => handleColorBlindClick("tritanopia")}
+                        aria-pressed={colorBlindFilter === "tritanopia"}
+                        disabled={colorBlindLoading}
+                        style={{
+                          opacity:
+                            colorBlindLoading &&
+                            colorBlindFilter === "tritanopia"
+                              ? 0.7
+                              : 1,
+                          cursor:
+                            colorBlindLoading &&
+                            colorBlindFilter === "tritanopia"
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {colorBlindLoading && colorBlindFilter === "tritanopia"
+                          ? "Loading…"
+                          : "Tritanopia (blue-blind)"}
+                      </button>
+                      <button
+                        className={
+                          "lense-filter-btn achromatopsia" +
+                          (colorBlindFilter === "achromatopsia"
+                            ? " active"
+                            : "")
+                        }
+                        onClick={() => handleColorBlindClick("achromatopsia")}
+                        aria-pressed={colorBlindFilter === "achromatopsia"}
+                        disabled={colorBlindLoading}
+                        style={{
+                          opacity:
+                            colorBlindLoading &&
+                            colorBlindFilter === "achromatopsia"
+                              ? 0.7
+                              : 1,
+                          cursor:
+                            colorBlindLoading &&
+                            colorBlindFilter === "achromatopsia"
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {colorBlindLoading &&
+                        colorBlindFilter === "achromatopsia"
+                          ? "Loading…"
+                          : "Achromatopsia (grayscale)"}
                       </button>
                     </aside>
                   </>

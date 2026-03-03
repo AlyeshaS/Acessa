@@ -44,6 +44,34 @@
 .lense-filter-btn.achromatopsia {
   color: #7c8da0;
 }
+
+/* Active state for each color blindness button
+.lense-filter-btn.active.protanopia {
+  background: #ffeaea;
+  border: 2px solid #b3261e;
+  color: #b3261e;
+}
+.lense-filter-btn.active.deuteranopia {
+  background: #e0f7fa;
+  border: 2px solid #189b97;
+  color: #189b97;
+}
+.lense-filter-btn.active.tritanopia {
+  background: #e6e9f5;
+  border: 2px solid #475569;
+  color: #475569;
+}
+.lense-filter-btn.active.achromatopsia {
+  background: #f3f4f6;
+  border: 2px solid #7c8da0;
+  color: #7c8da0;
+} */
+
+.lense-filter-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+
 /* Modern Accessibility Issues Header (right panel) */
 .modern-accessibility-header {
   background: #f9fafb;
