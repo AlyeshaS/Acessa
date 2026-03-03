@@ -2938,14 +2938,7 @@ Return the edited screenshot with minimal localized edits only.
                   violationScreenshots &&
                   violationScreenshots.length > 0 ? (
                   <>
-                    {/* Left arrow */}
-                    <PreviewArrow
-                      direction="left"
-                      disabled={currentScreenshotIdx === 0}
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
-                      }
-                    />
+                    <div></div>
                     {/* Screenshot (fills the image grid column) */}
                     <div
                       style={{
@@ -2969,12 +2962,14 @@ Return the edited screenshot with minimal localized edits only.
                             : "Original screenshot"
                         }
                         style={{
-                          width: "100%",
-                          height: "auto",
+                          maxWidth: "900px",
+                          maxHeight: "600px",
                           objectFit: "contain",
-                          borderRadius: "8px",
-                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                          border: "1px solid #e5e7eb",
+                          borderRadius: "12px",
+                          boxShadow: "0 4px 16px rgba(124,138,160,0.15)",
+                          border: "2px solid #e5e7eb",
+                          margin: "0 auto",
+                          display: "block",
                         }}
                       />
                     </div>
@@ -3257,17 +3252,7 @@ Return the edited screenshot with minimal localized edits only.
                           : "Achromatopsia (grayscale)"}
                       </button>
                     </aside>
-                    <PreviewArrow
-                      direction="right"
-                      disabled={
-                        currentScreenshotIdx === violationScreenshots.length - 1
-                      }
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) =>
-                          Math.min(violationScreenshots.length - 1, i + 1),
-                        )
-                      }
-                    />
+                    <div></div>
                   </>
                 ) : previewMode === "sidebyside" &&
                   violationScreenshots &&
