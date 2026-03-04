@@ -1,11 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiModifyHtml } from "../api/wcagAPI";
-// import IframePreview from "../components/IFramePreview.jsx";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
-import { getHighlightTargets } from "../utils/highlightTargets";
-// import VisualImprovementsCard from "../components/VisualImprovementsCard.jsx";
 
 // --- AI Image Cache Hook & Helper ---
 function getAIImageKey(url, idx) {
@@ -1666,13 +1663,16 @@ function Complete() {
   // Color blindness prompts
   const colorBlindPrompts = {
     protanopia:
-      "Simulate this screenshot as it would appear to someone with Protanopia (red-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Protanopia.",
+      "Simulate this screenshot as it would appear to a person with Protanopia (red-blind color vision deficiency). Apply a realistic Protanopia color perception transformation so that reds are significantly reduced or shifted toward brown/gray tones and red–green distinctions become difficult to perceive. Preserve the exact layout, spacing, typography, icons, UI components, and text content. Do NOT move, resize, remove, or redesign any elements. Do NOT change brightness, contrast, or styling except where required to simulate Protanopia color perception. Only modify color values to reflect how a user with Protanopia would perceive the interface.",
+
     deuteranopia:
-      "Simulate this screenshot as it would appear to someone with Deuteranopia (green-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Deuteranopia.",
+      "Simulate this screenshot as it would appear to a person with Deuteranopia (green-blind color vision deficiency). Apply a realistic Deuteranopia color perception transformation where greens are diminished and red–green color distinctions are difficult to perceive. Preserve the exact layout, spacing, typography, icons, UI components, and text content. Do NOT move, resize, remove, or redesign any elements. Do NOT alter brightness, contrast, or styling except where necessary for the color vision simulation. Only modify color values to represent how a user with Deuteranopia would perceive the interface.",
+
     tritanopia:
-      "Simulate this screenshot as it would appear to someone with Tritanopia (blue-blind color blindness). Do not change layout, only adjust colors to match the perception of a person with Tritanopia.",
+      "Simulate this screenshot as it would appear to a person with Tritanopia (blue-yellow color vision deficiency). Apply a realistic Tritanopia color perception transformation where blue tones are reduced and blue–yellow distinctions become difficult to perceive. Preserve the exact layout, spacing, typography, icons, UI components, and text content exactly as in the original image. Do NOT move, resize, remove, or redesign any elements. Only modify color values to reflect Tritanopia perception while keeping the interface structure identical.",
+
     achromatopsia:
-      "Simulate this screenshot as it would appear to someone with Achromatopsia (total color blindness, grayscale). Do not change layout, only adjust colors to grayscale as perceived by someone with Achromatopsia.",
+      "Simulate this screenshot as it would appear to a person with Achromatopsia (complete color blindness). Convert the image to a realistic grayscale representation based on luminance perception while preserving all layout, typography, icons, UI components, and text exactly as in the original screenshot. Do NOT change spacing, structure, brightness, contrast, or styling except for the removal of color. The output should appear identical to the original interface but entirely in grayscale as perceived by someone with Achromatopsia.",
   };
 
   // Handle color blindness filter button click
@@ -2288,8 +2288,9 @@ Return the edited screenshot with minimal localized edits only.
                             : "Original screenshot"
                         }
                         style={{
-                          maxWidth: "900px",
-                          maxHeight: "600px",
+                          width: "auto",
+                          height: "600px",
+                          maxWidth: "95%",
                           objectFit: "contain",
                           borderRadius: "12px",
                           boxShadow: "0 4px 16px rgba(124,138,160,0.15)",
