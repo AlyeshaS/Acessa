@@ -2144,7 +2144,7 @@ Return the edited screenshot with minimal localized edits only.
                           "";
                         if (!issueId) return;
                         const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
+                          `[data-issueid="${CSS.escape(issueId)}"]`,
                         );
                         if (highlight) {
                           highlight.classList.add("pulse-highlight-once");
@@ -2170,7 +2170,7 @@ Return the edited screenshot with minimal localized edits only.
                           "";
                         if (!issueId) return;
                         const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
+                          `[data-issueid="${CSS.escape(issueId)}"]`,
                         );
                         if (highlight) {
                           highlight.classList.add("highlight-hover");
@@ -2185,7 +2185,7 @@ Return the edited screenshot with minimal localized edits only.
                           "";
                         if (!issueId) return;
                         const highlight = document.querySelector(
-                          `[data-issueid="${issueId}"]`,
+                          `[data-issueid="${CSS.escape(issueId)}"]`,
                         );
                         if (highlight) {
                           highlight.classList.remove("highlight-hover");
@@ -2273,6 +2273,7 @@ Return the edited screenshot with minimal localized edits only.
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        position: "relative",
                       }}
                     >
                       <img
@@ -2299,6 +2300,37 @@ Return the edited screenshot with minimal localized edits only.
                           display: "block",
                         }}
                       />
+                      {colorBlindLoading && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "rgba(255,255,255,0.6)",
+                            zIndex: 2,
+                            borderRadius: "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 64,
+                              height: 64,
+                              border: "6px solid #e5e7eb",
+                              borderTop: "6px solid #7c8da0",
+                              borderRadius: "50%",
+                              animation: "spin 1s linear infinite",
+                            }}
+                          />
+                          <style>
+                            {`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}
+                          </style>
+                        </div>
+                      )}
                     </div>
 
                     {/* Lense panel (fills the panel grid column) */}
@@ -2348,7 +2380,8 @@ Return the edited screenshot with minimal localized edits only.
                             const prompt =
                               "Simulate protanopia (red-blind) color vision on this screenshot.";
                             const screenshot =
-                              previewResult?.screenshot || analysis?.screenshot;
+                              violationScreenshots?.[currentScreenshotIdx]
+                                ?.screenshot || analysis?.screenshot;
                             const cacheKey = `cbimg-protanopia-${btoa(screenshot || "")}`;
                             const cached = sessionStorage.getItem(cacheKey);
                             if (cached) {
@@ -2409,7 +2442,8 @@ Return the edited screenshot with minimal localized edits only.
                             const prompt =
                               "Simulate deuteranopia (green-blind) color vision on this screenshot.";
                             const screenshot =
-                              previewResult?.screenshot || analysis?.screenshot;
+                              violationScreenshots?.[currentScreenshotIdx]
+                                ?.screenshot || analysis?.screenshot;
                             const cacheKey = `cbimg-deuteranopia-${btoa(screenshot || "")}`;
                             const cached = sessionStorage.getItem(cacheKey);
                             if (cached) {
@@ -2471,7 +2505,8 @@ Return the edited screenshot with minimal localized edits only.
                             const prompt =
                               "Simulate tritanopia (blue-blind) color vision on this screenshot.";
                             const screenshot =
-                              previewResult?.screenshot || analysis?.screenshot;
+                              violationScreenshots?.[currentScreenshotIdx]
+                                ?.screenshot || analysis?.screenshot;
                             const cacheKey = `cbimg-tritanopia-${btoa(screenshot || "")}`;
                             const cached = sessionStorage.getItem(cacheKey);
                             if (cached) {
@@ -2534,7 +2569,8 @@ Return the edited screenshot with minimal localized edits only.
                             const prompt =
                               "Simulate achromatopsia (grayscale) color vision on this screenshot.";
                             const screenshot =
-                              previewResult?.screenshot || analysis?.screenshot;
+                              violationScreenshots?.[currentScreenshotIdx]
+                                ?.screenshot || analysis?.screenshot;
                             const cacheKey = `cbimg-achromatopsia-${btoa(screenshot || "")}`;
                             const cached = sessionStorage.getItem(cacheKey);
                             if (cached) {
