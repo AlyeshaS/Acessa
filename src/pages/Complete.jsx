@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import ColorBlindSimulator from "../components/ColorBlindSimulator";
+import ScreenshotWithHighlights from "../components/ScreenshotWithHighlights";
 import { aiModifyHtml } from "../api/wcagAPI";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
@@ -24,113 +25,6 @@ function useAIImageCache(url, idx, aiImage) {
     }
   }, [url, idx, aiImage]);
   return cachedImage;
-}
-
-// ScreenshotWithHighlights: renders a screenshot with highlight overlays
-function ScreenshotWithHighlights({ screenshot, markers }) {
-  const imgRef = React.useRef(null);
-  const [imgDims, setImgDims] = React.useState({
-    naturalWidth: 1,
-    naturalHeight: 1,
-    renderedWidth: 1,
-    renderedHeight: 1,
-  });
-
-  const handleImgLoad = () => {
-    if (!imgRef.current) return;
-    setImgDims({
-      naturalWidth: imgRef.current.naturalWidth,
-      naturalHeight: imgRef.current.naturalHeight,
-      renderedWidth: imgRef.current.clientWidth,
-      renderedHeight: imgRef.current.clientHeight,
-    });
-  };
-
-  // --- AI Image Cache Hook & Helper ---
-
-  function getAIImageKey(url, idx) {
-    return `aiImageCache_${url}_${idx}`;
-  }
-
-  function useAIImageCache(url, idx, aiImage) {
-    const [cachedImage, setCachedImage] = useState(null);
-    useEffect(() => {
-      const key = getAIImageKey(url, idx);
-      const stored = sessionStorage.getItem(key);
-      if (stored) {
-        setCachedImage(stored);
-      } else if (aiImage) {
-        sessionStorage.setItem(key, aiImage);
-        setCachedImage(aiImage);
-      }
-    }, [url, idx, aiImage]);
-    return cachedImage;
-  }
-
-  React.useEffect(() => {
-    const onResize = () => handleImgLoad();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const scaleX = imgDims.renderedWidth / imgDims.naturalWidth;
-  const scaleY = imgDims.renderedHeight / imgDims.naturalHeight;
-
-  return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <img
-        ref={imgRef}
-        src={screenshot}
-        onLoad={handleImgLoad}
-        style={{
-          maxWidth: "100%",
-          maxHeight: "100%",
-          objectFit: "contain",
-          display: "block",
-        }}
-      />
-
-      {markers.flatMap((m, i) => {
-        if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
-          return m.boundingBoxes.map((b, j) => (
-            <div
-              key={`${m.issueId || i}-bb-${j}`}
-              data-issueid={m.issueId || ""}
-              style={{
-                position: "absolute",
-                left: b.x * scaleX,
-                top: b.y * scaleY,
-                width: b.width * scaleX,
-                height: b.height * scaleY,
-                border: "2px solid #ff4d4f",
-                background: "rgba(255,77,79,0.18)",
-                borderRadius: 6,
-                pointerEvents: "none",
-              }}
-            />
-          ));
-        } else {
-          return (
-            <div
-              key={m.issueId || i}
-              data-issueid={m.issueId || ""}
-              style={{
-                position: "absolute",
-                left: m.x * scaleX,
-                top: m.y * scaleY,
-                width: m.width * scaleX,
-                height: m.height * scaleY,
-                border: "2px solid #ff4d4f",
-                background: "rgba(255,77,79,0.18)",
-                borderRadius: 6,
-                pointerEvents: "none",
-              }}
-            />
-          );
-        }
-      })}
-    </div>
-  );
 }
 
 // Reusable circular progress component
@@ -4787,7 +4681,6 @@ Return the edited screenshot with minimal localized edits only.
                     />
 
                     {/* Screenshot + highlights + panel */}
-                    {/* Screenshot (fills the image grid column) */}
                     <div style={{ width: "100%", height: "100%" }}>
                       <ScreenshotWithHighlights
                         screenshot={
