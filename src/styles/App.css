@@ -127,7 +127,7 @@ footer h2 {
   flex-direction: column;
   gap: 20px;
   padding: 0 5%;
-  margin: 20px 0 100px 0;
+  margin: 0 0 100px 0;
 }
 
 .card-body h2 {
@@ -670,7 +670,6 @@ footer h2 {
   border-radius: 18px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border-light);
-  border-top: 3px solid #189b97;
   padding: 28px;
   min-width: 0;
   display: flex;
@@ -820,7 +819,6 @@ footer h2 {
   padding: 24px;
   border-radius: 16px;
   border: 1px solid var(--border-light);
-  border-top: 3px solid #189b97;
   box-shadow: var(--shadow-sm);
 }
 
@@ -877,7 +875,6 @@ footer h2 {
   padding: 24px;
   border-radius: 16px;
   border: 1px solid var(--border-light);
-  border-top: 3px solid #d97706;
   box-shadow: var(--shadow-sm);
 }
 
@@ -1144,7 +1141,6 @@ footer h2 {
   border-radius: 18px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border-light);
-  border-top: 3px solid var(--teal);
   padding: 28px;
   margin-top: 24px;
   display: flex;
@@ -1253,6 +1249,10 @@ footer h2 {
   margin-bottom: 0;
 }
 
+.lense-filter-btn.original {
+  color: var(--soft-gray);
+}
+
 .lense-filter-btn.protanopia {
   color: var(--red);
 }
@@ -1260,7 +1260,7 @@ footer h2 {
   color: var(--teal);
 }
 .lense-filter-btn.tritanopia {
-  color: var(--slate);
+  color: #5a2a82; /* blue-600 */
 }
 .lense-filter-btn.achromatopsia {
   color: var(--soft-gray);
