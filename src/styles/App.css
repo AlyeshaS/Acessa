@@ -61,7 +61,7 @@ body {
 .navbar h1 {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--slate);
   letter-spacing: -0.3px;
 }
 
@@ -97,8 +97,8 @@ footer {
   align-items: center;
   justify-content: center;
   z-index: 10;
-  background: #0f172a;
-  color: #94a3b8;
+  background: var(--slate);
+  color: var(--gray-placeholder);
   height: 52px;
   letter-spacing: 0.5px;
 }
@@ -133,7 +133,7 @@ footer h2 {
 .card-body h2 {
   font-size: 20px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--slate);
   letter-spacing: -0.5px;
   display: flex;
   align-items: center;
@@ -156,7 +156,7 @@ footer h2 {
   align-items: center;
   min-height: 100vh;
   overflow: hidden;
-  padding-bottom: 52px;
+  /* padding-bottom: 52px; */
   position: relative;
 }
 
@@ -222,12 +222,15 @@ footer h2 {
 }
 
 .hero-title {
-  font-size: 56px;
+  font-size: 45px;
   font-weight: 800;
   line-height: 1.1;
-  letter-spacing: -2px;
-  color: #0f172a;
+  letter-spacing: -1px;
+  color: var(--slate);
   margin-bottom: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-accent {
@@ -239,18 +242,18 @@ footer h2 {
 
 .hero-subtitle {
   font-size: 18px;
-  color: #64748b;
+  color: var(--soft-gray);
   max-width: 480px;
   margin: 0 auto 36px;
   line-height: 1.6;
+  text-align: center;
+  white-space: normal;
 }
 
 .input-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--white);
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border-light);
   padding: 24px 28px;
   box-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
   max-width: 600px;
@@ -271,7 +274,7 @@ footer h2 {
   position: relative;
   z-index: 1;
   margin-top: 64px;
-  padding: 0 5% 100px;
+  padding: 0 5% 72px;
   text-align: center;
   width: 100%;
 }
@@ -392,9 +395,9 @@ footer h2 {
 }
 
 .feature-card {
-  background: #ffffff;
+  background: var(--white);
   border-radius: 20px;
-  border: 1px solid #e8edf5;
+  border: 1px solid var(--border-light);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -462,13 +465,13 @@ footer h2 {
 .feature-title {
   font-size: 17px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--slate);
   margin: 0 0 8px;
 }
 
 .feature-desc {
   font-size: 13.5px;
-  color: #64748b;
+  color: var(--soft-gray);
   line-height: 1.6;
   margin: 0;
 }
