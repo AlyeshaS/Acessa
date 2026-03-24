@@ -245,6 +245,11 @@ function Visual() {
   const [preview, setPreview] = useState(null); // {screenshot, steps}
   const [analysis, setAnalysis] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [targetProgress, setTargetProgress] = useState(0);
+  const progressRef = useRef(0);
+  const [pagesViewed, setPagesViewed] = useState(0);
+  const [violationsFound, setViolationsFound] = useState(0);
+  const [duplicatesFound, setDuplicatesFound] = useState(0);
   const [segments, setSegments] = useState([]);
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -274,6 +279,8 @@ function Visual() {
 
         // initialize progress
         setProgress(5);
+        setTargetProgress(5);
+        progressRef.current = 5;
 
         evt.addEventListener("preview", (e) => {
           try {
@@ -287,7 +294,13 @@ function Visual() {
               setImageLoaded(false);
               setAnimating(false);
             }
-            setProgress((p) => Math.max(p, 10));
+            if (typeof payload.pagesViewed === "number")
+              setPagesViewed(payload.pagesViewed);
+            if (typeof payload.violations === "number")
+              setViolationsFound(payload.violations);
+            if (typeof payload.duplicates === "number")
+              setDuplicatesFound(payload.duplicates);
+            setTargetProgress((tp) => Math.max(tp, 20));
           } catch (err) {
             console.error("preview parse", err);
           }
@@ -305,7 +318,13 @@ function Visual() {
               };
               return copy;
             });
-            setProgress((p) => Math.min(90, p + 15));
+            if (typeof payload.pagesViewed === "number")
+              setPagesViewed(payload.pagesViewed);
+            if (typeof payload.violations === "number")
+              setViolationsFound(payload.violations);
+            if (typeof payload.duplicates === "number")
+              setDuplicatesFound(payload.duplicates);
+            setTargetProgress((tp) => Math.min(80, tp + 15));
           } catch (err) {
             console.error("segment parse", err);
           }
@@ -328,7 +347,13 @@ function Visual() {
               copy[payload.index] = existing;
               return copy;
             });
-            setProgress((p) => Math.min(95, p + 10));
+            if (typeof payload.pagesViewed === "number")
+              setPagesViewed(payload.pagesViewed);
+            if (typeof payload.violations === "number")
+              setViolationsFound(payload.violations);
+            if (typeof payload.duplicates === "number")
+              setDuplicatesFound(payload.duplicates);
+            setTargetProgress((tp) => Math.min(95, tp + 5));
           } catch (err) {
             console.error("segmentAnalysis parse", err);
           }
@@ -342,6 +367,7 @@ function Visual() {
             setSegments(
               Array.isArray(payload.breakdown) ? payload.breakdown : [],
             );
+            setTargetProgress(99);
             // do not force progress to 100% here; wait for animation to finish
           } catch (err) {
             console.error("result parse", err);
@@ -349,6 +375,7 @@ function Visual() {
         });
 
         evt.addEventListener("done", () => {
+          setTargetProgress(100);
           // keep loading true until animation completes and applies pendingAnalysis
           try {
             evt.close();
@@ -383,38 +410,37 @@ function Visual() {
     return () => controller.abort();
   }, [url]);
 
-  // Loading bar progress similar to Complete page
+  // Smooth progress bar animation toward targetProgress
   useEffect(() => {
     let interval = null;
     if (loading) {
       if (!imageLoaded) {
-        // wait for image to load before advancing
         setProgress(0);
+        progressRef.current = 0;
       } else {
         interval = setInterval(() => {
           setProgress((prev) => {
-            const inc = 4 + Math.floor(Math.random() * 5);
-            if (animating) {
-              // while animation runs, cap at 70%
-              if (prev >= 70) return prev;
-              return Math.min(70, prev + inc);
+            let next = prev;
+            if (prev < targetProgress) {
+              next = Math.min(targetProgress, prev + 1 + Math.random() * 2);
+            } else if (prev > targetProgress) {
+              next = targetProgress;
             }
-            // animation finished: continue to near-completion
-            if (prev >= 99) return prev;
-            return Math.min(99, prev + inc);
+            progressRef.current = next;
+            return next;
           });
-        }, 600);
+        }, 30);
       }
     } else {
       setProgress(100);
+      progressRef.current = 100;
       const t = setTimeout(() => setProgress(0), 800);
       return () => clearTimeout(t);
     }
-
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [loading, imageLoaded, animating]);
+  }, [loading, imageLoaded, animating, targetProgress]);
 
   const handleBack = () => navigate("/");
 
@@ -478,7 +504,14 @@ function Visual() {
               />
             </div>
             <p className="loading-bar-text">
-              Preparing visual analysis… {progress}%
+              Analyzing screenshots… {Math.round(progress)}%
+              {pagesViewed > 0 || violationsFound > 0 || duplicatesFound > 0 ? (
+                <>
+                  {" "}
+                  • Pages viewed: {pagesViewed} • Violations: {violationsFound}{" "}
+                  • Duplicates: {duplicatesFound}
+                </>
+              ) : null}
             </p>
             {preview && (
               <AnalysisPlayer

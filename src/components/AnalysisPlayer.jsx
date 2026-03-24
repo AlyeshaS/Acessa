@@ -1,0 +1,180 @@
+import React, { useEffect, useRef, useState } from "react";
+
+/**
+ * Shows live Playwright browser feed as it checks the page
+ */
+function AnalysisPlayer({ result, onComplete, onImageLoad }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const steps = result?.steps || [];
+  const screenshot = result?.screenshot;
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    if (steps.length === 0) return;
+
+    // Advance through steps as they arrive
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => {
+        if (prev >= steps.length - 1) {
+          return prev; // wait for more steps
+        }
+        return prev + 1;
+      });
+    }, 800); // slower pace to see each check
+
+    return () => clearInterval(interval);
+  }, [steps.length]);
+
+  // Detect when animation is complete
+  useEffect(() => {
+    if (steps.length === 0) return;
+
+    const timeout = setTimeout(() => {
+      if (currentIndex >= steps.length - 1 && onComplete) {
+        onComplete();
+      }
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [currentIndex, steps.length, onComplete]);
+
+  const currentStep = steps[currentIndex];
+  const currentScreenshot = currentStep?.screenshot || screenshot;
+  const offsetX = currentStep?.offsetX || 0;
+  const offsetY = currentStep?.offsetY || 0;
+  const [scale, setScale] = useState(1);
+
+  const handleImgLoad = (e) => {
+    try {
+      const img = e.target;
+      const natural = img.naturalWidth || 1280;
+      const clientW = img.clientWidth || natural;
+      const s = clientW / natural;
+      setScale(s || 1);
+      if (typeof onImageLoad === "function") onImageLoad();
+    } catch (err) {
+      setScale(1);
+    }
+  };
+
+  const scaled = (val) => Math.round((val || 0) * (scale || 1));
+
+  return (
+    <div className="analysis-player-single">
+      {/* Live browser view */}
+      <div
+        className="analysis-image-wrapper"
+        style={{
+          position: "relative",
+          maxWidth: "600px",
+          margin: "0 auto",
+          borderRadius: "14px",
+          overflow: "auto",
+          border: "2px solid var(--color-accent)",
+          background: "rgba(15,23,42,0.8)",
+          boxShadow: "0 4px 20px rgba(124,138,160,0.3)",
+        }}
+      >
+        {/* Single screenshot with client-side overlays */}
+        <img
+          ref={imgRef}
+          src={currentScreenshot}
+          alt="Live Playwright browser view"
+          className="analysis-screenshot"
+          style={{
+            width: "100%",
+            height: "auto",
+            display: "block",
+          }}
+          onLoad={handleImgLoad}
+        />
+
+        {/* Draw click circle overlay */}
+        {currentStep?.type === "click" && (
+          <div
+            style={{
+              position: "absolute",
+              left: scaled(currentStep.x - offsetX) - Math.round(18 * scale),
+              top: scaled(currentStep.y - offsetY) - Math.round(18 * scale),
+              width: Math.round(36 * scale),
+              height: Math.round(36 * scale),
+              borderRadius: "50%",
+              border: `${Math.max(3, Math.round(5 * scale))}px solid #E6892C`,
+              boxShadow: `0 0 ${Math.round(25 * scale)}px rgba(230,137,44,0.8)`,
+              background: "rgba(230,137,44,0.2)",
+              pointerEvents: "none",
+              zIndex: 5,
+            }}
+          />
+        )}
+
+        {/* Draw highlight box overlay */}
+        {currentStep?.type === "highlight" && (
+          <div
+            style={{
+              position: "absolute",
+              left: scaled(currentStep.x - offsetX),
+              top: scaled(currentStep.y - offsetY),
+              width: scaled(currentStep.width),
+              height: scaled(currentStep.height),
+              borderRadius: "8px",
+              border: `${Math.max(3, Math.round(4 * scale))}px solid #7c8da0`,
+              boxShadow: `0 0 0 ${Math.round(
+                8 * scale,
+              )}px rgba(124,138,160,0.25)`,
+              background: "rgba(124,138,160,0.15)",
+              pointerEvents: "none",
+              zIndex: 4,
+            }}
+          />
+        )}
+
+        {/* Status overlay showing what's being checked */}
+        <div
+          className="analysis-status-overlay"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: "12px 16px",
+            background:
+              "linear-gradient(to top, rgba(15,23,42,0.95), rgba(15,23,42,0.85), transparent)",
+            color: "#e5e7eb",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 600,
+              color: "var(--background)",
+              marginBottom: 4,
+            }}
+          >
+            🔍 Live Accessibility Scan
+          </div>
+          <div>{currentStep?.label || "Preparing scan..."}</div>
+          <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: 4 }}>
+            Step {Math.min(currentIndex + 1, steps.length)} of{" "}
+            {steps.length || "..."}
+          </div>
+        </div>
+      </div>
+
+      <p
+        style={{
+          marginTop: "12px",
+          fontSize: "12px",
+          textAlign: "center",
+          color: "#9ca3af",
+          fontStyle: "italic",
+        }}
+      >
+        Watching Playwright check accessibility in real-time
+      </p>
+    </div>
+  );
+}
+
+export default AnalysisPlayer;

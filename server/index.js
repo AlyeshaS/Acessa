@@ -333,6 +333,9 @@ async function fetchPageContent(url) {
   try {
     await page.goto(url, { waitUntil: "networkidle", timeout: 120000 });
 
+    // Get the final URL after all redirects
+    const finalUrl = page.url();
+
     const html = await page.content();
 
     // When taking a violation screenshot at a specific scrollY:
@@ -373,6 +376,7 @@ async function fetchPageContent(url) {
       text,
       axeViolations: axeResults.violations,
       screenshot,
+      finalUrl, // Add the final URL after redirects
     };
   } finally {
     await browser.close();
@@ -1524,7 +1528,7 @@ app.post("/api/wcag-check", async (req, res) => {
   try {
     // 1. Fetch Data (Includes Axe Violations + screenshot)
     const pageData = await fetchPageContent(url);
-    const { axeViolations, screenshot } = pageData; // 🔹 now also grab screenshot
+    const { axeViolations, screenshot, finalUrl } = pageData; // 🔹 now also grab finalUrl
 
     // 2. Build Prompt & Call AI
     const prompt = buildPrompt(pageData);
@@ -1641,7 +1645,8 @@ app.post("/api/wcag-check", async (req, res) => {
 
     // 4. Send Final Response (now includes screenshot + steps)
     res.json({
-      url,
+      url, // original URL requested
+      finalUrl, // final URL after redirects
       html: pageData.html,
       aiAnalysis: aiResponse,
       axe: axeViolations,

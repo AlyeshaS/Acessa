@@ -1,5 +1,6 @@
 import express from "express";
-import { chromium } from "playwright";
+
+import { runAxeOnUrlSafe } from "../axeRunner.js";
 
 const router = express.Router();
 
@@ -18,54 +19,52 @@ router.post("/url", async (req, res) => {
 
     await page.goto(url, { waitUntil: "networkidle" });
 
-    // Take screenshot
+    // Run axe-core accessibility checks using axeRunner
+    const axeResults = await runAxeOnUrlSafe(url, 1);
+
+    // Take screenshot after analysis (optional, can move before if needed)
     const screenshotBuffer = await page.screenshot({ fullPage: true });
     const screenshotBase64 = screenshotBuffer.toString("base64");
 
-    // TODO: Plug in your real axe / WCAG checks here.
-    // For now, we’ll return some sample steps so the frontend animation works.
+    // Convert axe violations to steps for frontend animation (one step per node)
+    const steps = axeResults.violations
+      .flatMap((violation) =>
+        violation.nodes.map((node, idx) => {
+          const box = node && node.boundingBox;
+          return box
+            ? {
+                type: "highlight",
+                x: Math.round(box.x),
+                y: Math.round(box.y),
+                width: Math.round(box.width),
+                height: Math.round(box.height),
+                issue:
+                  node.failureSummary ||
+                  violation.description ||
+                  violation.help,
+                wcag: violation.id,
+              }
+            : {
+                type: "issue",
+                issueId: violation.id,
+                summary:
+                  node.failureSummary ||
+                  violation.description ||
+                  violation.help,
+                wcag: violation.id,
+              };
+        }),
+      )
+      .slice(0, 10); // limit to 10 steps for animation
 
-    const steps = [
-      {
-        type: "click",
-        x: 300,
-        y: 180,
-        label: "Checking primary navigation accessibility…",
-      },
-      {
-        type: "highlight",
-        x: 260,
-        y: 160,
-        width: 220,
-        height: 50,
-        issue: "Nav links may have low contrast for some users.",
-      },
-      {
-        type: "click",
-        x: 420,
-        y: 380,
-        label: "Scanning main call-to-action button…",
-      },
-      {
-        type: "highlight",
-        x: 380,
-        y: 360,
-        width: 180,
-        height: 60,
-        issue: "Button text contrast is borderline for WCAG 2.2 AA.",
-      },
-      {
-        type: "issue",
-        issueId: "contrast-cta",
-        summary: "Primary CTA might not meet contrast requirements.",
-        wcag: "WCAG 2.2 – 1.4.3 Contrast (Minimum)",
-      },
-    ];
+    // Debug: log violations and steps
+    console.log("[DEBUG] Violations sent to frontend:", JSON.stringify(axeResults.violations, null, 2));
+    console.log("[DEBUG] Steps sent to frontend:", JSON.stringify(steps, null, 2));
 
     res.json({
       screenshot: `data:image/png;base64,${screenshotBase64}`,
       steps,
-      // you can also include your full issues list here if you already have it
+      violations: axeResults.violations,
     });
   } catch (err) {
     console.error("Error analyzing URL:", err);

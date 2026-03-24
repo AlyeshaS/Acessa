@@ -13,5 +13,5 @@ createRoot(document.getElementById("root")).render(
       <Route path="/complete" element={<Complete />} />
       <Route path="/visual" element={<Visual />} />
     </Routes>
-  </BrowserRouter>
+  </BrowserRouter>,
 );

@@ -34,6 +34,15 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
   const scaleX = imgDims.renderedWidth / imgDims.naturalWidth;
   const scaleY = imgDims.renderedHeight / imgDims.naturalHeight;
 
+  // Debug: log markers and bounding boxes
+  React.useEffect(() => {
+    if (markers && markers.length > 0) {
+      // Only log on change
+      // eslint-disable-next-line no-console
+      console.log("[DEBUG] Markers for highlights:", markers);
+    }
+  }, [markers]);
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <img
