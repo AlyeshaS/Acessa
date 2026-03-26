@@ -1416,6 +1416,8 @@ function Complete() {
   }, []);
   // --- Add state for highlighted screenshot navigation ---
   const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState(0);
+  // Which marker/violation is selected within the current screenshot
+  const [selectedMarkerIdx, setSelectedMarkerIdx] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const isDemo = new URLSearchParams(location.search).get("demo") === "true";
@@ -1472,7 +1474,13 @@ function Complete() {
   // Reset currentScreenshotIdx to 0 whenever violationScreenshots changes
   useEffect(() => {
     setCurrentScreenshotIdx(0);
+    setSelectedMarkerIdx(0);
   }, [violationScreenshots]);
+
+  // Reset selectedMarkerIdx when navigating between screenshots
+  useEffect(() => {
+    setSelectedMarkerIdx(0);
+  }, [currentScreenshotIdx]);
 
   const handleAfterClick = async (idx, violation) => {
     const feedback = {
@@ -3003,155 +3011,288 @@ Return the edited screenshot with minimal localized edits only.
                     />
 
                     {/* Screenshot + highlights + panel */}
-                    <div style={{ width: "100%", height: "100%" }}>
-                      <ScreenshotWithHighlights
-                        screenshot={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
-                        }
-                        markers={
-                          violationScreenshots[currentScreenshotIdx]?.markers ||
-                          []
-                        }
-                      />
-                    </div>
+                    {(() => {
+                      const currentVS =
+                        violationScreenshots[currentScreenshotIdx];
+                      // Deduplicate markers by bounding box and issueId
+                      const rawMarkers = currentVS?.markers || [];
+                      const seen = new Set();
+                      const markers = rawMarkers.filter((m) => {
+                        // Use bounding box and issueId as deduplication key
+                        const bbs = (m.boundingBoxes || [])
+                          .map((b) => `${b.x},${b.y},${b.width},${b.height}`)
+                          .join("|");
+                        const key = `${m.issueId || ""}|${bbs}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      });
+                      const violations = currentVS?.violations || [];
+                      // Map selected marker by issueId for robust mapping
+                      const selectedMarker =
+                        markers[selectedMarkerIdx] || markers[0];
+                      // Find the violation with the same issueId as the selected marker
+                      const selectedViolationData =
+                        violations.find(
+                          (v) => v.issueId === selectedMarker?.issueId,
+                        ) ||
+                        violations[selectedMarkerIdx] ||
+                        violations[0];
+                      const selectedIssueId =
+                        selectedMarker?.issueId ||
+                        selectedViolationData?.issueId ||
+                        "";
+                      const markerCount = Math.max(
+                        markers.length,
+                        violations.length,
+                        1,
+                      );
 
-                    {/* Feedback panel (fills the panel grid column) */}
-                    <aside
-                      data-issueid={
-                        violationScreenshots[currentScreenshotIdx]?.markers?.[0]
-                          ?.issueId ||
-                        violationScreenshots[currentScreenshotIdx]
-                          ?.violations?.[0]?.issueId ||
-                        ""
-                      }
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "#f8fafc",
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        padding: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "flex-start",
-                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                        overflowY: "auto",
-                        cursor: "pointer",
-                        transition: "box-shadow 0.2s, border 0.2s",
-                      }}
-                      onClick={() => {
-                        // Find the highlight with the same issueId and pulse it
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${CSS.escape(issueId)}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.add("pulse-highlight-once");
-                          setTimeout(() => {
-                            highlight.classList.remove("pulse-highlight-once");
-                          }, 1200);
-                          // Scroll into view if needed
-                          if (typeof highlight.scrollIntoView === "function") {
-                            highlight.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center",
-                            });
-                          }
-                        }
-                      }}
-                      onMouseEnter={() => {
-                        // Optionally, add a hover effect to the highlight
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${CSS.escape(issueId)}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.add("highlight-hover");
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        const issueId =
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.markers?.[0]?.issueId ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.issueId ||
-                          "";
-                        if (!issueId) return;
-                        const highlight = document.querySelector(
-                          `[data-issueid="${CSS.escape(issueId)}"]`,
-                        );
-                        if (highlight) {
-                          highlight.classList.remove("highlight-hover");
-                        }
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#7c8da0",
-                          marginBottom: 8,
-                        }}
-                      >
-                        {violationScreenshots[
-                          currentScreenshotIdx
-                        ]?.violations?.[0]?.impact?.toUpperCase() || "ISSUE"}
-                      </div>
+                      return (
+                        <>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              position: "relative",
+                            }}
+                          >
+                            <ScreenshotWithHighlights
+                              screenshot={currentVS?.screenshot}
+                              markers={markers}
+                              selectedMarkerIdx={selectedMarkerIdx}
+                              onMarkerClick={(idx) => setSelectedMarkerIdx(idx)}
+                            />
+                            {/* Marker selector dots — shown when there are multiple markers */}
+                            {markerCount > 1 && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 8,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  display: "flex",
+                                  gap: 6,
+                                  zIndex: 10,
+                                }}
+                              >
+                                {Array.from({ length: markerCount }).map(
+                                  (_, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => setSelectedMarkerIdx(i)}
+                                      title={`Issue ${i + 1}`}
+                                      style={{
+                                        width: i === selectedMarkerIdx ? 20 : 8,
+                                        height: 8,
+                                        borderRadius: 999,
+                                        border: "none",
+                                        background:
+                                          i === selectedMarkerIdx
+                                            ? "#ff4d4f"
+                                            : "rgba(255,77,79,0.35)",
+                                        cursor: "pointer",
+                                        padding: 0,
+                                        transition: "all 0.2s ease",
+                                      }}
+                                    />
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          </div>
 
-                      <h3
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 700,
-                          margin: 0,
-                          color: "#475569",
-                        }}
-                      >
-                        {getFriendlyTitle(
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.wcagCriterion,
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.id,
-                        )}
-                      </h3>
+                          {/* Feedback panel */}
+                          <aside
+                            data-issueid={selectedIssueId}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              background: "#f8fafc",
+                              borderRadius: 10,
+                              border: "1px solid #e5e7eb",
+                              padding: 18,
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "flex-start",
+                              boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                              overflowY: "auto",
+                              cursor: "pointer",
+                              transition: "box-shadow 0.2s, border 0.2s",
+                            }}
+                            onClick={() => {
+                              if (!selectedIssueId) return;
+                              const highlight = document.querySelector(
+                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                              );
+                              if (highlight) {
+                                highlight.classList.add("pulse-highlight-once");
+                                setTimeout(() => {
+                                  highlight.classList.remove(
+                                    "pulse-highlight-once",
+                                  );
+                                }, 1200);
+                                if (
+                                  typeof highlight.scrollIntoView === "function"
+                                ) {
+                                  highlight.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "center",
+                                  });
+                                }
+                              }
+                            }}
+                            onMouseEnter={() => {
+                              if (!selectedIssueId) return;
+                              const highlight = document.querySelector(
+                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                              );
+                              if (highlight)
+                                highlight.classList.add("highlight-hover");
+                            }}
+                            onMouseLeave={() => {
+                              if (!selectedIssueId) return;
+                              const highlight = document.querySelector(
+                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                              );
+                              if (highlight)
+                                highlight.classList.remove("highlight-hover");
+                            }}
+                          >
+                            {/* Issue counter when there are multiple markers */}
+                            {markerCount > 1 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  marginBottom: 10,
+                                }}
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedMarkerIdx((i) =>
+                                      Math.max(0, i - 1),
+                                    );
+                                  }}
+                                  disabled={selectedMarkerIdx === 0}
+                                  style={{
+                                    width: 22,
+                                    height: 22,
+                                    borderRadius: "50%",
+                                    border: "1px solid #e2e8f0",
+                                    background:
+                                      selectedMarkerIdx === 0
+                                        ? "#f1f5f9"
+                                        : "#fff",
+                                    cursor:
+                                      selectedMarkerIdx === 0
+                                        ? "default"
+                                        : "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: 0,
+                                    color: "#94a3b8",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  ‹
+                                </button>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#94a3b8",
+                                  }}
+                                >
+                                  Issue {selectedMarkerIdx + 1} of {markerCount}
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedMarkerIdx((i) =>
+                                      Math.min(markerCount - 1, i + 1),
+                                    );
+                                  }}
+                                  disabled={
+                                    selectedMarkerIdx === markerCount - 1
+                                  }
+                                  style={{
+                                    width: 22,
+                                    height: 22,
+                                    borderRadius: "50%",
+                                    border: "1px solid #e2e8f0",
+                                    background:
+                                      selectedMarkerIdx === markerCount - 1
+                                        ? "#f1f5f9"
+                                        : "#fff",
+                                    cursor:
+                                      selectedMarkerIdx === markerCount - 1
+                                        ? "default"
+                                        : "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: 0,
+                                    color: "#94a3b8",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  ›
+                                </button>
+                              </div>
+                            )}
 
-                      <p
-                        style={{
-                          color: "#475569",
-                          marginTop: 10,
-                          fontSize: 15,
-                        }}
-                      >
-                        {violationScreenshots[currentScreenshotIdx]?.aiFeedback
-                          ?.summary ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.help ||
-                          violationScreenshots[currentScreenshotIdx]
-                            ?.violations?.[0]?.description ||
-                          "This area shows a visual concern that may affect user understanding or ease of use."}
-                      </p>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                color: "#7c8da0",
+                                marginBottom: 8,
+                              }}
+                            >
+                              {selectedViolationData?.impact?.toUpperCase() ||
+                                "ISSUE"}
+                            </div>
 
-                      {violationScreenshots[currentScreenshotIdx]?.aiFeedback
-                        ?.recommendation && (
-                        <p style={{ marginTop: 8, color: "#7c8da0" }}>
-                          <strong>Suggested fix:</strong>{" "}
-                          {
-                            violationScreenshots[currentScreenshotIdx]
-                              .aiFeedback.recommendation
-                          }
-                        </p>
-                      )}
-                    </aside>
+                            <h3
+                              style={{
+                                fontSize: 18,
+                                fontWeight: 700,
+                                margin: 0,
+                                color: "#475569",
+                              }}
+                            >
+                              {getFriendlyTitle(
+                                selectedViolationData?.wcagCriterion,
+                                selectedViolationData?.id,
+                              )}
+                            </h3>
+
+                            <p
+                              style={{
+                                color: "#475569",
+                                marginTop: 10,
+                                fontSize: 15,
+                              }}
+                            >
+                              {currentVS?.aiFeedback?.summary ||
+                                selectedViolationData?.help ||
+                                selectedViolationData?.description ||
+                                "This area shows a visual concern that may affect user understanding or ease of use."}
+                            </p>
+
+                            {currentVS?.aiFeedback?.recommendation && (
+                              <p style={{ marginTop: 8, color: "#7c8da0" }}>
+                                <strong>Suggested fix:</strong>{" "}
+                                {currentVS.aiFeedback.recommendation}
+                              </p>
+                            )}
+                          </aside>
+                        </>
+                      );
+                    })()}
 
                     <PreviewArrow
                       direction="right"

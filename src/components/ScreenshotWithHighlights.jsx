@@ -5,8 +5,15 @@ import React from "react";
  * @param {Object} props
  * @param {string} props.screenshot - The image source URL or base64 string.
  * @param {Array} props.markers - Array of marker objects with bounding box info.
+ * @param {number} [props.selectedMarkerIdx] - Index of the currently selected marker.
+ * @param {function} [props.onMarkerClick] - Called with the marker index when a marker is clicked.
  */
-function ScreenshotWithHighlights({ screenshot, markers }) {
+function ScreenshotWithHighlights({
+  screenshot,
+  markers,
+  selectedMarkerIdx = 0,
+  onMarkerClick,
+}) {
   const imgRef = React.useRef(null);
   const [imgDims, setImgDims] = React.useState({
     naturalWidth: 1,
@@ -37,7 +44,6 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
   // Debug: log markers and bounding boxes
   React.useEffect(() => {
     if (markers && markers.length > 0) {
-      // Only log on change
       // eslint-disable-next-line no-console
       console.log("[DEBUG] Markers for highlights:", markers);
     }
@@ -58,21 +64,42 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
         alt="Screenshot with highlights"
       />
       {markers.flatMap((m, i) => {
+        const isSelected = i === selectedMarkerIdx;
+        const baseStyle = {
+          borderRadius: 6,
+          cursor: onMarkerClick ? "pointer" : "default",
+          transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
+        };
+        const selectedStyle = isSelected
+          ? {
+              border: "2.5px solid #ff4d4f",
+              background: "rgba(255,77,79,0.22)",
+              boxShadow: "0 0 0 3px rgba(255,77,79,0.18)",
+              zIndex: 20,
+            }
+          : {
+              border: "2px solid rgba(255,77,79,0.5)",
+              background: "rgba(255,77,79,0.07)",
+              zIndex: 10,
+            };
+
+        const handleClick = onMarkerClick ? () => onMarkerClick(i) : undefined;
+
         if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
           return m.boundingBoxes.map((b, j) => (
             <div
               key={`${m.issueId || i}-bb-${j}`}
               data-issueid={m.issueId || ""}
+              onClick={handleClick}
               style={{
                 position: "absolute",
                 left: b.x * scaleX,
                 top: b.y * scaleY,
                 width: b.width * scaleX,
                 height: b.height * scaleY,
-                border: "2px solid #ff4d4f",
-                background: "rgba(255,77,79,0.18)",
-                borderRadius: 6,
-                pointerEvents: "none",
+                pointerEvents: onMarkerClick ? "auto" : "none",
+                ...baseStyle,
+                ...selectedStyle,
               }}
             />
           ));
@@ -81,16 +108,16 @@ function ScreenshotWithHighlights({ screenshot, markers }) {
             <div
               key={m.issueId || i}
               data-issueid={m.issueId || ""}
+              onClick={handleClick}
               style={{
                 position: "absolute",
                 left: m.x * scaleX,
                 top: m.y * scaleY,
                 width: m.width * scaleX,
                 height: m.height * scaleY,
-                border: "2px solid #ff4d4f",
-                background: "rgba(255,77,79,0.18)",
-                borderRadius: 6,
-                pointerEvents: "none",
+                pointerEvents: onMarkerClick ? "auto" : "none",
+                ...baseStyle,
+                ...selectedStyle,
               }}
             />
           );

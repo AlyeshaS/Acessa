@@ -181,34 +181,6 @@ app.post("/api/ai-modify-html", async (req, res) => {
 
   const problemCategoryText = (feedback.problemCategory || "").toLowerCase();
 
-  // 🔧 EDIT: Logic-only detection is no longer used to block or branch behavior.
-  // Visual simulation is ALWAYS allowed, even if feedback references technical concepts.
-  //
-  // const logicOnlyKeywords = [
-  //   "javascript",
-  //   "api",
-  //   "backend",
-  //   "function",
-  //   "async",
-  //   "promise",
-  //   "database",
-  //   "server",
-  //   "endpoint",
-  //   "auth",
-  //   "token",
-  // ];
-  //
-  // const isLogicRelated = logicOnlyKeywords.some(
-  //   (keyword) =>
-  //     feedbackText.includes(keyword) || problemCategoryText.includes(keyword)
-  // );
-  //
-  // if (isLogicRelated) {
-  //   console.warn(
-  //     "[AI Modify HTML] Logic-related feedback detected. Applying visual simulation anyway."
-  //   );
-  // }
-
   const detectedVisualKeywords = visualKeywords.filter((keyword) =>
     feedbackText.includes(keyword),
   );
@@ -395,14 +367,33 @@ async function fetchPagePreview(url) {
   const page = await context.newPage();
 
   try {
-    await page.setViewportSize({ width: 1280, height: 720 });
+    // Set a fixed viewport size for consistent preview framing
+    const VIEWPORT_WIDTH = 1280;
+    const VIEWPORT_HEIGHT = 720;
+    await page.setViewportSize({
+      width: VIEWPORT_WIDTH,
+      height: VIEWPORT_HEIGHT,
+    });
     await page.goto(url, { waitUntil: "networkidle", timeout: 180000 });
 
-    // Take a smaller viewport screenshot for quick transfer
+    // Scroll to the main content area if possible
+    await page.evaluate(() => {
+      const main = document.querySelector('main, [role="main"]');
+      if (main) {
+        main.scrollIntoView({ behavior: "instant", block: "start" });
+      } else {
+        window.scrollTo(0, 0);
+      }
+    });
+
+    // Allow layout to settle after scrolling
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Capture only the viewport (not full page) for a consistent preview
     const buffer = await page.screenshot({
       type: "jpeg",
       quality: 65,
-      fullPage: false,
+      fullPage: false, // Only capture the viewport
     });
     const base64 = buffer.toString("base64");
 
@@ -1528,9 +1519,34 @@ app.post("/api/wcag-check", async (req, res) => {
   try {
     // 1. Fetch Data (Includes Axe Violations + screenshot)
     const pageData = await fetchPageContent(url);
-    const { axeViolations, screenshot, finalUrl } = pageData; // 🔹 now also grab finalUrl
+    const { axeViolations, screenshot, finalUrl } = pageData;
 
-    // 2. Build Prompt & Call AI
+    // 2. For each violation node, get AI feedback
+    for (const violation of axeViolations) {
+      for (const node of violation.nodes) {
+        const nodePrompt = `
+You are an accessibility expert. Here is a web accessibility violation node from axe-core:
+${JSON.stringify(node, null, 2)}
+Please provide:
+1. A user-friendly summary of the issue.
+2. A recommendation for fixing it.
+3. (Optional) The CSS selector of the affected element.
+Return a JSON object: { "summary": "...", "recommendation": "...", "selector": "..." }
+`;
+        try {
+          const aiNodeFeedback = await callAi(nodePrompt);
+          node.aiFeedback = aiNodeFeedback;
+        } catch (err) {
+          node.aiFeedback = {
+            summary: "AI feedback unavailable.",
+            recommendation: "",
+            selector: node.target ? node.target[0] : "",
+          };
+        }
+      }
+    }
+
+    // 3. Build Prompt & Call AI for overall page
     const prompt = buildPrompt(pageData);
     const aiResponse = await callAi(prompt);
 
@@ -1545,14 +1561,26 @@ app.post("/api/wcag-check", async (req, res) => {
         v.nodes && v.nodes[0] && v.nodes[0].target
           ? v.nodes[0].target.join(" ")
           : "0";
+      // Attach AI feedback from the first node (if available)
+      const aiFeedback =
+        v.nodes && v.nodes[0] && v.nodes[0].aiFeedback
+          ? v.nodes[0].aiFeedback
+          : {};
       return {
         wcagCriterion: wcagTag,
         severity: v.impact
           ? v.impact.charAt(0).toUpperCase() + v.impact.slice(1)
           : "High",
         count: v.nodes?.length || 1,
-        problem: v.help || v.description || "Automated syntax error detected.",
-        recommendation: "Fix syntax issues reported by Axe-core.",
+        problem:
+          aiFeedback.summary ||
+          v.help ||
+          v.description ||
+          "Automated syntax error detected.",
+        recommendation:
+          aiFeedback.recommendation ||
+          "Fix syntax issues reported by Axe-core.",
+        selector: aiFeedback.selector || firstSelector,
         type: "automated",
         boundingBoxes,
         issueId: `${v.id}__${firstSelector}`,
@@ -1579,7 +1607,7 @@ app.post("/api/wcag-check", async (req, res) => {
     }
     // --- END MERGING LOGIC ---
 
-    // 🔹 3. Build "steps" for the loading animation
+    // 🔹 4. Build "steps" for the loading animation
     let steps = [];
 
     if (axeViolations.length === 0) {
@@ -1614,7 +1642,10 @@ app.post("/api/wcag-check", async (req, res) => {
       for (let i = 0; i < maxDemo; i++) {
         const v = axeViolations[i];
         const yBase = 180 + i * 110; // stack highlights down the page a bit
-
+        const aiFeedback =
+          v.nodes && v.nodes[0] && v.nodes[0].aiFeedback
+            ? v.nodes[0].aiFeedback
+            : {};
         steps.push({
           type: "click",
           x: 320,
@@ -1629,6 +1660,7 @@ app.post("/api/wcag-check", async (req, res) => {
           width: 380,
           height: 70,
           issue:
+            aiFeedback.summary ||
             v.help ||
             v.description ||
             "Potential accessibility issue detected on this element.",
@@ -1643,7 +1675,7 @@ app.post("/api/wcag-check", async (req, res) => {
       });
     }
 
-    // 4. Send Final Response (now includes screenshot + steps)
+    // 5. Send Final Response (now includes screenshot + steps)
     res.json({
       url, // original URL requested
       finalUrl, // final URL after redirects
