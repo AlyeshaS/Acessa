@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
  */
 function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isDone, setIsDone] = useState(false);
   const steps = result?.steps || [];
   const screenshot = result?.screenshot;
   const imgRef = useRef(null);
@@ -30,8 +31,9 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     if (steps.length === 0) return;
 
     const timeout = setTimeout(() => {
-      if (currentIndex >= steps.length - 1 && onComplete) {
-        onComplete();
+      if (currentIndex >= steps.length - 1) {
+        setIsDone(true);
+        if (onComplete) onComplete();
       }
     }, 3000);
 
@@ -130,36 +132,116 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
         )}
 
         {/* Status overlay showing what's being checked */}
-        <div
-          className="analysis-status-overlay"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            padding: "12px 16px",
-            background:
-              "linear-gradient(to top, rgba(15,23,42,0.95), rgba(15,23,42,0.85), transparent)",
-            color: "#e5e7eb",
-            fontSize: "13px",
-            lineHeight: 1.5,
-          }}
-        >
+        {!isDone ? (
           <div
+            className="analysis-status-overlay"
             style={{
-              fontWeight: 600,
-              color: "var(--background)",
-              marginBottom: 4,
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              padding: "12px 16px",
+              background:
+                "linear-gradient(to top, rgba(15,23,42,0.95), rgba(15,23,42,0.85), transparent)",
+              color: "#e5e7eb",
+              fontSize: "13px",
+              lineHeight: 1.5,
             }}
           >
-            🔍 Live Accessibility Scan
+            <div
+              style={{
+                fontWeight: 600,
+                color: "var(--background)",
+                marginBottom: 4,
+              }}
+            >
+              🔍 Live Accessibility Scan
+            </div>
+            <div>{currentStep?.label || "Preparing scan..."}</div>
+            <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: 4 }}>
+              Step {Math.min(currentIndex + 1, steps.length)} of{" "}
+              {steps.length || "..."}
+            </div>
           </div>
-          <div>{currentStep?.label || "Preparing scan..."}</div>
-          <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: 4 }}>
-            Step {Math.min(currentIndex + 1, steps.length)} of{" "}
-            {steps.length || "..."}
+        ) : (
+          /* Completion overlay */
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(15,23,42,0.72)",
+              backdropFilter: "blur(2px)",
+              zIndex: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+                background: "rgba(15,23,42,0.92)",
+                border: "1.5px solid #86efac",
+                borderRadius: 16,
+                padding: "22px 32px",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              }}
+            >
+              {/* Checkmark circle */}
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  background: "rgba(22,163,74,0.15)",
+                  border: "2px solid #16a34a",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#4ade80"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#f0fdf4",
+                  letterSpacing: "-0.2px",
+                }}
+              >
+                Violation Check Complete
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#94a3b8",
+                  textAlign: "center",
+                  lineHeight: 1.5,
+                }}
+              >
+                {steps.length} step{steps.length !== 1 ? "s" : ""} checked
+                <br />
+                Finalizing AI report…
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <p

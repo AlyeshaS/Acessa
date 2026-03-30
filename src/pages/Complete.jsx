@@ -2797,22 +2797,7 @@ Return the edited screenshot with minimal localized edits only.
               <strong>{analysis?.url || url}</strong>
             </p>
 
-            {/* Show "Grabbing landing page" before image loads */}
-            {!imageLoaded && (
-              <p
-                className="loading-status-text"
-                style={{
-                  fontSize: "14px",
-                  color: "#94a3b8",
-                  marginTop: "12px",
-                  fontStyle: "italic",
-                }}
-              >
-                Grabbing landing page...
-              </p>
-            )}
-
-            {/* Progress bar and percentage */}
+            {/* BAR 1 — Fetching page snapshot (before image loads) */}
             {!imageLoaded && (
               <>
                 <div
@@ -2833,26 +2818,8 @@ Return the edited screenshot with minimal localized edits only.
               </>
             )}
 
-            {imageLoaded && progress < 100 && !animationDone && (
-              <>
-                <div
-                  className="loading-bar"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={progress}
-                >
-                  <div
-                    className="loading-bar-fill"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="loading-bar-text">Analyzing… {progress}%</p>
-              </>
-            )}
-
-            {/* Show the third progress bar as soon as animationDone, even if aiScreenshotProgress is 0 */}
-            {animationDone && (
+            {/* BAR 2 — Checking violations (during animation) + Finalizing AI report (after animation, waiting on analysis) */}
+            {imageLoaded && (
               <>
                 <div
                   className="loading-bar"
@@ -2860,48 +2827,43 @@ Return the edited screenshot with minimal localized edits only.
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={
-                    !loading && !animating && analysis
+                    animationDone && analysis
                       ? 100
-                      : Math.min(aiScreenshotProgress, 90)
+                      : animationDone
+                        ? Math.min(Math.max(progress, aiScreenshotProgress), 95)
+                        : progress
                   }
                 >
                   <div
                     className="loading-bar-fill"
                     style={{
                       width: `${
-                        !loading && !animating && analysis
+                        animationDone && analysis
                           ? 100
-                          : Math.min(aiScreenshotProgress, 90)
+                          : animationDone
+                            ? Math.min(
+                                Math.max(progress, aiScreenshotProgress),
+                                95,
+                              )
+                            : progress
                       }%`,
+                      transition: animationDone ? "width 0.6s ease" : undefined,
                     }}
                   />
                 </div>
                 <p className="loading-bar-text">
-                  {(() => {
-                    const displayProgress =
-                      !loading && !animating && analysis
-                        ? 100
-                        : Math.min(aiScreenshotProgress, 90);
-                    if (displayProgress < 30) {
-                      return `Analyzing screenshots… ${displayProgress}%`;
-                    } else if (displayProgress < 60) {
-                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
-                        pagesVisited || 0
-                      }`;
-                    } else if (displayProgress < 80) {
-                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
-                        pagesVisited || 0
-                      } • Violations: ${violationsFound || 0}`;
-                    } else if (displayProgress < 100) {
-                      return `Analyzing screenshots… ${displayProgress}% • Pages viewed: ${
-                        pagesVisited || 0
-                      } • Violations: ${violationsFound || 0} • Duplicates: ${
-                        duplicatesSkipped || 0
-                      }`;
-                    } else {
-                      return `Analyzing screenshots… 100%`;
-                    }
-                  })()}
+                  {animationDone && analysis
+                    ? `Report ready — loading results…`
+                    : animationDone
+                      ? `Finalizing AI report… ${Math.min(
+                          Math.max(progress, aiScreenshotProgress),
+                          95,
+                        )}%${pagesVisited > 0 ? ` • Pages: ${pagesVisited}` : ""}${violationsFound > 0 ? ` • Violations: ${violationsFound}` : ""}`
+                      : `Checking violations… ${Math.round(progress)}%${
+                          violationsFound > 0
+                            ? ` • ${violationsFound} found so far`
+                            : ""
+                        }`}
                 </p>
               </>
             )}
@@ -2937,6 +2899,39 @@ Return the edited screenshot with minimal localized edits only.
                     }
                   }}
                 />
+                {/* "Violation check complete" banner — shown after animation finishes, while AI report finalizes */}
+                {animationDone && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      marginTop: 14,
+                      padding: "10px 18px",
+                      background: "#f0fdf4",
+                      border: "1px solid #86efac",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#15803d",
+                    }}
+                  >
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#16a34a"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Violation check complete — finalizing AI report…
+                  </div>
+                )}
               </div>
             )}
           </div>

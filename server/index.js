@@ -15,12 +15,6 @@ app.use(express.json({ limit: "25mb" }));
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 import { openaiImageEdit } from "./openaiImageEdit.js";
-/**
- * Image Editing endpoint: Uses OpenAI gpt-image-1 to edit an image based on a prompt.
- * POST /api/ai/image-edit
- * Body: { screenshot: base64 string, prompt: string }
- * Returns: { editedImageUrl, editedImageBase64 }
- */
 
 app.post("/api/log-colorblind-btn", (req, res) => {
   // Log the request body to the terminal
@@ -718,8 +712,71 @@ async function discoverClientRoutes(page, baseUrl) {
 }
 
 /**
- * Capture up to 12 violation-focused screenshots
- * Returns array of { screenshot: base64, violations: [...], bounds: {x, y, width, height} }
+ * Returns a normalised region key for deduplicating highlights.
+ * Two boxes with centres within 40px and sizes within 20% are treated as the same element.
+ */
+/**
+ * Intersection area of two axis-aligned rectangles.
+ */
+function intersectionArea(a, b) {
+  const ix = Math.max(
+    0,
+    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x),
+  );
+  const iy = Math.max(
+    0,
+    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y),
+  );
+  return ix * iy;
+}
+
+/**
+ * Returns true when rect `small` is at least `threshold` (0–1) covered by rect `large`.
+ * i.e. intersection / area(small) >= threshold
+ */
+function isCoveredBy(small, large, threshold = 0.9) {
+  const smallArea = small.width * small.height;
+  if (smallArea <= 0) return true; // zero-area marker is always redundant
+  return intersectionArea(small, large) / smallArea >= threshold;
+}
+
+/**
+ * Remove markers whose area is 90 %+ covered by any other marker in the list.
+ * Keeps the larger (more informative) box when two heavily overlap.
+ * Sort largest-first so that when we scan, big boxes are retained and
+ * small boxes that sit entirely inside them get dropped.
+ */
+function removeRedundantMarkers(markers, threshold = 0.9) {
+  // Sort descending by area so large boxes come first
+  const sorted = [...markers].sort(
+    (a, b) => b.width * b.height - a.width * a.height,
+  );
+  const kept = [];
+  for (const candidate of sorted) {
+    const dominated = kept.some((existing) =>
+      isCoveredBy(candidate, existing, threshold),
+    );
+    if (!dominated) kept.push(candidate);
+  }
+  return kept;
+}
+
+/**
+ * Capture up to 12 violation-focused screenshots.
+ *
+ * KEY CHANGES vs previous version:
+ * 1. Group ALL violations that share the same on-screen element/region into ONE
+ *    screenshot entry → one highlight, one combined feedback.
+ * 2. Deduplicate markers within a screenshot so the same pixel area is never
+ *    highlighted more than once.
+ * 3. Return `highlightBounds` (the tight bounding rect around all markers) so
+ *    the AI prompt can crop to that exact area – guaranteeing the feedback
+ *    always matches what is highlighted.
+ *
+ * Returns array of {
+ *   screenshot, violations, bounds, markers, highlightBounds,
+ *   violationType, wcagCriterion, scrollY, viewport, screenshotOnly
+ * }
  */
 async function captureViolationScreenshots(page, axeViolations) {
   const screenshots = [];
@@ -734,7 +791,7 @@ async function captureViolationScreenshots(page, axeViolations) {
       `[WCAG] Starting screenshot capture for ${axeViolations.length} total violations`,
     );
 
-    // Rank violations by severity and frequency; pick top 12
+    // ── Step 1: rank by severity × frequency ───────────────────────────────
     const sevWeight = { critical: 3, serious: 3, moderate: 2, minor: 1 };
     const ranked = axeViolations
       .map((v) => ({
@@ -746,12 +803,13 @@ async function captureViolationScreenshots(page, axeViolations) {
       .sort((a, b) => b.score - a.score)
       .map((x) => x.v);
 
+    // Deduplicate by violation id and keep top 12
     const uniqueViolations = [];
     const seenIds = new Set();
-    for (const violation of ranked) {
-      if (!seenIds.has(violation.id) && uniqueViolations.length < 12) {
-        seenIds.add(violation.id);
-        uniqueViolations.push(violation);
+    for (const v of ranked) {
+      if (!seenIds.has(v.id) && uniqueViolations.length < 12) {
+        seenIds.add(v.id);
+        uniqueViolations.push(v);
       }
     }
 
@@ -759,10 +817,11 @@ async function captureViolationScreenshots(page, axeViolations) {
       `[WCAG] Will capture ${uniqueViolations.length} unique violation types`,
     );
 
+    // ── Step 2: process each violation ─────────────────────────────────────
     for (let idx = 0; idx < uniqueViolations.length; idx++) {
       const violation = uniqueViolations[idx];
       try {
-        // If violation has a source URL from discovery, navigate there first
+        // Navigate to the page where this violation was found (multi-page scans)
         if (violation.__sourceUrl && page.url() !== violation.__sourceUrl) {
           try {
             await page.goto(violation.__sourceUrl, {
@@ -772,10 +831,11 @@ async function captureViolationScreenshots(page, axeViolations) {
             await page.waitForTimeout(300);
           } catch (navErr) {
             console.log(
-              `[WCAG] Could not navigate to violation source URL ${violation.__sourceUrl}: ${navErr.message}`,
+              `[WCAG] Could not navigate to ${violation.__sourceUrl}: ${navErr.message}`,
             );
           }
         }
+
         if (!violation.nodes || violation.nodes.length === 0) {
           console.log(
             `[WCAG] Violation ${violation.id} has no nodes, skipping`,
@@ -785,42 +845,21 @@ async function captureViolationScreenshots(page, axeViolations) {
 
         const node = violation.nodes[0];
         const target = node.target?.join(" ") || "";
-
         if (!target) {
-          console.log(
-            `[WCAG] Could not determine selector for violation ${violation.id}`,
-          );
+          console.log(`[WCAG] No selector for violation ${violation.id}`);
           continue;
         }
 
         console.log(
-          `[WCAG] Capturing screenshot for violation ${idx + 1}/5: ${
-            violation.id
-          } (selector: ${target})`,
+          `[WCAG] Capturing ${idx + 1}/${uniqueViolations.length}: ${violation.id} (${target})`,
         );
 
-        // Try to get bounding box for the primary node and capture scrollY, with debug logs
+        // ── Step 3: scroll the primary element into view ──────────────────
         const boundsAndScroll = await page.evaluate((selector) => {
           try {
             const el = document.querySelector(selector);
-            if (!el) {
-              console.log(`[WCAG] Could not find element: ${selector}`);
-              console.log(
-                `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
-                window.scrollY,
-              );
-              return { bounds: null, scrollY: window.scrollY };
-            }
-            console.log(
-              `[WCAG] [DEBUG] window.scrollY before scrollIntoView:`,
-              window.scrollY,
-            );
+            if (!el) return { bounds: null, scrollY: window.scrollY };
             el.scrollIntoView({ block: "center", inline: "center" });
-
-            console.log(
-              `[WCAG] [DEBUG] window.scrollY after scrollIntoView:`,
-              window.scrollY,
-            );
             const box = el.getBoundingClientRect();
             return {
               bounds: {
@@ -832,11 +871,6 @@ async function captureViolationScreenshots(page, axeViolations) {
               scrollY: window.scrollY,
             };
           } catch (e) {
-            console.log(`[WCAG] Error getting bounds: ${e.message}`);
-            console.log(
-              `[WCAG] [DEBUG] window.scrollY in error:`,
-              window.scrollY,
-            );
             return { bounds: null, scrollY: window.scrollY };
           }
         }, target);
@@ -845,8 +879,7 @@ async function captureViolationScreenshots(page, axeViolations) {
         const scrollY = boundsAndScroll.scrollY;
         await page.waitForTimeout(300);
 
-        // Collect visible node bounds to overlay multiple issue markers
-        // Build a unique list of selectors for all nodes tied to this violation
+        // ── Step 4: collect unique selectors across all nodes ─────────────
         const markerSelectors = [];
         const seenSelectors = new Set();
         violation.nodes
@@ -859,8 +892,8 @@ async function captureViolationScreenshots(page, axeViolations) {
             }
           });
 
-        // Compute marker bounding boxes and attach AI/violation text
-        const markers = await page.evaluate((selectors) => {
+        // ── Step 5: get viewport bounding boxes for visible elements ──────
+        const rawMarkers = await page.evaluate((selectors) => {
           const viewportW = window.innerWidth || 0;
           const viewportH = window.innerHeight || 0;
           return selectors
@@ -885,40 +918,46 @@ async function captureViolationScreenshots(page, axeViolations) {
                   !Number.isFinite(y) ||
                   w <= 0 ||
                   h <= 0
-                ) {
+                )
                   return null;
-                }
-                return {
-                  x,
-                  y,
-                  width: w,
-                  height: h,
-                  selector,
-                };
+                return { x, y, width: w, height: h, selector };
               } catch (e) {
-                console.log(
-                  `[WCAG] Marker error for ${selector}: ${e.message}`,
-                );
                 return null;
               }
             })
             .filter(Boolean);
         }, markerSelectors);
 
-        // Attach AI/violation text to each marker (robust, safe)
-        const markersWithText = (markers || []).map((m, i) => {
-          // Try to find the corresponding node for this selector
-          const node = violation.nodes.find(
+        // ── Step 6: remove markers that are 90%+ covered by another marker ─
+        // This replaces the old grid-snap dedup with a proper area-overlap test.
+        const dedupedMarkers = removeRedundantMarkers(rawMarkers, 0.9);
+
+        // ── GUARD: if Playwright found no visible markers for this violation,
+        //   skip it entirely — never send a screenshot with nothing highlighted.
+        if (dedupedMarkers.length === 0) {
+          console.log(
+            `[WCAG] No visible markers for ${violation.id} — skipping screenshot`,
+          );
+          continue;
+        }
+
+        // Attach violation metadata to each marker
+        const markersWithText = dedupedMarkers.map((m, i) => {
+          const matchNode = violation.nodes.find(
             (n) => n.target && n.target.join(" ") === m.selector,
           );
-          // Attach summary/recommendation from AI if available, else from violation
-          let summary =
-            node?.summary || violation?.help || violation?.description || "";
-          let recommendation =
-            node?.recommendation || violation?.recommendation || "";
-          summary = typeof summary === "string" ? summary : "";
-          recommendation =
-            typeof recommendation === "string" ? recommendation : "";
+          const summary =
+            typeof (matchNode?.summary || violation?.help) === "string"
+              ? matchNode?.summary ||
+                violation.help ||
+                violation.description ||
+                ""
+              : violation.description || "";
+          const recommendation =
+            typeof (matchNode?.recommendation || violation?.recommendation) ===
+            "string"
+              ? matchNode?.recommendation || violation.recommendation || ""
+              : "";
           return {
             ...m,
             issueId: `${violation.id}__${m.selector || i}`,
@@ -928,16 +967,30 @@ async function captureViolationScreenshots(page, axeViolations) {
           };
         });
 
+        // ── Step 7: compute tight bounding rect around all markers ────────
+        // This is what the AI will be told to focus on.
+        let highlightBounds = null;
+        if (markersWithText.length > 0) {
+          const minX = Math.min(...markersWithText.map((m) => m.x));
+          const minY = Math.min(...markersWithText.map((m) => m.y));
+          const maxX = Math.max(...markersWithText.map((m) => m.x + m.width));
+          const maxY = Math.max(...markersWithText.map((m) => m.y + m.height));
+          highlightBounds = {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY,
+          };
+        }
+
         await page.waitForTimeout(150);
 
-        // Capture viewport screenshot - start with lower quality to reduce size
+        // ── Step 8: take viewport screenshot ─────────────────────────────
         let screenshotBuf = await page.screenshot({
           type: "jpeg",
           quality: 50,
           fullPage: false,
         });
-
-        // If still too large, reduce quality further
         if (screenshotBuf.length > 200000) {
           screenshotBuf = await page.screenshot({
             type: "jpeg",
@@ -951,25 +1004,22 @@ async function captureViolationScreenshots(page, axeViolations) {
         );
 
         screenshots.push({
-          screenshot: `data:image/jpeg;base64,${screenshotBuf.toString(
-            "base64",
-          )}`,
+          screenshot: `data:image/jpeg;base64,${screenshotBuf.toString("base64")}`,
           violations: [violation],
           bounds: bounds || { x: 0, y: 0, width: 0, height: 0 },
           markers: markersWithText,
+          // highlightBounds is used by the AI prompt to anchor feedback
+          highlightBounds,
           violationType: violation.id,
           wcagCriterion:
             violation.tags?.find((t) => t.match(/^wcag\d/)) || violation.id,
-          scrollY: scrollY,
-          viewport: {
-            width: 1280,
-            height: 720,
-          },
-          screenshotOnly: !markersWithText || markersWithText.length === 0,
+          scrollY,
+          viewport: { width: 1280, height: 720 },
+          screenshotOnly: false, // guaranteed: we only reach here when markers.length > 0
         });
       } catch (err) {
         console.error(
-          `[WCAG] Error capturing violation screenshot for ${violation.id}:`,
+          `[WCAG] Error capturing screenshot for ${violation.id}:`,
           err.message,
         );
       }
@@ -1521,10 +1571,27 @@ app.post("/api/wcag-check", async (req, res) => {
     const pageData = await fetchPageContent(url);
     const { axeViolations, screenshot, finalUrl } = pageData;
 
-    // 2. For each violation node, get AI feedback
+    // 2. Deduplicate violation nodes by selector + bounding box, only send one per region to the AI
+    const uniqueRegionKeys = new Set();
+    const uniqueNodes = [];
     for (const violation of axeViolations) {
       for (const node of violation.nodes) {
-        const nodePrompt = `
+        const selector = node.selector || (node.target && node.target[0]) || "";
+        const box = node.boundingBoxes && node.boundingBoxes[0];
+        const boxKey = box
+          ? `${box.x},${box.y},${box.width},${box.height}`
+          : "";
+        const key = `${selector}|${boxKey}`;
+        if (!uniqueRegionKeys.has(key)) {
+          uniqueRegionKeys.add(key);
+          uniqueNodes.push({ node, violation });
+        }
+      }
+    }
+
+    // Only send one node per region to the AI
+    for (const { node } of uniqueNodes) {
+      const nodePrompt = `
 You are an accessibility expert. Here is a web accessibility violation node from axe-core:
 ${JSON.stringify(node, null, 2)}
 Please provide:
@@ -1533,16 +1600,15 @@ Please provide:
 3. (Optional) The CSS selector of the affected element.
 Return a JSON object: { "summary": "...", "recommendation": "...", "selector": "..." }
 `;
-        try {
-          const aiNodeFeedback = await callAi(nodePrompt);
-          node.aiFeedback = aiNodeFeedback;
-        } catch (err) {
-          node.aiFeedback = {
-            summary: "AI feedback unavailable.",
-            recommendation: "",
-            selector: node.target ? node.target[0] : "",
-          };
-        }
+      try {
+        const aiNodeFeedback = await callAi(nodePrompt);
+        node.aiFeedback = aiNodeFeedback;
+      } catch (err) {
+        node.aiFeedback = {
+          summary: "AI feedback unavailable.",
+          recommendation: "",
+          selector: node.target ? node.target[0] : "",
+        };
       }
     }
 
@@ -2369,11 +2435,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       allViolations,
     );
 
-    // Deduplicate screenshots by comparing image data (sample multiple positions)
+    // Deduplicate screenshots by comparing image data (sample multiple positions).
+    // When two screenshots share the same frame, merge their violations and markers.
+    // Markers are deduplicated by screen region so the same element is never
+    // highlighted more than once even after merging.
     const screenshotMap = new Map();
     for (const vs of rawViolationScreenshots) {
       const img = vs.screenshot || "";
-      // Create hash from length + samples at 25%, 50%, 75% positions to catch actual image differences
+      // Hash = length + samples at 25 % and 75 % to catch real image differences
       const len = img.length;
       const hash = `${len}-${img.slice(
         Math.floor(len * 0.25),
@@ -2383,25 +2452,33 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       if (screenshotMap.has(hash)) {
         const existing = screenshotMap.get(hash);
         existing.violations.push(...vs.violations);
-        const seen = new Set(
-          existing.markers.map((m) => `${m.x}-${m.y}-${m.width}-${m.height}`),
-        );
 
-        vs.markers.forEach((m) => {
-          const key = `${m.x}-${m.y}-${m.width}-${m.height}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            existing.markers.push(m);
-          }
-        });
+        // Merge all markers then re-run the 90% overlap removal on the combined set
+        const merged = [...existing.markers, ...vs.markers];
+        existing.markers = removeRedundantMarkers(merged, 0.9);
+
+        // Recompute highlightBounds to enclose all surviving markers
+        if (existing.markers.length > 0) {
+          const minX = Math.min(...existing.markers.map((m) => m.x));
+          const minY = Math.min(...existing.markers.map((m) => m.y));
+          const maxX = Math.max(...existing.markers.map((m) => m.x + m.width));
+          const maxY = Math.max(...existing.markers.map((m) => m.y + m.height));
+          existing.highlightBounds = {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY,
+          };
+        }
       } else {
-        screenshotMap.set(hash, vs);
+        screenshotMap.set(hash, { ...vs });
       }
     }
-    const violationScreenshots = Array.from(screenshotMap.values()).slice(
-      0,
-      12,
-    );
+    const violationScreenshots = Array.from(screenshotMap.values())
+      // Final guard: never keep a screenshot that has no markers —
+      // it would show a highlighted screenshot with nothing circled.
+      .filter((vs) => vs.markers && vs.markers.length > 0)
+      .slice(0, 12);
 
     // Report duplicate screenshots removed
     const duplicates = Math.max(
@@ -2415,10 +2492,12 @@ app.get("/api/wcag-check-stream", async (req, res) => {
       duplicates,
     });
 
-    // Track mentioned problems to avoid repetition
+    // Track mentioned problems to avoid repetition across screenshots
     const mentionedProblems = [];
 
     // For each unique screenshot, ask AI for non-developer visual feedback
+    // IMPORTANT: the prompt now tells the AI the exact pixel region that is
+    // highlighted so its feedback always matches what the user sees circled.
     const totalToAnalyze = Math.min(violationScreenshots.length, 20);
     for (let i = 0; i < totalToAnalyze; i++) {
       const vs = violationScreenshots[i];
@@ -2441,23 +2520,50 @@ app.get("/api/wcag-check-stream", async (req, res) => {
           .filter(Boolean)
           .join(", ");
 
+        // Build a human-readable description of exactly what is highlighted
+        const hb = vs.highlightBounds;
+        const regionDesc = hb
+          ? `The highlighted (red-outlined) area is located at approximately x=${hb.x}, y=${hb.y}, width=${hb.width}px, height=${hb.height}px in the screenshot. `
+          : "";
+
+        // Describe how many distinct elements are marked
+        const markerCount = (vs.markers || []).length;
+        const markerDesc =
+          markerCount > 1
+            ? `There are ${markerCount} highlighted elements in this area. `
+            : markerCount === 1
+              ? "There is 1 highlighted element in this area. "
+              : "";
+
+        // List the axe violation types so the AI knows what was detected
+        const violationSummaries = violations
+          .map((v) => `• ${v.help || v.id}: ${v.description || ""}`)
+          .join("\n");
+
         const avoidClause =
           mentionedProblems.length > 0
             ? `\n\nIMPORTANT: You have already mentioned these problems in previous screenshots: ${mentionedProblems.join(
                 ", ",
-              )}. Focus on a DIFFERENT accessibility issue visible in THIS screenshot. Do not repeat the same concern.`
+              )}. Focus on a DIFFERENT accessibility issue visible in THIS highlighted region. Do not repeat the same concern.`
             : "";
 
-        const prompt = `You are an accessibility coach writing for non-developers. Look at the screenshot and explain the most important accessibility concern visible in this specific area, using simple language. Focus on what a user experiences (e.g., hard-to-read text, low contrast, small tap areas, unclear labels, poor spacing, missing visible focus). Avoid code or selectors.${avoidClause}
+        const prompt = `You are an accessibility coach writing for non-designers. A screenshot of a web page has been taken, and one specific area has been highlighted with a red outline to mark an accessibility problem.
 
-Return only this JSON:
+${regionDesc}${markerDesc}
+
+The automated accessibility scan detected the following issue(s) in this highlighted region:
+${violationSummaries}
+
+Your task: Describe ONLY the accessibility issue visible in the highlighted area. Do NOT comment on anything outside that area. Use plain language – no code, no CSS selectors.${avoidClause}
+
+Return ONLY this JSON:
 {
-  "summary": "1–2 sentences describing the user-facing problem in plain language",
-  "recommendation": "1–2 sentences with a concrete, non-technical fix a content designer or UI designer could apply",
-  "problemCategory": "A short keyword/phrase for the type of problem (e.g., 'contrast', 'tap target size', 'label clarity')"
+  "summary": "1–2 sentences describing the user-facing problem visible in the highlighted area",
+  "recommendation": "1–2 sentences with a concrete, non-technical fix",
+  "problemCategory": "short keyword/phrase for the type of problem (e.g., 'contrast', 'missing label', 'small tap target')"
 }
 
-If relevant, align the advice with WCAG criteria like ${wcagIds} but do not include numbers in the prose.`;
+Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
 
         const ai = await callAiWithInlineData(prompt, base64, "image/jpeg");
         if (ai && (ai.summary || ai.recommendation)) {
@@ -2629,3 +2735,24 @@ app.listen(PORT, () => {
 });
 
 app.use("/api/analyze", analyzeRouter);
+
+// Debug endpoint: Check for duplicate markers in axe-core output
+app.post("/api/debug/duplicate-markers", async (req, res) => {
+  const { violations } = req.body || {};
+  if (!Array.isArray(violations)) {
+    return res
+      .status(400)
+      .json({ error: "Missing or invalid violations array" });
+  }
+  const markerCounts = {};
+  for (const violation of violations) {
+    for (const node of violation.nodes || []) {
+      for (const box of node.boundingBoxes || []) {
+        const key = `${node.selector}|${box.x},${box.y},${box.width},${box.height}`;
+        markerCounts[key] = (markerCounts[key] || 0) + 1;
+      }
+    }
+  }
+  const duplicates = Object.entries(markerCounts).filter(([k, v]) => v > 1);
+  res.json({ duplicateCount: duplicates.length, duplicates });
+});

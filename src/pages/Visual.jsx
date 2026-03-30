@@ -2,55 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
-// import VisualImprovements from "../components/VisualImprovements.jsx";
-
-// Lightweight ScoreCircle reused from Complete
-function ScoreCircle({ value = 0, size = 120, strokeWidth = 12, label }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clamped / 100) * circumference;
-
-  return (
-    <div
-      className="score-circle"
-      aria-label={
-        label
-          ? `${label} score ${clamped} out of 100`
-          : `Score ${clamped} out of 100`
-      }
-    >
-      <svg width={size} height={size}>
-        <circle
-          className="score-circle-track"
-          strokeWidth={strokeWidth}
-          r={radius}
-          cx={size / 2}
-          cy={size / 2}
-        />
-        <circle
-          className="score-circle-progress"
-          strokeWidth={strokeWidth}
-          r={radius}
-          cx={size / 2}
-          cy={size / 2}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-        />
-        <text
-          x="50%"
-          y="50%"
-          dominantBaseline="middle"
-          textAnchor="middle"
-          className="score-circle-text"
-        >
-          {clamped}
-        </text>
-      </svg>
-      {label && <p className="score-circle-label">{label}</p>}
-    </div>
-  );
-}
 
 function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   const [currentIndex, setCurrentIndex] = useState(0);
