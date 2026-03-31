@@ -10,10 +10,12 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
     // Set consistent viewport
     await page.setViewportSize(viewportSize);
 
-    await page.goto(url, {
+    // Go to the page and capture the response and final URL
+    const response = await page.goto(url, {
       waitUntil: "networkidle",
       timeout: 45000,
     });
+    const finalUrl = page.url();
 
     await page.addScriptTag({ content: axeSource });
 
@@ -82,6 +84,9 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
     // Attach page info to results
     axeResults.pageInfo = pageInfo;
     axeResults.viewportSize = viewportSize;
+    axeResults.finalUrl = finalUrl;
+    axeResults.gotoResponseStatus =
+      response && response.status ? response.status() : null;
 
     return axeResults;
   } finally {
