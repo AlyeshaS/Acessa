@@ -423,4 +423,4 @@ function CodeSuggestionPanel({ criterion }) {
   );
 }
 
-export default codeSuggestionPanel;
+export default CodeSuggestionPanel;

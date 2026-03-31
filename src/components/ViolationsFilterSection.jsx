@@ -1,5 +1,27 @@
+import React from "react";
 import WCAG_CODE_SUGGESTIONS from "../utils/wcagSuggestions";
-import CodeSuggestionPanel from "CodeSuggestionPanel";
+import CodeSuggestionPanel from "./CodeSuggestionPanel";
+
+// --- Accessibility Violations Filter UI ---
+function severityColor(severity) {
+  const s = (severity || "").toLowerCase();
+  if (s === "critical" || s === "high" || s === "serious") return "#e53e3e";
+  if (s === "moderate" || s === "medium" || s === "warning") return "#d97706";
+  return "#16a34a";
+}
+
+function severityBg(severity) {
+  const s = (severity || "").toLowerCase();
+  if (s === "critical" || s === "high" || s === "serious") return "#fff5f5";
+  if (s === "moderate" || s === "medium" || s === "warning") return "#fffbeb";
+  return "#f0fdf4";
+}
+
+function getCriterionKey(criterion) {
+  if (!criterion) return null;
+  const m = String(criterion).match(/(\d+\.\d+\.\d+)/);
+  return m ? m[1] : null;
+}
 
 function ViolationsFilterSection({
   violations = [],

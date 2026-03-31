@@ -75,3 +75,5 @@ const InfoTooltip = ({ label, description }) => {
     </span>
   );
 };
+
+export default InfoTooltip;
