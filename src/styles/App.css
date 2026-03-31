@@ -1193,6 +1193,8 @@ footer h2 {
   justify-content: center;
   align-items: center;
   min-height: 200px;
+  position: relative;
+  overflow: hidden;
 }
 
 .website-preview-screenshot {
