@@ -835,6 +835,12 @@ footer h2 {
   gap: 10px;
 }
 
+/* Ensure long URLs in .hci-report .subheader strong break and wrap */
+.hci-report .subheader strong {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
 .hci-report h2::before {
   content: "";
   display: inline-block;
