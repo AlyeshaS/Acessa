@@ -59,6 +59,36 @@
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
+/* Responsive styles */
+@media (max-width: 900px) {
+  .results-layout {
+    flex-direction: column;
+    gap: 4vw;
+    min-height: 0;
+  }
+  .preview-panel {
+    padding: 6vw 3vw;
+  }
+}
+
+@media (max-width: 600px) {
+  .results-layout {
+    gap: 2vw;
+    margin-top: 2vw;
+  }
+  .preview-panel {
+    border-radius: 10px;
+    padding: 6vw 2vw;
+  }
+  .preview-title {
+    margin-bottom: 3vw;
+  }
+  .view-tabs {
+    margin-bottom: 3vw;
+    padding: 0.5vw;
+  }
+}
+
 .preview-content {
   flex: 1;
   min-height: 0;
@@ -100,9 +130,15 @@
   display: inline-block;
 }
 
-.dot.red    { background: #f87171; }
-.dot.yellow { background: #fbbf24; }
-.dot.green  { background: #34d399; }
+.dot.red {
+  background: #f87171;
+}
+.dot.yellow {
+  background: #fbbf24;
+}
+.dot.green {
+  background: #34d399;
+}
 
 .browser-url {
   font-size: 12.5px;
@@ -204,9 +240,15 @@
   flex-shrink: 0;
 }
 
-.severity-dot.critical { background: #ef4444; }
-.severity-dot.warning  { background: #f59e0b; }
-.severity-dot.minor    { background: #10b981; }
+.severity-dot.critical {
+  background: #ef4444;
+}
+.severity-dot.warning {
+  background: #f59e0b;
+}
+.severity-dot.minor {
+  background: #10b981;
+}
 
 .severity-text {
   color: #64748b;
@@ -252,7 +294,7 @@
   border: 1px solid #e2e8f0;
   padding: 5px 10px;
   font-size: 13px;
-  font-family: 'Inter', sans-serif;
+  font-family: "Inter", sans-serif;
   color: #475569;
   background: #f8fafc;
   cursor: pointer;
@@ -280,7 +322,9 @@
   border: 1px solid #f1f5f9;
   margin-bottom: 12px;
   padding: 14px 16px;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .issue-card:hover {
@@ -305,7 +349,9 @@
   accent-color: #189b97;
 }
 
-.issue-info { flex: 1; }
+.issue-info {
+  flex: 1;
+}
 
 .issue-title-row {
   display: flex;
@@ -333,7 +379,9 @@
 }
 
 /* Applied via inline style in JSX, but default fallback: */
-.severity-badge { background: #94a3b8; }
+.severity-badge {
+  background: #94a3b8;
+}
 
 .issue-meta {
   display: flex;
@@ -431,4 +479,49 @@
   color: #189b97;
   text-decoration: underline;
   font-size: 13px;
+}
+
+/* Responsive styles for Complete page content */
+@media (max-width: 900px) {
+  .issues-panel {
+    width: 100%;
+    min-width: 0;
+    border-radius: 12px;
+    padding: 18px 8px;
+    margin-top: 18px;
+  }
+  .side-by-side-container {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .side-by-side-column {
+    padding: 10px;
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .results-layout {
+    gap: 1vw;
+    margin-top: 1vw;
+  }
+  .preview-panel {
+    border-radius: 8px;
+    padding: 4vw 1vw;
+  }
+  .issues-panel {
+    width: 100%;
+    min-width: 0;
+    border-radius: 8px;
+    padding: 10px 2vw;
+    margin-top: 10px;
+  }
+  .side-by-side-container {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .side-by-side-column {
+    padding: 6px;
+    border-radius: 6px;
+  }
 }
