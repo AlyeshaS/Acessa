@@ -17,6 +17,8 @@ function getCriterionKey(criterion) {
 }
 
 function Complete() {
+  // State for mobile iframe error
+  const [mobileIframeError, setMobileIframeError] = useState(false);
   const [colorBlindError, setColorBlindError] = useState(null);
   React.useEffect(() => {
     if (!document.head.querySelector("style[data-highlight-feedback]")) {
@@ -209,8 +211,10 @@ function Complete() {
         evt.addEventListener("axe", (e) => {
           try {
             const payload = JSON.parse(e.data || "{}");
-            if (payload.pagesVisited) setPagesVisited(payload.pagesVisited);
-            if (payload.violations) setViolationsFound(payload.violations);
+            if (typeof payload.pagesVisited === "number")
+              setPagesVisited(payload.pagesVisited);
+            if (typeof payload.violations === "number")
+              setViolationsFound(payload.violations);
           } catch (err) {
             console.error("[Complete] axe parse", err);
           }
@@ -223,8 +227,10 @@ function Complete() {
         evt.addEventListener("progress", (e) => {
           try {
             const payload = JSON.parse(e.data || "{}");
-            if (payload.pagesVisited) setPagesVisited(payload.pagesVisited);
-            if (payload.violations) setViolationsFound(payload.violations);
+            if (typeof payload.pagesVisited === "number")
+              setPagesVisited(payload.pagesVisited);
+            if (typeof payload.violations === "number")
+              setViolationsFound(payload.violations);
             if (payload.duplicates !== undefined)
               setDuplicatesSkipped(payload.duplicates);
           } catch (err) {
@@ -520,6 +526,141 @@ function Complete() {
       return () => clearTimeout(t);
     }
   }, [animationDone, analysis, loading]);
+
+  // ── Mobile responsiveness probe ──
+  // When analysis becomes available, check real responsiveness signals from the scanned HTML/data.
+  useEffect(() => {
+    if (!analysis) return;
+
+    setMobileResponsiveStatus("checking");
+
+    // All checks are derived from real scan data — never hard-coded to pass.
+    const html = typeof analysis.html === "string" ? analysis.html : "";
+    const axeViolations = Array.isArray(analysis.violations)
+      ? analysis.violations
+      : [];
+    const axeIds = new Set(
+      axeViolations.map((v) => (v.id || "").toLowerCase()),
+    );
+    const groups = Array.isArray(
+      analysis?.aiAnalysis?.groups ?? analysis?.groups,
+    )
+      ? (analysis?.aiAnalysis?.groups ?? analysis?.groups ?? [])
+      : [];
+
+    const details = [];
+
+    // 1. Viewport meta tag
+    const hasViewport =
+      html.length > 0 ? /name=["']viewport["']/i.test(html) : null;
+    if (hasViewport !== null) {
+      details.push({
+        key: "viewport",
+        pass: hasViewport,
+        label: "Viewport meta tag",
+      });
+    }
+
+    // 2. Zoom not disabled
+    const zoomDisabled =
+      html.length > 0
+        ? /user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?![\d.])/i.test(html)
+        : null;
+    if (hasViewport && zoomDisabled !== null) {
+      details.push({
+        key: "zoom",
+        pass: !zoomDisabled,
+        label: "Pinch-to-zoom allowed",
+      });
+    }
+
+    // 3. Responsive CSS: presence of media queries
+    const hasMediaQueries =
+      html.length > 0
+        ? /@media\s+[^{]*(?:max-width|min-width|screen)/i.test(html)
+        : null;
+    if (hasMediaQueries !== null) {
+      details.push({
+        key: "mediaqueries",
+        pass: hasMediaQueries,
+        label: "CSS media queries present",
+      });
+    }
+
+    // 4. No horizontal overflow / reflow violations
+    const reflowFail =
+      axeIds.has("reflow") ||
+      axeIds.has("css-orientation-lock") ||
+      groups.some((g) => {
+        const k = getCriterionKey(g?.wcagCriterion);
+        return k === "1.4.10";
+      });
+    if (axeViolations.length > 0 || html.length > 0) {
+      details.push({
+        key: "reflow",
+        pass: !reflowFail,
+        label: "Content reflows at 320px",
+      });
+    }
+
+    // 5. Touch targets not too small
+    const touchFail =
+      axeIds.has("target-size") ||
+      axeIds.has("scrollable-region-focusable") ||
+      groups.some((g) => {
+        const k = getCriterionKey(g?.wcagCriterion);
+        return k === "2.5.5" || k === "2.5.8";
+      });
+    if (axeViolations.length > 0) {
+      details.push({
+        key: "touch",
+        pass: !touchFail,
+        label: "Touch targets adequate",
+      });
+    }
+
+    // 6. Flexible layout: no fixed-width containers at >320px detected in inline styles
+    const hasFixedWideLayout =
+      html.length > 0
+        ? /width\s*:\s*(?:[5-9]\d{2}|[1-9]\d{3,})px/i.test(html)
+        : null;
+    if (hasFixedWideLayout !== null) {
+      details.push({
+        key: "fixedwidth",
+        pass: !hasFixedWideLayout,
+        label: "No fixed-width containers",
+      });
+    }
+
+    // 7. Font sizes not too small
+    const tinyFontFail =
+      html.length > 0
+        ? /font-size\s*:\s*(?:[1-7]px|0\.\d+(?:em|rem))/i.test(html)
+        : null;
+    if (tinyFontFail !== null) {
+      details.push({
+        key: "fontsize",
+        pass: !tinyFontFail,
+        label: "Font sizes readable on mobile",
+      });
+    }
+
+    // Determine overall status from checks that have real data
+    if (details.length === 0) {
+      setMobileResponsiveStatus("unknown");
+      setMobileResponsiveDetails([]);
+      return;
+    }
+
+    const passCount = details.filter((d) => d.pass).length;
+    const ratio = passCount / details.length;
+
+    if (ratio >= 0.8) setMobileResponsiveStatus("responsive");
+    else if (ratio >= 0.5) setMobileResponsiveStatus("partial");
+    else setMobileResponsiveStatus("not-responsive");
+
+    setMobileResponsiveDetails(details);
+  }, [analysis]);
 
   const handleBack = () => {
     if (abortRef.current) {
@@ -1036,10 +1177,53 @@ ${stepsHtml ? `<h2>Recommended Next Steps</h2><ol>${stepsHtml}</ol>` : ""}
     list: "List Structure or Markup",
   };
 
-  const getFriendlyTitle = (criterion, id) => {
+  // AI-generated title cache: { [key]: string }
+  const [aiFriendlyTitles, setAiFriendlyTitles] = React.useState({});
+  const aiFriendlyTitlesPending = React.useRef(new Set());
+
+  const getFriendlyTitle = (criterion, id, description) => {
     if (!criterion && !id) return "Accessibility Issue";
     const key = String(criterion || id).toLowerCase();
-    return friendlyTitles[key] || criterion || id || "Accessibility Issue";
+    // 1. Return AI-generated title if available
+    if (aiFriendlyTitles[key]) return aiFriendlyTitles[key];
+    // 2. Return hardcoded fallback if available
+    if (friendlyTitles[key]) return friendlyTitles[key];
+    // 3. Schedule an AI generation if not already pending
+    if (!aiFriendlyTitlesPending.current.has(key)) {
+      aiFriendlyTitlesPending.current.add(key);
+      (async () => {
+        try {
+          const response = await fetch(
+            "https://api.anthropic.com/v1/messages",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-20250514",
+                max_tokens: 30,
+                messages: [
+                  {
+                    role: "user",
+                    content: `Give a short, friendly 2-4 word title for this web accessibility issue. No technical jargon. Just the title, nothing else.\nWCAG criterion or rule ID: "${criterion || id}"\nDescription: "${description || ""}"`,
+                  },
+                ],
+              }),
+            },
+          );
+          const data = await response.json();
+          const title = data?.content?.[0]?.text
+            ?.trim()
+            .replace(/^["']|["']$/g, "");
+          if (title && title.length > 0 && title.length < 60) {
+            setAiFriendlyTitles((prev) => ({ ...prev, [key]: title }));
+          }
+        } catch (err) {
+          // silently ignore — fallback will show
+        }
+      })();
+    }
+    // 4. Return a readable fallback while AI generates
+    return criterion || id || "Accessibility Issue";
   };
 
   // --- Next Steps done tracking + copy state ---
@@ -1062,8 +1246,13 @@ ${stepsHtml ? `<h2>Recommended Next Steps</h2><ol>${stepsHtml}</ol>` : ""}
   // Side-by-side AI image state
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
-  const [mobileIframeError, setMobileIframeError] = useState(false);
+  const [mobileIframeLoaded, setMobileIframeLoaded] = useState(false);
   const [mobilePreviewWidth, setMobilePreviewWidth] = useState(390);
+
+  // ── Mobile responsiveness probe ──
+  // null = not checked yet, "checking" = in progress, "responsive" = passed, "not-responsive" = failed, "unknown" = couldn't determine
+  const [mobileResponsiveStatus, setMobileResponsiveStatus] = useState(null);
+  const [mobileResponsiveDetails, setMobileResponsiveDetails] = useState([]);
   const [auditInfoOpen, setAuditInfoOpen] = useState(null); // key of open info popup
 
   // Color blindness filter state for Lense mode
@@ -1401,18 +1590,59 @@ Return the edited screenshot with minimal localized edits only.
                   />
                 </div>
                 <p className="loading-bar-text">
-                  {animationDone && analysis
-                    ? `Report ready — loading results…`
-                    : animationDone
-                      ? `Finalizing AI report… ${Math.min(
-                          Math.max(progress, aiScreenshotProgress),
-                          95,
-                        )}%${pagesVisited > 0 ? ` • Pages: ${pagesVisited}` : ""}${violationsFound > 0 ? ` • Violations: ${violationsFound}` : ""}`
-                      : `Checking violations… ${Math.round(progress)}%${
-                          violationsFound > 0
-                            ? ` • ${violationsFound} found so far`
-                            : ""
-                        }`}
+                  {animationDone && analysis ? (
+                    `Report ready — loading results…`
+                  ) : animationDone ? (
+                    <>
+                      {`Finalizing AI report… ${Math.min(Math.max(progress, aiScreenshotProgress), 95)}%`}
+                      {violationScreenshots &&
+                        violationScreenshots.length > 0 && (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              color: "#6366f1",
+                              fontWeight: 700,
+                              transition: "all 0.4s ease",
+                            }}
+                          >
+                            {violationScreenshots.length} screenshot
+                            {violationScreenshots.length !== 1 ? "s" : ""}{" "}
+                            captured
+                          </span>
+                        )}
+                      {pagesVisited > 0 && (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            color: "#0ea5e9",
+                            fontWeight: 700,
+                            transition: "all 0.4s ease",
+                          }}
+                        >
+                          {pagesVisited} page{pagesVisited !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {violationsFound > 0 && (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            color: "#e11d48",
+                            fontWeight: 700,
+                            transition: "all 0.4s ease",
+                          }}
+                        >
+                          {violationsFound} violation
+                          {violationsFound !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    `Checking violations… ${Math.round(progress)}%${
+                      violationsFound > 0
+                        ? ` • ${violationsFound} found so far`
+                        : ""
+                    }`
+                  )}
                 </p>
               </>
             )}
@@ -1479,6 +1709,29 @@ Return the edited screenshot with minimal localized edits only.
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                     Violation check complete — finalizing AI report…
+                    {pagesVisited > 0 && (
+                      <span
+                        style={{
+                          marginLeft: 10,
+                          color: "#0ea5e9",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {pagesVisited} page{pagesVisited !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {violationsFound > 0 && (
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          color: "#e11d48",
+                          fontWeight: 800,
+                        }}
+                      >
+                        · {violationsFound} violation
+                        {violationsFound !== 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1811,6 +2064,8 @@ Return the edited screenshot with minimal localized edits only.
                               {getFriendlyTitle(
                                 selectedViolationData?.wcagCriterion,
                                 selectedViolationData?.id,
+                                selectedViolationData?.help ||
+                                  selectedViolationData?.description,
                               )}
                             </h3>
 
@@ -2662,7 +2917,11 @@ Return the edited screenshot with minimal localized edits only.
                                         color: "#0f172a",
                                       }}
                                     >
-                                      {criterionNum || g.wcagCriterion}
+                                      {getFriendlyTitle(
+                                        g.wcagCriterion,
+                                        g.id,
+                                        g.problem,
+                                      )}
                                     </span>
                                     <span
                                       style={{
@@ -4204,7 +4463,11 @@ Return the edited screenshot with minimal localized edits only.
                                     color: "#0f172a",
                                   }}
                                 >
-                                  {g.wcagCriterion}
+                                  {getFriendlyTitle(
+                                    g.wcagCriterion,
+                                    g.id,
+                                    g.problem,
+                                  )}
                                 </span>
                                 {g.severity && (
                                   <span
@@ -4787,7 +5050,11 @@ Return the edited screenshot with minimal localized edits only.
                                 color: "#0f172a",
                               }}
                             >
-                              {g.wcagCriterion}
+                              {getFriendlyTitle(
+                                g.wcagCriterion,
+                                g.id,
+                                g.problem,
+                              )}
                             </span>
                             {g.severity && (
                               <span

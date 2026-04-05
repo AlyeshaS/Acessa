@@ -2410,6 +2410,12 @@ app.get("/api/wcag-check-stream", async (req, res) => {
           );
         }
 
+        // Emit live progress after each page is checked
+        sendEvent("progress", {
+          pagesVisited: i + 1,
+          violations: allViolations.length,
+        });
+
         // Navigate back to original page for consistency
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
       } catch (navErr) {
