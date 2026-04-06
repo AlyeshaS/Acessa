@@ -1467,54 +1467,6 @@ Return the edited screenshot with minimal localized edits only.
         <h1>Analysis Report</h1>
       </div>
 
-      {/* Summary/Overview section is now modularized in SummaryOverview.jsx */}
-      <button
-        onClick={exportPdf}
-        title="Export report as PDF"
-        aria-label="Export report as PDF"
-        style={{
-          position: "fixed",
-          bottom: 32,
-          right: 32,
-          zIndex: 999,
-          width: 52,
-          height: 52,
-          borderRadius: "50%",
-          border: "none",
-          background: "#189b97",
-          color: "#ffffff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          boxShadow: "0 4px 20px rgba(24,155,151,0.45)",
-          transition: "transform 0.18s ease, box-shadow 0.18s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.1)";
-          e.currentTarget.style.boxShadow = "0 6px 28px rgba(24,155,151,0.6)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.boxShadow = "0 4px 20px rgba(24,155,151,0.45)";
-        }}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-      </button>
-
       <div className="card-body">
         {/* NETWORK LOADING STATE (before we even have screenshot/steps) */}
 
@@ -3200,40 +3152,6 @@ Return the edited screenshot with minimal localized edits only.
                         min read
                       </span>
                     )}
-                    <button
-                      onClick={exportHciReport}
-                      title="Download report as .txt"
-                      style={{
-                        background: "#f1f5f9",
-                        border: "1px solid #e2e8f0",
-                        color: "#475569",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        borderRadius: 8,
-                        padding: "5px 12px",
-                        cursor: "pointer",
-                        boxShadow: "none",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 5,
-                      }}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                      Download
-                    </button>
                   </div>
                 </div>
 
