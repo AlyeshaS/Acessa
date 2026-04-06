@@ -1342,6 +1342,146 @@ ${safeHtml}
 Here is the visible text (truncated):
 ${safeText}
 
+5) Mobile Accessibility Analysis (NEW REQUIREMENT)
+In addition to the standard WCAG evaluation, you must now perform a comprehensive mobile accessibility assessment. Analyze the provided HTML, CSS, and page structure for mobile-specific accessibility barriers.
+MOBILE ACCESSIBILITY CRITERIA TO EVALUATE:
+**Viewport & Responsive Design:**
+- Check for viewport meta tag presence and configuration
+- Assess media queries and responsive breakpoints
+- Identify fixed-width containers that break mobile layouts
+- Evaluate content reflow at 320px width (WCAG 1.4.10)
+**Touch Target Accessibility:**
+- Identify interactive elements smaller than 44x44px (WCAG 2.5.5)
+- Check spacing between touch targets (WCAG 2.5.8)
+- Assess pointer gesture requirements (WCAG 2.5.1)
+**Mobile Text & Readability:**
+- Evaluate font sizes for mobile readability
+- Check text resize behavior up to 200% (WCAG 1.4.4)
+- Assess text spacing customization support (WCAG 1.4.12)
+- Verify zoom functionality isn't disabled
+**Mobile Navigation & Orientation:**
+- Check orientation lock restrictions (WCAG 1.3.4)
+- Evaluate navigation patterns for small screens
+- Assess skip navigation functionality
+- Check focus management on mobile
+**Mobile Form Accessibility:**
+- Evaluate autocomplete attributes (WCAG 1.3.5)
+- Check error message visibility on small screens
+- Assess input method compatibility
+- Evaluate virtual keyboard interactions
+**Mobile Content Access:**
+- Check content truncation or clipping issues
+- Evaluate horizontal scrolling requirements
+- Assess motion actuation alternatives (WCAG 2.5.4)
+- Check for essential functionality loss on mobile
+You MUST include a "mobileAccessibility" object in your JSON response with these exact properties:
+"mobileAccessibility": {
+  "overallMobileScore": Number (0-100),
+  "mobileIssues": [
+    {
+      "category": "viewport|touch|readability|navigation|forms|content",
+      "wcagCriterion": "string (exact WCAG ID)",
+      "severity": "High|Medium|Low",
+      "problem": "string (mobile-specific issue description)",
+      "recommendation": "string (mobile-specific fix)",
+      "affectedUsers": "string (who is impacted on mobile)",
+      "evidence": "string (what in the HTML/CSS indicates this issue)"
+    }
+  ],
+  "mobileStrengths": ["string (positive mobile accessibility features found)"],
+  "mobileNextSteps": ["string (mobile-specific recommendations)"],
+  "responsiveScore": Number (0-100),
+  "touchScore": Number (0-100),
+  "readabilityScore": Number (0-100),
+  "navigationScore": Number (0-100),
+  "mobileFormScore": Number (0-100),
+  "contentAccessScore": Number (0-100)
+}
+MOBILE SCORING METHODOLOGY:
+- responsiveScore: Based on viewport tag, media queries, reflow compliance
+- touchScore: Based on touch target sizes, spacing, gesture alternatives  
+- readabilityScore: Based on font sizes, zoom support, text spacing
+- navigationScore: Based on mobile nav patterns, orientation support
+- mobileFormScore: Based on autocomplete, mobile form patterns
+- contentAccessScore: Based on content accessibility without horizontal scroll
+- overallMobileScore: Weighted average emphasizing touch, readability, and responsive design
+MOBILE EVIDENCE ANALYSIS:
+When evaluating mobile issues, specifically look for:
+- viewport meta tag: <meta name="viewport" content="...">
+- user-scalable=no or maximum-scale=1 (problematic)
+- Fixed pixel widths in CSS that don't adapt
+- Media query breakpoints and mobile-first design
+- Touch target dimensions in CSS
+- Font-size declarations below 16px
+- Form input types and autocomplete attributes
+- CSS that might break on small screens
+// ... rest of existing prompt stays the same ...
+The JSON MUST match this schema exactly (UPDATED):
+{
+  "score": Number,
+  "scoreBreakdown": {
+    "highCount": Number,
+    "mediumCount": Number,
+    "lowCount": Number,
+    "totalViolations": Number,
+    "maxPossiblePoints": 234,
+    "deductedPoints": Number,
+    "explanation": "string"
+  },
+  "overallSummary": "string",
+  "categoryScores": {
+    "Perceivable": Number,
+    "Operable": Number,
+    "Understandable": Number,
+    "Robust": Number
+  },
+  "categoryExplanations": {
+    "Perceivable": "string",
+    "Operable": "string", 
+    "Understandable": "string",
+    "Robust": "string"
+  },
+  "levelScores": {
+    "A": Number,
+    "AA": Number,
+    "AAA": Number
+  },
+  "groups": [
+    {
+      "wcagCriterion": "string",
+      "severity": "High" | "Medium" | "Low",
+      "severityNumber": 1 | 2 | 3,
+      "count": Number,
+      "problem": "string",
+      "recommendation": "string"
+    }
+  ],
+  "hciSummary": "string",
+  "nextSteps": ["string", "string", "string"],
+  "mobileAccessibility": {
+    "overallMobileScore": Number,
+    "mobileIssues": [
+      {
+        "category": "string",
+        "wcagCriterion": "string", 
+        "severity": "High|Medium|Low",
+        "problem": "string",
+        "recommendation": "string",
+        "affectedUsers": "string",
+        "evidence": "string"
+      }
+    ],
+    "mobileStrengths": ["string"],
+    "mobileNextSteps": ["string"],
+    "responsiveScore": Number,
+    "touchScore": Number,
+    "readabilityScore": Number,
+    "navigationScore": Number,
+    "mobileFormScore": Number,
+    "contentAccessScore": Number
+  }
+}
+
 `;
 }
 

@@ -792,207 +792,6 @@ function Complete() {
     Analysis: [],
   };
 
-  // ── Export full report as PDF (opens print dialog in new window) ─────────────
-  const exportPdf = () => {
-    // Prefer finalUrl for display, fallback to url
-    const siteUrl = analysis?.finalUrl || analysis?.url || url || "";
-    const scoreVal = typeof ai?.score === "number" ? ai.score : "N/A";
-    const cats = [
-      {
-        key: "Perceivable",
-        score:
-          typeof categoryScores.Perceivable === "number"
-            ? categoryScores.Perceivable
-            : null,
-      },
-      {
-        key: "Operable",
-        score:
-          typeof categoryScores.Operable === "number"
-            ? categoryScores.Operable
-            : null,
-      },
-      {
-        key: "Understandable",
-        score:
-          typeof categoryScores.Understandable === "number"
-            ? categoryScores.Understandable
-            : null,
-      },
-      {
-        key: "Robust",
-        score:
-          typeof categoryScores.Robust === "number"
-            ? categoryScores.Robust
-            : null,
-      },
-    ].filter((c) => c.score !== null);
-    const sortedGroups = [...groups].sort((a, b) => {
-      const w = (s) => {
-        const sl = (s || "").toLowerCase();
-        if (sl === "high" || sl === "critical") return 0;
-        if (sl === "medium" || sl === "moderate") return 1;
-        return 2;
-      };
-      return w(a.severity) - w(b.severity);
-    });
-    const sevColor = (s) => {
-      const sl = (s || "").toLowerCase();
-      if (sl === "high" || sl === "critical") return "#dc2626";
-      if (sl === "medium" || sl === "moderate" || sl === "warning")
-        return "#d97706";
-      return "#16a34a";
-    };
-    const scoreColor = (v) =>
-      v >= 80 ? "#16a34a" : v >= 60 ? "#d97706" : "#dc2626";
-    const stepsHtml =
-      Array.isArray(ai?.nextSteps) && ai.nextSteps.length > 0
-        ? ai.nextSteps
-            .map(
-              (s, i) =>
-                `<li style="margin-bottom:8px;line-height:1.6">${s}</li>`,
-            )
-            .join("")
-        : groups
-            .map((g) => g.recommendation)
-            .filter(Boolean)
-            .slice(0, 8)
-            .map(
-              (r) => `<li style="margin-bottom:8px;line-height:1.6">${r}</li>`,
-            )
-            .join("");
-    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Accessibility Report — ${siteUrl}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#1e293b;line-height:1.5;padding:40px;max-width:900px;margin:0 auto}
-  h1{font-size:28px;font-weight:800;color:#0f172a;margin-bottom:4px;letter-spacing:-0.5px}
-  h2{font-size:18px;font-weight:700;color:#0f172a;margin:28px 0 12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px}
-  .meta{color:#64748b;font-size:13px;margin-bottom:32px}
-  .meta a{color:#189b97;text-decoration:none}
-  .score-row{display:flex;align-items:center;gap:20px;margin-bottom:28px;background:#f8fafc;border-radius:12px;padding:20px 24px;border:1px solid #e2e8f0}
-  .big-score{font-size:52px;font-weight:900;letter-spacing:-2px;line-height:1}
-  .pour-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:8px}
-  .pour-card{background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;padding:12px;text-align:center}
-  .pour-score{font-size:26px;font-weight:800;line-height:1;margin-bottom:4px}
-  .pour-label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.4px}
-  .issue-row{padding:12px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;align-items:flex-start}
-  .issue-row:last-child{border-bottom:none}
-  .badge{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#fff;border-radius:999px;padding:2px 8px;white-space:nowrap;flex-shrink:0}
-  .issue-num{font-size:11px;font-weight:800;color:#cbd5e1;min-width:24px;padding-top:2px}
-  .issue-criterion{font-size:13.5px;font-weight:700;color:#0f172a;margin-bottom:3px}
-  .issue-problem{font-size:12.5px;color:#475569;line-height:1.5;margin-top:2px}
-  .hci-box{background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;padding:16px 20px;font-size:13.5px;color:#334155;line-height:1.7;white-space:pre-wrap}
-  ol{padding-left:20px}
-  .footer{margin-top:40px;border-top:1px solid #e2e8f0;padding-top:16px;font-size:12px;color:#94a3b8;text-align:center}
-  @media print{body{padding:20px}h2{page-break-after:avoid}.pour-grid{break-inside:avoid}}
-</style></head><body>
-<h1>Accessibility Report</h1>
-<p class="meta">
-  <strong>URL:</strong> <a href="${siteUrl}">${siteUrl}</a> &nbsp;·&nbsp;
-  <strong>Generated:</strong> ${new Date().toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })} &nbsp;·&nbsp;
-  <strong>Standard:</strong> WCAG 2.2 + AODA
-</p>
-
-<h2>Overall Score</h2>
-<div class="score-row">
-  <div class="big-score" style="color:${scoreColor(typeof scoreVal === "number" ? scoreVal : 0)}">${scoreVal}</div>
-  <div style="flex:1">
-    <div style="font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px">Out of 100</div>
-    <div style="font-size:13px;color:#475569">${typeof scoreVal === "number" && scoreVal >= 80 ? "Good accessibility — minor issues remain." : typeof scoreVal === "number" && scoreVal >= 60 ? "Moderate issues — several barriers to address." : "Significant barriers found — immediate action recommended."}</div>
-  </div>
-</div>
-
-${
-  cats.length > 0
-    ? `<h2>WCAG POUR Categories</h2><div class="pour-grid">
-${cats.map((c) => `<div class="pour-card"><div class="pour-score" style="color:${scoreColor(c.score)}">${c.score}</div><div class="pour-label">${c.key}</div></div>`).join("")}
-</div>`
-    : ""
-}
-
-<h2>Accessibility Issues (${sortedGroups.length} found)</h2>
-${
-  sortedGroups.length === 0
-    ? "<p style='color:#16a34a;font-weight:600'>No violations detected.</p>"
-    : sortedGroups
-        .map(
-          (g, i) => `<div class="issue-row">
-  <span class="issue-num">#${i + 1}</span>
-  <div style="flex:1;min-width:0">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-      <span class="issue-criterion">${g.wcagCriterion || "Unspecified"}</span>
-      ${g.severity ? `<span class="badge" style="background:${sevColor(g.severity)}">${g.severity}</span>` : ""}
-      ${typeof g.count === "number" ? `<span style="font-size:11px;color:#94a3b8">${g.count} instance${g.count !== 1 ? "s" : ""}</span>` : ""}
-    </div>
-    <div class="issue-problem">${g.problem || ""}</div>
-    ${g.recommendation ? `<div style="font-size:12px;color:#189b97;margin-top:4px;font-style:italic">→ ${g.recommendation}</div>` : ""}
-  </div>
-</div>`,
-        )
-        .join("")
-}
-
-${hciText ? `<h2>HCI Analysis Summary</h2><div class="hci-box">${hciText.slice(0, 1200)}${hciText.length > 1200 ? "…" : ""}</div>` : ""}
-
-${stepsHtml ? `<h2>Recommended Next Steps</h2><ol>${stepsHtml}</ol>` : ""}
-
-<div class="footer">Generated by Accessa — WCAG Accessibility Analyser &nbsp;·&nbsp; ${siteUrl}</div>
-</body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  };
-
-  // ── Export HCI report as a .txt download ─────────────────────────────────────
-  const exportHciReport = () => {
-    // Prefer finalUrl for export, fallback to url
-    const url = analysis?.finalUrl || analysis?.url || "";
-    const scoreVal = typeof ai?.score === "number" ? ai.score : "N/A";
-    const allText = hciParagraphs.join("\n\n");
-    const sentences = allText
-      .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 50);
-    const actionRe =
-      /should|must|ensure|critical|significant|barrier|priorit|recommend|essential|address|improv|fix|add|provid|implement|consider/i;
-    const takeaways = [
-      ...new Set(sentences.filter((s) => actionRe.test(s))),
-    ].slice(0, 5);
-    const nextStepsList = Array.isArray(ai?.nextSteps) ? ai.nextSteps : [];
-
-    const lines = [
-      "ACCESSIBILITY & HCI REPORT",
-      "=".repeat(50),
-      `Website: ${url}`,
-      `Overall Score: ${scoreVal}/100`,
-      `Generated: ${new Date().toLocaleDateString()}`,
-      "",
-      "KEY TAKEAWAYS",
-      "-".repeat(30),
-      ...takeaways.map((t, i) => `${i + 1}. ${t}`),
-      "",
-      "HCI ANALYSIS",
-      "-".repeat(30),
-      ...hciParagraphs
-        .map((p, i) => `[Section ${i + 1}]\n${p}`)
-        .join("\n\n")
-        .split("\n"),
-      "",
-      "RECOMMENDED NEXT STEPS",
-      "-".repeat(30),
-      ...nextStepsList.map((s, i) => `${i + 1}. ${s}`),
-    ];
-
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `accessibility-report-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
   // Map WCAG criterion to principle
   const getPrincipleFromCriterion = (criterion) => {
     if (!criterion) return null;
@@ -1181,6 +980,10 @@ ${stepsHtml ? `<h2>Recommended Next Steps</h2><ol>${stepsHtml}</ol>` : ""}
   const [aiFriendlyTitles, setAiFriendlyTitles] = React.useState({});
   const aiFriendlyTitlesPending = React.useRef(new Set());
 
+  // AI-generated mobile issue detail cache: { [key]: { whyItMatters, affectedUsers, fix } }
+  const [mobileIssueDetails, setMobileIssueDetails] = React.useState({});
+  const mobileIssueDetailsPending = React.useRef(new Set());
+
   const getFriendlyTitle = (criterion, id, description) => {
     if (!criterion && !id) return "Accessibility Issue";
     const key = String(criterion || id).toLowerCase();
@@ -1224,6 +1027,66 @@ ${stepsHtml ? `<h2>Recommended Next Steps</h2><ol>${stepsHtml}</ol>` : ""}
     }
     // 4. Return a readable fallback while AI generates
     return criterion || id || "Accessibility Issue";
+  };
+
+  // ── AI-powered mobile issue detail generator ──
+  // Called when a user first expands an issue card. Fires once per key, caches result.
+  // Passes real scan evidence so the AI explanation is grounded in actual findings.
+  const getMobileIssueDetail = (key, issueType, wcag, evidence, severity) => {
+    if (mobileIssueDetails[key]) return; // already loaded
+    if (mobileIssueDetailsPending.current.has(key)) return; // already in flight
+    mobileIssueDetailsPending.current.add(key);
+
+    (async () => {
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 500,
+            messages: [
+              {
+                role: "user",
+                content: `You are an accessibility expert writing a mobile audit report for a web developer.
+
+An automated scan of a website found this mobile accessibility issue:
+
+Issue: ${issueType}
+Severity: ${severity}
+WCAG criterion: ${wcag || "N/A"}
+Evidence from scan: ${evidence}
+
+Write a JSON object with exactly these three fields:
+- "whyItMatters": 2-3 sentences explaining the real impact on users on mobile devices. Be specific about what breaks and who is affected. Reference the actual evidence where relevant.
+- "affectedUsers": a short comma-separated list of specific user groups impacted (e.g. "low-vision users, older users, screen reader users")
+- "fix": 2-3 concrete, actionable sentences telling the developer exactly what to change. Be specific to this type of issue.
+
+Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
+              },
+            ],
+          }),
+        });
+        const data = await response.json();
+        const raw = data?.content?.[0]?.text?.trim();
+        if (!raw) throw new Error("empty response");
+        const parsed = JSON.parse(raw.replace(/^```json|```$/g, "").trim());
+        if (parsed.whyItMatters && parsed.affectedUsers && parsed.fix) {
+          setMobileIssueDetails((prev) => ({ ...prev, [key]: parsed }));
+        }
+      } catch (err) {
+        // On any error, set a fallback so we don't re-attempt infinitely
+        setMobileIssueDetails((prev) => ({
+          ...prev,
+          [key]: {
+            whyItMatters:
+              "This issue can affect mobile users' ability to access and use the site. See the WCAG criterion for full details.",
+            affectedUsers: "Mobile users, users with disabilities",
+            fix: "Review the flagged elements and apply the relevant WCAG success criterion to resolve the issue.",
+          },
+        }));
+      }
+    })();
   };
 
   // --- Next Steps done tracking + copy state ---
@@ -3571,122 +3434,65 @@ Return the edited screenshot with minimal localized edits only.
             {/* ── Mobile Experience Section ── */}
             {analysis &&
               (() => {
-                const MOBILE_CRITERIA = new Set([
-                  "1.3.4",
-                  "1.4.4",
-                  "1.4.10",
-                  "1.4.12",
-                  "2.5.1",
-                  "2.5.2",
-                  "2.5.3",
-                  "2.5.4",
-                  "2.5.5",
-                  "2.5.6",
-                  "2.5.7",
-                  "2.5.8",
-                ]);
-                const mobileKwRe =
-                  /mobile|touch|tap|swipe|pinch|zoom|viewport|orientation|small.?screen|target.?size|gesture|pointer.?gesture|responsive|portrait|landscape|finger/i;
+                const mobileData =
+                  analysis.aiAnalysis?.mobileAccessibility ||
+                  analysis.mobileAccessibility;
 
-                // Filter WCAG groups that are mobile-relevant
-                const mobileGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (
-                    (k && MOBILE_CRITERIA.has(k)) ||
-                    mobileKwRe.test(g.problem || "") ||
-                    mobileKwRe.test(g.wcagCriterion || "")
-                  );
-                });
+                // Use AI-generated mobile data
+                const {
+                  overallMobileScore,
+                  mobileIssues = [],
+                  mobileStrengths = [],
+                  mobileNextSteps = [],
+                  responsiveScore = 0,
+                  touchScore = 0,
+                  readabilityScore = 0,
+                  navigationScore = 0,
+                  mobileFormScore = 0,
+                  contentAccessScore = 0,
+                } = mobileData;
 
-                // ── Extract mobile-relevant insights from AI text (site-specific) ──
-                const splitSentences = (text) => {
-                  if (!text) return [];
-                  return (
-                    text
-                      .match(/[^.!?]+[.!?]+/g)
-                      ?.map((s) => s.trim())
-                      .filter(Boolean) || []
-                  );
-                };
-                const hciSentences = splitSentences(analysis.hciSummary || "");
-                const summarySentences = splitSentences(
-                  analysis.overallSummary || "",
-                );
-                const allSentences = [...hciSentences, ...summarySentences];
-                const mobileInsights = [
-                  ...new Set(allSentences.filter((s) => mobileKwRe.test(s))),
-                ].slice(0, 4);
-
-                // Mobile-relevant next steps from AI
-                const mobileNextSteps = (analysis.nextSteps || []).filter((s) =>
-                  mobileKwRe.test(s),
-                );
-
-                // ── Heuristic checks based on actual analysis data ──
-                const hasViewport =
-                  typeof analysis.html === "string" && analysis.html.length > 0
-                    ? /name=["']viewport["']/i.test(analysis.html)
-                    : null; // null = unknown (html not available)
-                const noTouchTargetIssue = !groups.some((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return k === "2.5.5" || k === "2.5.8";
-                });
-                const noReflowIssue = !groups.some(
-                  (g) => getCriterionKey(g.wcagCriterion) === "1.4.10",
-                );
-                const noOrientationIssue = !groups.some(
-                  (g) => getCriterionKey(g.wcagCriterion) === "1.3.4",
-                );
-                const noTextScaleIssue = !groups.some(
-                  (g) => getCriterionKey(g.wcagCriterion) === "1.4.4",
-                );
-
-                const checks = [
-                  hasViewport !== null && {
-                    label: "Viewport meta tag",
-                    pass: hasViewport,
-                    detail: hasViewport
-                      ? "Page declares a viewport — should scale correctly on mobile."
-                      : "No viewport meta tag found — page may render at desktop width on phones.",
+                const subScores = [
+                  {
+                    label: "Responsive",
+                    score: responsiveScore,
+                    icon: "⬡",
+                    color: "#0ea5e9",
                   },
                   {
-                    label: "Touch target size (2.5.5/2.5.8)",
-                    pass: noTouchTargetIssue,
-                    detail: noTouchTargetIssue
-                      ? "No touch target size violations flagged."
-                      : "Buttons or links may be too small to tap accurately on mobile.",
+                    label: "Touch",
+                    score: touchScore,
+                    icon: "👆",
+                    color: "#f59e0b",
                   },
                   {
-                    label: "Content reflow at 320px (1.4.10)",
-                    pass: noReflowIssue,
-                    detail: noReflowIssue
-                      ? "No reflow violations detected."
-                      : "Content may require horizontal scrolling at 320px viewport width.",
+                    label: "Readability",
+                    score: readabilityScore,
+                    icon: "Aa",
+                    color: "#8b5cf6",
                   },
                   {
-                    label: "Orientation lock (1.3.4)",
-                    pass: noOrientationIssue,
-                    detail: noOrientationIssue
-                      ? "No orientation restrictions detected."
-                      : "Content may be restricted to a single orientation (portrait/landscape).",
+                    label: "Navigation",
+                    score: navigationScore,
+                    icon: "☰",
+                    color: "#10b981",
                   },
                   {
-                    label: "Text resize (1.4.4)",
-                    pass: noTextScaleIssue,
-                    detail: noTextScaleIssue
-                      ? "No text scaling issues detected."
-                      : "Text may not scale correctly when browser text size is increased.",
+                    label: "Forms",
+                    score: mobileFormScore,
+                    icon: "📝",
+                    color: "#6366f1",
                   },
-                ].filter(Boolean);
+                  {
+                    label: "Content",
+                    score: contentAccessScore,
+                    icon: "📄",
+                    color: "#ec4899",
+                  },
+                ];
 
-                const passCount = checks.filter((c) => c.pass).length;
-                const mobilePct = Math.round((passCount / checks.length) * 100);
-                const scoreColor =
-                  mobilePct >= 80
-                    ? "#16a34a"
-                    : mobilePct >= 50
-                      ? "#d97706"
-                      : "#dc2626";
+                const scoreColor = (s) =>
+                  s >= 80 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
                 const sevColor = (s) => {
                   const sl = (s || "").toLowerCase();
                   if (sl === "high" || sl === "critical" || sl === "serious")
@@ -3786,6 +3592,34 @@ Return the edited screenshot with minimal localized edits only.
                 const scale = screenW / dev.w;
                 const iframeH = Math.round(dev.screenH / scale);
 
+                const sevBg = (s) => {
+                  const sl = (s || "").toLowerCase();
+                  if (sl === "high" || sl === "critical" || sl === "serious")
+                    return "#fef2f2";
+                  if (sl === "medium" || sl === "moderate" || sl === "warning")
+                    return "#fffbeb";
+                  return "#f0fdf4";
+                };
+
+                const sevBorder = (s) => {
+                  const sl = (s || "").toLowerCase();
+                  if (sl === "high" || sl === "critical" || sl === "serious")
+                    return "#fca5a5";
+                  if (sl === "medium" || sl === "moderate" || sl === "warning")
+                    return "#fde68a";
+                  return "#bbf7d0";
+                };
+
+                const highIssues = mobileIssues.filter(
+                  (i) => i.severity === "High",
+                ).length;
+                const mediumIssues = mobileIssues.filter(
+                  (i) => i.severity === "Medium",
+                ).length;
+                const lowIssues = mobileIssues.filter(
+                  (i) => i.severity === "Low",
+                ).length;
+
                 return (
                   <div
                     style={{
@@ -3803,7 +3637,7 @@ Return the edited screenshot with minimal localized edits only.
                         display: "flex",
                         alignItems: "center",
                         gap: 12,
-                        marginBottom: 24,
+                        marginBottom: 20,
                         borderBottom: "1px solid #f1f5f9",
                         paddingBottom: 16,
                       }}
@@ -3842,21 +3676,20 @@ Return the edited screenshot with minimal localized edits only.
                         <p
                           style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}
                         >
-                          Accessibility issues that affect mobile and touch
-                          users
+                          AI-powered mobile accessibility analysis
                         </p>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         <div
                           style={{
-                            fontSize: 32,
+                            fontSize: 36,
                             fontWeight: 900,
-                            color: scoreColor,
+                            color: scoreColor(overallMobileScore),
                             lineHeight: 1,
                             letterSpacing: "-1px",
                           }}
                         >
-                          {mobilePct}%
+                          {overallMobileScore}%
                         </div>
                         <div
                           style={{
@@ -3865,15 +3698,136 @@ Return the edited screenshot with minimal localized edits only.
                             marginTop: 2,
                           }}
                         >
-                          {passCount}/{checks.length} checks passed
+                          Mobile Score
                         </div>
+
+                        {mobileIssues.length > 0 && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 4,
+                              justifyContent: "flex-end",
+                              marginTop: 6,
+                            }}
+                          >
+                            {highIssues > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  background: "#fef2f2",
+                                  color: "#dc2626",
+                                  border: "1px solid #fca5a5",
+                                  borderRadius: 999,
+                                  padding: "1px 7px",
+                                }}
+                              >
+                                {highIssues} High
+                              </span>
+                            )}
+                            {mediumIssues > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  background: "#fffbeb",
+                                  color: "#d97706",
+                                  border: "1px solid #fde68a",
+                                  borderRadius: 999,
+                                  padding: "1px 7px",
+                                }}
+                              >
+                                {mediumIssues} Med
+                              </span>
+                            )}
+                            {lowIssues > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  background: "#f0fdf4",
+                                  color: "#16a34a",
+                                  border: "1px solid #bbf7d0",
+                                  borderRadius: 999,
+                                  padding: "1px 7px",
+                                }}
+                              >
+                                {lowIssues} Low
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Sub-score row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        marginBottom: 24,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {subScores.map((s) => (
+                        <div
+                          key={s.label}
+                          style={{
+                            flex: "1 1 120px",
+                            background: s.score >= 80 ? "#f0fdf4" : "#f8fafc",
+                            border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
+                            borderTop: `3px solid ${scoreColor(s.score)}`,
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 6,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 22,
+                                fontWeight: 900,
+                                color: scoreColor(s.score),
+                                lineHeight: 1,
+                              }}
+                            >
+                              {s.score}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: "#64748b",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.4px",
+                              }}
+                            >
+                              {s.label}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10.5,
+                              color: s.score >= 80 ? "#16a34a" : "#64748b",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {s.score >= 80 ? "✓ Good" : "Needs work"}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     <div
                       style={{
                         display: "flex",
-                        gap: 32,
+                        gap: 28,
                         alignItems: "flex-start",
                       }}
                     >
@@ -4160,111 +4114,67 @@ Return the edited screenshot with minimal localized edits only.
                         </div>
                       </div>
 
-                      {/* ── Right: checks + insights ── */}
+                      {/* Right: AI-powered mobile issues */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* Heuristic checks */}
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#94a3b8",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.5px",
-                            marginBottom: 10,
-                          }}
-                        >
-                          WCAG Mobile Checks
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: 8,
-                            marginBottom: 22,
-                          }}
-                        >
-                          {checks.map((c, i) => (
+                        {/* Mobile Strengths */}
+                        {mobileStrengths.length > 0 && (
+                          <>
                             <div
-                              key={i}
                               style={{
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: 8,
-                                background: c.pass ? "#f0fdf4" : "#fef2f2",
-                                border: `1px solid ${c.pass ? "#bbf7d0" : "#fca5a5"}`,
-                                borderRadius: 10,
-                                padding: "10px 12px",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#16a34a",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.5px",
+                                marginBottom: 10,
                               }}
                             >
+                              Mobile Strengths ({mobileStrengths.length})
+                            </div>
+                            {mobileStrengths.map((strength, i) => (
                               <div
+                                key={i}
                                 style={{
-                                  width: 18,
-                                  height: 18,
-                                  borderRadius: "50%",
-                                  background: c.pass ? "#16a34a" : "#dc2626",
                                   display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  flexShrink: 0,
-                                  marginTop: 1,
+                                  gap: 6,
+                                  padding: "7px 10px",
+                                  background: "#f0fdf4",
+                                  border: "1px solid #bbf7d0",
+                                  borderLeft: "3px solid #16a34a",
+                                  borderRadius: 8,
+                                  marginBottom: 5,
                                 }}
                               >
-                                {c.pass ? (
-                                  <svg
-                                    width="9"
-                                    height="9"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#fff"
-                                    strokeWidth="3.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                ) : (
-                                  <svg
-                                    width="9"
-                                    height="9"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#fff"
-                                    strokeWidth="3.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                  </svg>
-                                )}
-                              </div>
-                              <div style={{ minWidth: 0 }}>
-                                <div
+                                <svg
+                                  width="11"
+                                  height="11"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#16a34a"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  style={{ flexShrink: 0, marginTop: 2 }}
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                <p
                                   style={{
+                                    margin: 0,
                                     fontSize: 11.5,
-                                    fontWeight: 700,
-                                    color: c.pass ? "#15803d" : "#b91c1c",
-                                    marginBottom: 2,
+                                    color: "#15803d",
+                                    lineHeight: 1.5,
                                   }}
                                 >
-                                  {c.label}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    color: "#64748b",
-                                    lineHeight: 1.45,
-                                  }}
-                                >
-                                  {c.detail}
-                                </div>
+                                  {strength}
+                                </p>
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </>
+                        )}
 
-                        {/* AI-extracted mobile insights (site-specific) */}
-                        {mobileInsights.length > 0 && (
+                        {/* Mobile Issues */}
+                        {mobileIssues.length > 0 && (
                           <>
                             <div
                               style={{
@@ -4273,170 +4183,301 @@ Return the edited screenshot with minimal localized edits only.
                                 color: "#94a3b8",
                                 textTransform: "uppercase",
                                 letterSpacing: "0.5px",
-                                marginBottom: 10,
+                                margin: "18px 0 10px",
                               }}
                             >
-                              AI Mobile Insights
+                              Mobile Issues ({mobileIssues.length})
                             </div>
-                            <div style={{ marginBottom: 22 }}>
-                              {mobileInsights.map((s, i) => (
+                            {mobileIssues.map((issue, i) => {
+                              const cardKey = `mobile-issue-${i}`;
+                              const isOpen = !!expandedItems[cardKey];
+
+                              return (
                                 <div
                                   key={i}
                                   style={{
-                                    display: "flex",
-                                    gap: 8,
-                                    alignItems: "flex-start",
-                                    padding: "8px 12px",
-                                    background: "#f8fafc",
-                                    border: "1px solid #e2e8f0",
-                                    borderLeft: "3px solid #0ea5e9",
-                                    borderRadius: 8,
-                                    marginBottom: 6,
+                                    borderRadius: 10,
+                                    background: sevBg(issue.severity),
+                                    border: `1px solid ${sevBorder(issue.severity)}`,
+                                    borderLeft: `3px solid ${sevColor(issue.severity)}`,
+                                    marginBottom: 8,
+                                    overflow: "hidden",
                                   }}
                                 >
-                                  <svg
-                                    width="13"
-                                    height="13"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#0ea5e9"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    style={{ flexShrink: 0, marginTop: 2 }}
-                                  >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="12" y1="8" x2="12" y2="12" />
-                                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                                  </svg>
-                                  <p
+                                  {/* Header */}
+                                  <button
+                                    onClick={() => toggleExpanded(cardKey)}
                                     style={{
-                                      margin: 0,
-                                      fontSize: 12,
-                                      color: "#475569",
-                                      lineHeight: 1.55,
+                                      width: "100%",
+                                      background: "transparent",
+                                      border: "none",
+                                      padding: "11px 14px",
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: 8,
+                                      textAlign: "left",
                                     }}
                                   >
-                                    {s}
-                                  </p>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 8,
+                                          marginBottom: 4,
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            fontSize: 12.5,
+                                            fontWeight: 700,
+                                            color: "#0f172a",
+                                          }}
+                                        >
+                                          {issue.category
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                            issue.category.slice(1)}{" "}
+                                          Issue
+                                        </span>
+                                        <span
+                                          style={{
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: sevColor(issue.severity),
+                                            background: "#fff",
+                                            border: `1px solid ${sevBorder(issue.severity)}`,
+                                            borderRadius: 999,
+                                            padding: "1px 7px",
+                                            textTransform: "uppercase",
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {issue.severity}
+                                        </span>
+                                        {issue.wcagCriterion && (
+                                          <span
+                                            style={{
+                                              fontSize: 10,
+                                              fontWeight: 600,
+                                              color: "#7c8da0",
+                                              background: "#f1f5f9",
+                                              border: "1px solid #e2e8f0",
+                                              borderRadius: 999,
+                                              padding: "1px 7px",
+                                              flexShrink: 0,
+                                            }}
+                                          >
+                                            WCAG {issue.wcagCriterion}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p
+                                        style={{
+                                          margin: 0,
+                                          fontSize: 12,
+                                          color: "#475569",
+                                          lineHeight: 1.5,
+                                        }}
+                                      >
+                                        {issue.problem}
+                                      </p>
+                                    </div>
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="#94a3b8"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      style={{
+                                        flexShrink: 0,
+                                        marginTop: 2,
+                                        transition: "transform 0.2s",
+                                        transform: isOpen
+                                          ? "rotate(180deg)"
+                                          : "rotate(0deg)",
+                                      }}
+                                    >
+                                      <polyline points="6 9 12 15 18 9" />
+                                    </svg>
+                                  </button>
+
+                                  {/* Expanded details */}
+                                  {isOpen && (
+                                    <div
+                                      style={{
+                                        padding: "0 14px 14px 14px",
+                                        borderTop: `1px solid ${sevBorder(issue.severity)}`,
+                                      }}
+                                    >
+                                      {/* Evidence */}
+                                      <div
+                                        style={{
+                                          marginTop: 10,
+                                          padding: "6px 10px",
+                                          background: "rgba(0,0,0,0.04)",
+                                          borderRadius: 6,
+                                          fontSize: 11,
+                                          color: "#64748b",
+                                          fontFamily: "monospace",
+                                          wordBreak: "break-all",
+                                        }}
+                                      >
+                                        🔍 {issue.evidence}
+                                      </div>
+
+                                      {/* Affected users */}
+                                      <div style={{ marginTop: 10 }}>
+                                        <div
+                                          style={{
+                                            fontSize: 10.5,
+                                            fontWeight: 700,
+                                            color: "#64748b",
+                                            textTransform: "uppercase",
+                                            letterSpacing: "0.4px",
+                                            marginBottom: 4,
+                                          }}
+                                        >
+                                          Affected users
+                                        </div>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                          }}
+                                        >
+                                          <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#7c8da0"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                            <circle cx="9" cy="7" r="4" />
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                          </svg>
+                                          <span
+                                            style={{
+                                              fontSize: 12,
+                                              color: "#475569",
+                                            }}
+                                          >
+                                            {issue.affectedUsers}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Recommendation */}
+                                      <div
+                                        style={{
+                                          marginTop: 10,
+                                          padding: "10px 12px",
+                                          background: "#f0fdf4",
+                                          border: "1px solid #bbf7d0",
+                                          borderRadius: 8,
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontSize: 10.5,
+                                            fontWeight: 700,
+                                            color: "#15803d",
+                                            textTransform: "uppercase",
+                                            letterSpacing: "0.4px",
+                                            marginBottom: 4,
+                                          }}
+                                        >
+                                          Recommended fix
+                                        </div>
+                                        <p
+                                          style={{
+                                            margin: 0,
+                                            fontSize: 12,
+                                            color: "#166534",
+                                            lineHeight: 1.6,
+                                          }}
+                                        >
+                                          {issue.recommendation}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
+                              );
+                            })}
                           </>
                         )}
 
-                        {/* WCAG-flagged mobile violations */}
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#94a3b8",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.5px",
-                            marginBottom: 10,
-                          }}
-                        >
-                          Mobile-Related Violations{" "}
-                          {mobileGroups.length > 0 && (
-                            <span
-                              style={{
-                                background: "#fef2f2",
-                                color: "#dc2626",
-                                border: "1px solid #fca5a5",
-                                borderRadius: 999,
-                                padding: "1px 7px",
-                                marginLeft: 4,
-                              }}
-                            >
-                              {mobileGroups.length}
-                            </span>
-                          )}
-                        </div>
-                        {mobileGroups.length > 0 ? (
-                          mobileGroups.map((g, i) => (
+                        {/* Mobile Next Steps */}
+                        {mobileNextSteps.length > 0 && (
+                          <>
                             <div
-                              key={i}
                               style={{
-                                padding: "10px 14px",
-                                borderRadius: 10,
-                                background: "#fafafa",
-                                border: "1px solid #f1f5f9",
-                                borderLeft: `3px solid ${sevColor(g.severity)}`,
-                                marginBottom: 8,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#94a3b8",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.5px",
+                                margin: "18px 0 10px",
                               }}
                             >
-                              <div
+                              Mobile Next Steps
+                            </div>
+                            {mobileNextSteps.map((step, i) => (
+                              <label
+                                key={i}
                                 style={{
                                   display: "flex",
-                                  alignItems: "center",
                                   gap: 8,
-                                  flexWrap: "wrap",
-                                  marginBottom: g.problem ? 4 : 0,
+                                  alignItems: "flex-start",
+                                  padding: "8px 12px",
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  borderLeft: "3px solid #f59e0b",
+                                  borderRadius: 8,
+                                  marginBottom: 6,
+                                  cursor: "pointer",
+                                  userSelect: "none",
                                 }}
                               >
+                                <input
+                                  type="checkbox"
+                                  style={{
+                                    accentColor: "#f59e0b",
+                                    marginTop: 2,
+                                    marginRight: 4,
+                                    width: 16,
+                                    height: 16,
+                                    flexShrink: 0,
+                                  }}
+                                />
                                 <span
                                   style={{
-                                    fontSize: 12.5,
-                                    fontWeight: 700,
-                                    color: "#0f172a",
-                                  }}
-                                >
-                                  {getFriendlyTitle(
-                                    g.wcagCriterion,
-                                    g.id,
-                                    g.problem,
-                                  )}
-                                </span>
-                                {g.severity && (
-                                  <span
-                                    style={{
-                                      fontSize: 10,
-                                      fontWeight: 700,
-                                      color: "#fff",
-                                      background: sevColor(g.severity),
-                                      borderRadius: 999,
-                                      padding: "1px 7px",
-                                      textTransform: "uppercase",
-                                    }}
-                                  >
-                                    {g.severity}
-                                  </span>
-                                )}
-                                {typeof g.count === "number" && (
-                                  <span
-                                    style={{ fontSize: 11, color: "#94a3b8" }}
-                                  >
-                                    {g.count} instance{g.count !== 1 ? "s" : ""}
-                                  </span>
-                                )}
-                              </div>
-                              {g.problem && (
-                                <p
-                                  style={{
-                                    margin: 0,
                                     fontSize: 12,
-                                    color: "#475569",
-                                    lineHeight: 1.5,
+                                    color: "#92400e",
+                                    lineHeight: 1.55,
                                   }}
                                 >
-                                  {g.problem}
-                                </p>
-                              )}
-                              {g.recommendation && (
-                                <p
-                                  style={{
-                                    margin: "4px 0 0",
-                                    fontSize: 11.5,
-                                    color: "#0ea5e9",
-                                    fontStyle: "italic",
-                                  }}
-                                >
-                                  → {g.recommendation}
-                                </p>
-                              )}
-                            </div>
-                          ))
-                        ) : (
+                                  {step}
+                                </span>
+                              </label>
+                            ))}
+                          </>
+                        )}
+
+                        {/* No issues case */}
+                        {mobileIssues.length === 0 && (
                           <div
                             style={{
                               display: "flex",
@@ -4446,7 +4487,7 @@ Return the edited screenshot with minimal localized edits only.
                               background: "#f0fdf4",
                               border: "1px solid #bbf7d0",
                               borderRadius: 10,
-                              marginBottom: mobileNextSteps.length > 0 ? 16 : 0,
+                              marginBottom: 16,
                             }}
                           >
                             <svg
@@ -4468,68 +4509,10 @@ Return the edited screenshot with minimal localized edits only.
                                 color: "#15803d",
                               }}
                             >
-                              No mobile-specific WCAG violations flagged by the
+                              No mobile accessibility issues detected by AI
                               analysis.
                             </span>
                           </div>
-                        )}
-
-                        {/* Mobile-relevant next steps from AI */}
-                        {mobileNextSteps.length > 0 && (
-                          <>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#94a3b8",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.5px",
-                                margin: "18px 0 10px",
-                              }}
-                            >
-                              Recommended Mobile Fixes
-                            </div>
-                            {mobileNextSteps.map((s, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  display: "flex",
-                                  gap: 8,
-                                  alignItems: "flex-start",
-                                  padding: "8px 12px",
-                                  background: "#fffbeb",
-                                  border: "1px solid #fde68a",
-                                  borderLeft: "3px solid #f59e0b",
-                                  borderRadius: 8,
-                                  marginBottom: 6,
-                                }}
-                              >
-                                <svg
-                                  width="13"
-                                  height="13"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#d97706"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  style={{ flexShrink: 0, marginTop: 2 }}
-                                >
-                                  <polyline points="9 18 15 12 9 6" />
-                                </svg>
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontSize: 12,
-                                    color: "#92400e",
-                                    lineHeight: 1.55,
-                                  }}
-                                >
-                                  {s}
-                                </p>
-                              </div>
-                            ))}
-                          </>
                         )}
                       </div>
                     </div>
