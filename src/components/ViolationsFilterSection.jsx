@@ -1,5 +1,8 @@
 import React from "react";
-import WCAG_CODE_SUGGESTIONS from "../utils/wcagSuggestions";
+import WCAG_CODE_SUGGESTIONS, {
+  WCAG_USER_IMPACT,
+  getGenericUserImpact,
+} from "../utils/wcagSuggestions";
 import CodeSuggestionPanel from "./CodeSuggestionPanel";
 
 // --- Accessibility Violations Filter UI ---

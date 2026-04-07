@@ -1000,7 +1000,7 @@ auditAccessibleNames();`,
 };
 
 // ─── Per-criterion plain-English user impact stories ─────────────────────────
-const WCAG_USER_IMPACT = {
+export const WCAG_USER_IMPACT = {
   "1.1.1": {
     users: ["Blind users", "Users with images disabled", "Screen reader users"],
     story:
@@ -1108,7 +1108,7 @@ const WCAG_USER_IMPACT = {
   },
 };
 
-const getGenericUserImpact = (severity) => {
+export const getGenericUserImpact = (severity) => {
   const sev = (severity || "").toLowerCase();
   if (sev === "high" || sev === "critical" || sev === "serious") {
     return "This is a critical barrier that may completely prevent users with disabilities from accessing or using this feature. People who rely on screen readers, keyboard navigation, or other assistive technologies are directly affected.";
@@ -1212,4 +1212,8 @@ const WCAG_PREVIEWS = {
   },
 };
 
-export default WCAG_CODE_SUGGESTIONS;
+export default {
+  WCAG_CODE_SUGGESTIONS,
+  WCAG_USER_IMPACT,
+  getGenericUserImpact,
+};

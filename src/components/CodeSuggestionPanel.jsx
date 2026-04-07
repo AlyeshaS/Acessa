@@ -1,3 +1,9 @@
+function getCriterionKey(criterion) {
+  if (!criterion) return null;
+  const m = String(criterion).match(/(\d+\.\d+\.\d+)/);
+  return m ? m[1] : null;
+}
+
 // ─── Code suggestion panel ───────────────────────────────────────────────────
 function CodeSuggestionPanel({ criterion }) {
   const key = getCriterionKey(criterion);
