@@ -65,7 +65,7 @@ function ScreenshotWithHighlights({
   selectedMarkerIdx = 0,
   onMarkerClick,
 }) {
-  const imgRef = React.useRef(null);
+  const imgRef = React.useRef(null); // points to the <img> element
   const [imgDims, setImgDims] = React.useState({
     naturalWidth: 1,
     naturalHeight: 1,
@@ -116,117 +116,147 @@ function ScreenshotWithHighlights({
   }, [markers]);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <img
-        ref={imgRef}
-        src={screenshot}
-        onLoad={handleImgLoad}
+    // Outer shell — fills whatever space the parent gives it and clips everything.
+    // overflow:hidden ensures no highlight overlay can bleed into the nav or footer.
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        isolation: "isolate",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "flex-start",
+      }}
+    >
+      {/* Inner wrapper shrinks to the actual rendered image size so all
+          absolutely-positioned highlight divs are scoped to the image pixels. */}
+      <div
         style={{
+          position: "relative",
+          display: "inline-block",
+          lineHeight: 0, // collapse whitespace gap below <img>
           maxWidth: "100%",
           maxHeight: "100%",
-          objectFit: "contain",
-          display: "block",
         }}
-        alt="Screenshot with accessibility highlights"
-      />
-      {(markers || []).flatMap((m, i) => {
-        const isSelected = i === selectedMarkerIdx;
-        const isHovered = i === hoveredIdx;
+      >
+        <img
+          ref={imgRef}
+          src={screenshot}
+          onLoad={handleImgLoad}
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            objectFit: "contain",
+            display: "block",
+          }}
+          alt="Screenshot with accessibility highlights"
+        />
+        {(markers || []).flatMap((m, i) => {
+          const isSelected = i === selectedMarkerIdx;
+          const isHovered = i === hoveredIdx;
 
-        // Colour: selected → palette[0], otherwise the stable colour for this violation type
-        const paletteIdx = isSelected
-          ? 0
-          : (colourMap.get(violationPrefix(m.issueId)) ?? 1);
-        const colour = HIGHLIGHT_PALETTE[paletteIdx % HIGHLIGHT_PALETTE.length];
+          // Colour: selected → palette[0], otherwise the stable colour for this violation type
+          const paletteIdx = isSelected
+            ? 0
+            : (colourMap.get(violationPrefix(m.issueId)) ?? 1);
+          const colour =
+            HIGHLIGHT_PALETTE[paletteIdx % HIGHLIGHT_PALETTE.length];
 
-        const baseStyle = {
-          borderRadius: 6,
-          cursor: onMarkerClick ? "pointer" : "default",
-          transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
-        };
+          const baseStyle = {
+            borderRadius: 6,
+            cursor: onMarkerClick ? "pointer" : "default",
+            transition:
+              "border-color 0.15s, background 0.15s, box-shadow 0.15s",
+          };
 
-        const stateStyle =
-          isSelected || isHovered
-            ? {
-                border: `2.5px solid ${colour.border}`,
-                background: colour.bg,
-                boxShadow: `0 0 0 3px ${colour.shadow}`,
-                zIndex: 20,
-              }
-            : {
-                border: `2px solid ${colour.border}88`,
-                background: colour.bg
-                  .replace("0.15", "0.07")
-                  .replace("0.18", "0.07"),
-                zIndex: 10,
-              };
+          const stateStyle =
+            isSelected || isHovered
+              ? {
+                  border: `2.5px solid ${colour.border}`,
+                  background: colour.bg,
+                  boxShadow: `0 0 0 3px ${colour.shadow}`,
+                  zIndex: 20,
+                }
+              : {
+                  border: `2px solid ${colour.border}88`,
+                  background: colour.bg
+                    .replace("0.15", "0.07")
+                    .replace("0.18", "0.07"),
+                  zIndex: 10,
+                };
 
-        const handleClick = onMarkerClick ? () => onMarkerClick(i) : undefined;
-        const handleMouseEnter = () => setHoveredIdx(i);
-        const handleMouseLeave = () => setHoveredIdx(null);
+          const handleClick = onMarkerClick
+            ? () => onMarkerClick(i)
+            : undefined;
+          const handleMouseEnter = () => setHoveredIdx(i);
+          const handleMouseLeave = () => setHoveredIdx(null);
 
-        // Tooltip text = summary from the marker (set by axeRunner / index.js)
-        const tooltipText = m.summary || m.recommendation || null;
+          // Tooltip text = summary from the marker (set by axeRunner / index.js)
+          const tooltipText = m.summary || m.recommendation || null;
 
-        const renderBox = (b, key) => {
-          const left = b.x * scaleX;
-          const top = b.y * scaleY;
-          const width = b.width * scaleX;
-          const height = b.height * scaleY;
+          const renderBox = (b, key) => {
+            const left = b.x * scaleX;
+            const top = b.y * scaleY;
+            const width = b.width * scaleX;
+            const height = b.height * scaleY;
 
-          return (
-            <div
-              key={key}
-              data-issueid={m.issueId || ""}
-              onClick={handleClick}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-              style={{
-                position: "absolute",
-                left,
-                top,
-                width,
-                height,
-                pointerEvents: onMarkerClick ? "auto" : "none",
-                ...baseStyle,
-                ...stateStyle,
-              }}
-            >
-              {/* Tooltip — only shown while hovered */}
-              {tooltipText && isHovered && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "calc(100% + 6px)",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    background: "rgba(15,23,42,0.93)",
-                    color: "#f8fafc",
-                    fontSize: 11,
-                    lineHeight: 1.45,
-                    padding: "5px 9px",
-                    borderRadius: 6,
-                    whiteSpace: "pre-wrap",
-                    maxWidth: 220,
-                    pointerEvents: "none",
-                    zIndex: 100,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
-                  }}
-                >
-                  {tooltipText}
-                </div>
-              )}
-            </div>
-          );
-        };
+            return (
+              <div
+                key={key}
+                data-issueid={m.issueId || ""}
+                onClick={handleClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                style={{
+                  position: "absolute",
+                  left,
+                  top,
+                  width,
+                  height,
+                  pointerEvents: onMarkerClick ? "auto" : "none",
+                  ...baseStyle,
+                  ...stateStyle,
+                }}
+              >
+                {/* Tooltip — only shown while hovered */}
+                {tooltipText && isHovered && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "calc(100% + 6px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "rgba(15,23,42,0.93)",
+                      color: "#f8fafc",
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      padding: "5px 9px",
+                      borderRadius: 6,
+                      whiteSpace: "pre-wrap",
+                      maxWidth: 220,
+                      pointerEvents: "none",
+                      zIndex: 100,
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    {tooltipText}
+                  </div>
+                )}
+              </div>
+            );
+          };
 
-        if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
-          return m.boundingBoxes.map((b, j) =>
-            renderBox(b, `${m.issueId || i}-bb-${j}`),
-          );
-        }
-        return [renderBox(m, m.issueId || i)];
-      })}
+          if (Array.isArray(m.boundingBoxes) && m.boundingBoxes.length > 0) {
+            return m.boundingBoxes.map((b, j) =>
+              renderBox(b, `${m.issueId || i}-bb-${j}`),
+            );
+          }
+          return [renderBox(m, m.issueId || i)];
+        })}
+      </div>{" "}
+      {/* inner wrapper — scoped to image size */}
     </div>
   );
 }
