@@ -1,13 +1,16 @@
-function getCriterionKey(criterion) {
-  if (!criterion) return null;
-  const m = String(criterion).match(/(\d+\.\d+\.\d+)/);
-  return m ? m[1] : null;
-}
+import React, { useEffect, useRef, useState } from "react";
+import { WCAG_CODE_SUGGESTIONS, WCAG_PREVIEWS } from "../utils/wcagSuggestions";
+import { getCriterionKey } from "./ViolationsFilterSection";
+import "../styles/App.css";
+import "../styles/index.css";
 
 // ─── Code suggestion panel ───────────────────────────────────────────────────
 function CodeSuggestionPanel({ criterion }) {
   const key = getCriterionKey(criterion);
-  const s = key ? WCAG_CODE_SUGGESTIONS[key] : null;
+  const s =
+    (key && WCAG_CODE_SUGGESTIONS[key]) || WCAG_CODE_SUGGESTIONS["_default"];
+  console.log("KEY:", key);
+  console.log("SUGGESTION:", s);
   const preview = key ? WCAG_PREVIEWS[key] : null;
 
   const ALL_TABS = [
@@ -45,7 +48,7 @@ function CodeSuggestionPanel({ criterion }) {
         marginTop: 14,
         borderRadius: 12,
         border: "1px solid #e2e8f0",
-        overflow: "hidden",
+        overflow: "visible",
         background: "#f8fafc",
       }}
     >

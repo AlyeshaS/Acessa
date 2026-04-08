@@ -1,9 +1,12 @@
 import React from "react";
-import WCAG_CODE_SUGGESTIONS, {
+import {
+  WCAG_CODE_SUGGESTIONS,
   WCAG_USER_IMPACT,
   getGenericUserImpact,
 } from "../utils/wcagSuggestions";
 import CodeSuggestionPanel from "./CodeSuggestionPanel";
+import "../styles/App.css";
+import "../styles/index.css";
 
 // --- Accessibility Violations Filter UI ---
 function severityColor(severity) {
@@ -386,8 +389,11 @@ function ViolationsFilterSection({
                 filterBySeverity(groupedByPrinciple[cat.key]).map((g, idx) => {
                   const codeKey = `${cat.key}-${idx}`;
                   const criterionNum = getCriterionKey(g.wcagCriterion);
+
+                  // Always show the button: fallback to _default if nothing else
                   const hasCode =
-                    criterionNum && !!WCAG_CODE_SUGGESTIONS[criterionNum];
+                    !!WCAG_CODE_SUGGESTIONS[criterionNum] ||
+                    !!WCAG_CODE_SUGGESTIONS["_default"];
                   const codeOpen = openCodeKey === codeKey;
                   const isFixed = fixedKeys.has(codeKey);
                   const effort = criterionNum
@@ -543,11 +549,13 @@ function ViolationsFilterSection({
                             Who's affected
                           </button>
                         )}
-
                         {/* View Fix button */}
                         {hasCode && !isFixed && (
                           <button
-                            onClick={() => toggleCode(codeKey)}
+                            onClick={() => {
+                              console.log("Clicked:", codeKey);
+                              toggleCode(codeKey);
+                            }}
                             title={codeOpen ? "Hide code fix" : "View code fix"}
                             style={{
                               flexShrink: 0,
@@ -586,7 +594,6 @@ function ViolationsFilterSection({
                             {codeOpen ? "Hide Fix" : "View Fix"}
                           </button>
                         )}
-
                         {/* Mark as fixed checkbox */}
                         <label
                           title={
@@ -636,6 +643,7 @@ function ViolationsFilterSection({
                           <strong>Recommendation:</strong> {g.recommendation}
                         </p>
                       )}
+
                       {isFixed &&
                         (() => {
                           const vs = verifyState[codeKey] || "idle";
@@ -920,10 +928,11 @@ function ViolationsFilterSection({
                             </div>
                           );
                         })()}
-
                       {/* Code suggestion panel */}
                       {codeOpen && hasCode && !isFixed && (
-                        <CodeSuggestionPanel criterion={g.wcagCriterion} />
+                        <>
+                          <CodeSuggestionPanel criterion={g.wcagCriterion} />
+                        </>
                       )}
                     </div>
                   );
@@ -957,3 +966,4 @@ function ViolationsFilterSection({
 }
 
 export default ViolationsFilterSection;
+export { getCriterionKey };

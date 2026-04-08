@@ -2024,3 +2024,9 @@ iframe {
   width: 100%;
   margin-top: 20px;
 }
+
+/* TEMP DEBUG: Ensure issue-item can expand to show panel */
+.issue-item {
+  overflow: visible !important;
+  min-height: 120px;
+}

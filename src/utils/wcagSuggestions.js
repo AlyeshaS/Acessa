@@ -2,6 +2,49 @@
 // Generic fixes that apply to any website — keyed by criterion number (e.g. "2.4.4")
 // Each entry: effort, where, before (broken), after tabs (html/css/js/react), testSteps, links
 const WCAG_CODE_SUGGESTIONS = {
+  // Fallback for any missing WCAG criterion
+  _default: {
+    effort: { label: "General guidance", time: "Varies", color: "#64748b" },
+
+    where: "Apply appropriate semantic HTML and labeling",
+
+    before: `<!-- No specific example available -->
+<!-- Review WCAG documentation for guidance -->`,
+
+    html: `<!-- Generic accessible example -->
+<label for="input">Label</label>
+<input id="input" />`,
+
+    css: `/* Ensure focus visibility */
+:focus {
+  outline: 2px solid #000;
+}`,
+
+    react: `// Accessible React input example
+<label htmlFor="input">Label</label>
+<input id="input" />`,
+
+    js: `// Ensure interactive elements are keyboard accessible
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    // trigger action
+  }
+});`,
+
+    testSteps: [
+      "Review the official WCAG documentation for this criterion.",
+      "Check that elements are labeled and accessible.",
+      "Test using keyboard navigation.",
+      "Run accessibility tools like axe or Lighthouse.",
+    ],
+
+    links: [
+      {
+        label: "WCAG Overview",
+        url: "https://www.w3.org/WAI/standards-guidelines/wcag/",
+      },
+    ],
+  },
   "1.1.1": {
     effort: { label: "Quick fix", time: "~10 min", color: "#16a34a" },
     where:
@@ -1121,7 +1164,7 @@ export const getGenericUserImpact = (severity) => {
 
 // ─── Visual before/after previews (self-contained srcdoc HTML) ───────────────
 const BASE = `<style>*{box-sizing:border-box}body{margin:12px;font-family:system-ui,sans-serif;font-size:13px;line-height:1.45;color:#334155}</style>`;
-const WCAG_PREVIEWS = {
+export const WCAG_PREVIEWS = {
   "1.1.1": {
     broken:
       BASE +
@@ -1212,8 +1255,9 @@ const WCAG_PREVIEWS = {
   },
 };
 
+export { WCAG_CODE_SUGGESTIONS };
 export default {
-  WCAG_CODE_SUGGESTIONS,
   WCAG_USER_IMPACT,
   getGenericUserImpact,
+  WCAG_PREVIEWS,
 };
