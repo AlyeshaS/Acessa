@@ -1635,6 +1635,37 @@ Return the edited screenshot with minimal localized edits only.
               <section id="website-preview" ref={sectionRefs.current[0]}>
                 <div className="website-preview-panel">
                   <h2 className="website-preview-title">Website Preview</h2>
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      color: "#64748b",
+                      fontSize: 15,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {previewMode === "highlighted" && (
+                      <>
+                        Shows a visual snapshot of the analyzed website. This
+                        section helps you see the page as it was scanned,
+                        including any overlays or highlights for accessibility
+                        issues.
+                      </>
+                    )}
+                    {previewMode === "sidebyside" && (
+                      <>
+                        The feedback and screenshot are sent to OpenAI, which
+                        generates an image showing what the issue would look
+                        like if fixed.
+                      </>
+                    )}
+                    {previewMode === "lense" && (
+                      <>
+                        Simulate how the website appears to people with
+                        different types of color vision, including color
+                        blindness.
+                      </>
+                    )}
+                  </div>
 
                   <div className="website-preview-toggle-group">
                     <button
@@ -2930,7 +2961,20 @@ Return the edited screenshot with minimal localized edits only.
                       <h2 className="issues-panel-heading">
                         Accessibility Issues
                       </h2>
-
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          color: "#64748b",
+                          fontSize: 15,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Lists all detected accessibility violations based on
+                        WCAG 2.2. Each issue is categorized, described, and
+                        visually highlighted on the screenshot. You’ll find
+                        actionable recommendations and can filter or explore
+                        issues by severity or type.
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -3115,8 +3159,6 @@ Return the edited screenshot with minimal localized edits only.
                     {/* Header row: title + reading time + export */}
                     <div
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "flex-start",
                         marginBottom: 16,
                       }}
@@ -3124,6 +3166,19 @@ Return the edited screenshot with minimal localized edits only.
                       <h2 className="hci-card-heading" style={{ margin: 0 }}>
                         HCI Report
                       </h2>
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          color: "#64748b",
+                          fontSize: 15,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Provides a Human-Computer Interaction (HCI) analysis of
+                        the website. This section summarizes usability findings,
+                        user experience insights, and best practices for
+                        improving accessibility and interaction.
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -3867,6 +3922,19 @@ Return the edited screenshot with minimal localized edits only.
                             >
                               AI-powered mobile accessibility analysis
                             </p>
+                            <div
+                              style={{
+                                marginBottom: 12,
+                                color: "#64748b",
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Evaluates how the website performs on mobile
+                              devices. This section highlights mobile-specific
+                              accessibility issues, responsiveness, and user
+                              experience for touch devices.
+                            </div>
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
                             <div
@@ -5512,6 +5580,19 @@ Return the edited screenshot with minimal localized edits only.
                                 Specialized Audits
                                 <InfoBtn infoKey="specialized" />
                               </h2>
+                              <div
+                                style={{
+                                  marginBottom: 12,
+                                  color: "#64748b",
+                                  fontSize: 15,
+                                  fontWeight: 500,
+                                }}
+                              >
+                                Contains results from advanced or optional
+                                accessibility checks, such as color contrast,
+                                ARIA usage, or other specialized audits. Use
+                                this section for deeper technical insights.
+                              </div>
                               <p
                                 style={{
                                   margin: 0,
@@ -5908,6 +5989,7 @@ Return the edited screenshot with minimal localized edits only.
                       return (
                         <>
                           <h2 className="next-steps-heading">Next Steps</h2>
+
                           <p style={{ color: "#64748b", fontSize: 14 }}>
                             No specific recommendations were generated.
                           </p>
@@ -6149,6 +6231,19 @@ Return the edited screenshot with minimal localized edits only.
                             >
                               Next Steps
                             </h2>
+                            <div
+                              style={{
+                                marginBottom: 12,
+                                color: "#64748b",
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Offers a prioritized list of recommended actions
+                              to improve your site’s accessibility. This section
+                              helps you plan remediation and track progress
+                              toward compliance.
+                            </div>
                             <p
                               style={{
                                 margin: 0,
