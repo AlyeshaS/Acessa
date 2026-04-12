@@ -64,6 +64,8 @@ function ScreenshotWithHighlights({
   markers,
   selectedMarkerIdx = 0,
   onMarkerClick,
+  offsetLeft = 0, // offset in px for left margin (e.g., side panel width)
+  panelState, // pass navCollapsed or similar here
 }) {
   const imgRef = React.useRef(null); // points to the <img> element
   const [imgDims, setImgDims] = React.useState({
@@ -87,8 +89,22 @@ function ScreenshotWithHighlights({
   React.useEffect(() => {
     const onResize = () => handleImgLoad();
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    handleImgLoad();
+
+    // --- ResizeObserver for real-time image size changes ---
+    let observer = null;
+    if (imgRef.current && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        handleImgLoad();
+      });
+      observer.observe(imgRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (observer && imgRef.current) observer.disconnect();
+    };
+  }, [panelState]);
 
   const scaleX = imgDims.renderedWidth / imgDims.naturalWidth;
   const scaleY = imgDims.renderedHeight / imgDims.naturalHeight;
@@ -197,7 +213,8 @@ function ScreenshotWithHighlights({
           const tooltipText = m.summary || m.recommendation || null;
 
           const renderBox = (b, key) => {
-            const left = b.x * scaleX;
+            // Always apply offsetLeft so highlight moves with sidebar
+            const left = b.x * scaleX + offsetLeft;
             const top = b.y * scaleY;
             const width = b.width * scaleX;
             const height = b.height * scaleY;

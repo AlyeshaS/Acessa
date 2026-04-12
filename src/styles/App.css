@@ -76,7 +76,7 @@ body {
   align-items: center;
   gap: 4px;
   background-color: transparent;
-  color: var(--soft-gray);
+  color: var(--slate);
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid transparent;

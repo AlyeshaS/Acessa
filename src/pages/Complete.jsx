@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import SectionNav from "../components/SectionNav";
 import AnalysisPlayer from "../components/AnalysisPlayer";
 import PreviewArrow from "../components/PreviewArrow";
 import ColorBlindSimulator from "../components/ColorBlindSimulator";
@@ -17,6 +18,47 @@ function getCriterionKey(criterion) {
 }
 
 function Complete() {
+  // Section IDs for scrollspy
+  const sectionIds = [
+    "website-preview",
+    "accessibility-issues",
+    "hci-report",
+    "mobile-experience",
+    "specialized-audits",
+    "next-steps",
+  ];
+  const sectionRefs = useRef(sectionIds.map(() => React.createRef()));
+  const [activeSection, setActiveSection] = useState(sectionIds[0]);
+  // Nav collapse state (lifted from SectionNav)
+  const [navCollapsed, setNavCollapsed] = useState(false);
+
+  // Scrollspy: update active section on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const offsets = sectionRefs.current.map((ref) => {
+        const el = ref.current;
+        if (!el) return Infinity;
+        const rect = el.getBoundingClientRect();
+        return rect.top >= 0 ? rect.top : Infinity;
+      });
+      const minIdx = offsets.findIndex((v) => v === Math.min(...offsets));
+      if (minIdx !== -1 && sectionIds[minIdx] !== activeSection) {
+        setActiveSection(sectionIds[minIdx]);
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [activeSection, sectionIds]);
+
+  // Scroll to section on nav click
+  const handleNavClick = (id) => {
+    const idx = sectionIds.indexOf(id);
+    const ref = sectionRefs.current[idx];
+    if (ref && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
   // State for mobile iframe error
   const [mobileIframeError, setMobileIframeError] = useState(false);
   const [colorBlindError, setColorBlindError] = useState(null);
@@ -1307,131 +1349,262 @@ Return the edited screenshot with minimal localized edits only.
     }
   }, [location.pathname]);
   return (
-    <>
-      <div className="navbar">
-        <button className="back-button" onClick={handleBack}>
-          <svg
-            width="55"
-            height="55"
-            viewBox="0 0 55 55"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
+    <div style={{ display: "flex" }}>
+      {/* Left navbar: only show when not loading/animating and analysis is available */}
+      {!loading && !animating && !error && analysis && (
+        <SectionNav
+          activeSection={activeSection}
+          onNavClick={handleNavClick}
+          collapsed={navCollapsed}
+          setCollapsed={setNavCollapsed}
+        />
+      )}
+      <div
+        style={{
+          marginLeft:
+            !loading && !animating && !error && analysis
+              ? navCollapsed
+                ? 48
+                : 220
+              : 0,
+          transition: "margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          width: "100%",
+        }}
+      >
+        {/* Main content */}
+        <div className="navbar">
+          <button
+            className="back-button"
+            onClick={handleBack}
+            style={{ color: "var(--slate)" }}
           >
-            <path
-              d="M34.375 41.25L20.625 27.5L34.375 13.75"
-              stroke="#7C8DA0"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Home Page
-        </button>
-        <h1>Analysis Report</h1>
-      </div>
+            <svg
+              width="55"
+              height="55"
+              viewBox="0 0 55 55"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M34.375 41.25L20.625 27.5L34.375 13.75"
+                stroke="currentColor"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Home Page
+          </button>
+          <h1>Analysis Report</h1>
+        </div>
 
-      <div className="card-body">
-        {/* NETWORK LOADING STATE (before we even have screenshot/steps) */}
+        <div className="card-body">
+          {/* NETWORK LOADING STATE (before we even have screenshot/steps) */}
 
-        {/* ERROR STATE */}
-        {!loading && error && (
-          <div className="hci-report">
-            <h2>Something went wrong</h2>
-            <p>{error}</p>
-          </div>
-        )}
+          {/* ERROR STATE */}
+          {!loading && error && (
+            <div className="hci-report">
+              <h2>Something went wrong</h2>
+              <p>{error}</p>
+            </div>
+          )}
 
-        {(loading || animating) && !error && (
-          <div className="hci-report">
-            <h2>Analyzing...</h2>
-            <p className="subheader">
-              Running WCAG 2.2 + HCI analysis for:
-              <br />
-              <strong>{analysis?.url || url}</strong>
-            </p>
+          {(loading || animating) && !error && (
+            <div className="hci-report">
+              <h2>Analyzing...</h2>
+              <p className="subheader">
+                Running WCAG 2.2 + HCI analysis for:
+                <br />
+                <strong>{analysis?.url || url}</strong>
+              </p>
 
-            {/* BAR 1 — Fetching page snapshot (before image loads) */}
-            {!imageLoaded && (
-              <>
-                <div
-                  className="loading-bar"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={screenshotProgress}
-                >
+              {/* BAR 1 — Fetching page snapshot (before image loads) */}
+              {!imageLoaded && (
+                <>
                   <div
-                    className="loading-bar-fill"
-                    style={{ width: `${screenshotProgress}%` }}
-                  />
-                </div>
-                <p className="loading-bar-text">
-                  Fetching page snapshot… {screenshotProgress}%
-                </p>
-              </>
-            )}
+                    className="loading-bar"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={screenshotProgress}
+                  >
+                    <div
+                      className="loading-bar-fill"
+                      style={{ width: `${screenshotProgress}%` }}
+                    />
+                  </div>
+                  <p className="loading-bar-text">
+                    Fetching page snapshot… {screenshotProgress}%
+                  </p>
+                </>
+              )}
 
-            {/* BAR 2 — Checking violations (during animation) + Finalizing AI report (after animation, waiting on analysis) */}
-            {imageLoaded && (
-              <>
-                <div
-                  className="loading-bar"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={
-                    animationDone && analysis
-                      ? 100
-                      : animationDone
-                        ? Math.min(Math.max(progress, aiScreenshotProgress), 95)
-                        : progress
-                  }
-                >
+              {/* BAR 2 — Checking violations (during animation) + Finalizing AI report (after animation, waiting on analysis) */}
+              {imageLoaded && (
+                <>
                   <div
-                    className="loading-bar-fill"
-                    style={{
-                      width: `${
-                        animationDone && analysis
-                          ? 100
-                          : animationDone
-                            ? Math.min(
-                                Math.max(progress, aiScreenshotProgress),
-                                95,
-                              )
-                            : progress
-                      }%`,
-                      transition: animationDone ? "width 0.6s ease" : undefined,
-                    }}
-                  />
-                </div>
-                <p className="loading-bar-text">
-                  {animationDone && analysis ? (
-                    `Report ready — loading results…`
-                  ) : animationDone ? (
-                    <>
-                      {`Finalizing AI report… ${Math.min(Math.max(progress, aiScreenshotProgress), 95)}%`}
-                      {violationScreenshots &&
-                        violationScreenshots.length > 0 && (
+                    className="loading-bar"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={
+                      animationDone && analysis
+                        ? 100
+                        : animationDone
+                          ? Math.min(
+                              Math.max(progress, aiScreenshotProgress),
+                              95,
+                            )
+                          : progress
+                    }
+                  >
+                    <div
+                      className="loading-bar-fill"
+                      style={{
+                        width: `${
+                          animationDone && analysis
+                            ? 100
+                            : animationDone
+                              ? Math.min(
+                                  Math.max(progress, aiScreenshotProgress),
+                                  95,
+                                )
+                              : progress
+                        }%`,
+                        transition: animationDone
+                          ? "width 0.6s ease"
+                          : undefined,
+                      }}
+                    />
+                  </div>
+                  <p className="loading-bar-text">
+                    {animationDone && analysis ? (
+                      `Report ready — loading results…`
+                    ) : animationDone ? (
+                      <>
+                        {`Finalizing AI report… ${Math.min(Math.max(progress, aiScreenshotProgress), 95)}%`}
+                        {violationScreenshots &&
+                          violationScreenshots.length > 0 && (
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                color: "#6366f1",
+                                fontWeight: 700,
+                                transition: "all 0.4s ease",
+                              }}
+                            >
+                              {violationScreenshots.length} screenshot
+                              {violationScreenshots.length !== 1
+                                ? "s"
+                                : ""}{" "}
+                              captured
+                            </span>
+                          )}
+                        {pagesVisited > 0 && (
                           <span
                             style={{
                               marginLeft: 8,
-                              color: "#6366f1",
+                              color: "#0ea5e9",
                               fontWeight: 700,
                               transition: "all 0.4s ease",
                             }}
                           >
-                            {violationScreenshots.length} screenshot
-                            {violationScreenshots.length !== 1 ? "s" : ""}{" "}
-                            captured
+                            {pagesVisited} page{pagesVisited !== 1 ? "s" : ""}
                           </span>
                         )}
+                        {violationsFound > 0 && (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              color: "#e11d48",
+                              fontWeight: 700,
+                              transition: "all 0.4s ease",
+                            }}
+                          >
+                            {violationsFound} violation
+                            {violationsFound !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      `Checking violations… ${Math.round(progress)}%${
+                        violationsFound > 0
+                          ? ` • ${violationsFound} found so far`
+                          : ""
+                      }`
+                    )}
+                  </p>
+                </>
+              )}
+
+              {/* As soon as we have screenshot + steps, show the animation under the text */}
+              {previewResult && (
+                <div className="mt-6">
+                  <AnalysisPlayer
+                    result={previewResult}
+                    onImageLoad={() => {
+                      setImageLoaded(true);
+                      setAnimating(true);
+                    }}
+                    onComplete={() => {
+                      // finish animating; if we have a pending result apply it
+                      setAnimating(false);
+                      setAnimationDone(true);
+                      if (pendingResult) {
+                        const payload = pendingResult;
+                        setAnalysis(
+                          payload.aiAnalysis
+                            ? { ...payload.aiAnalysis, url: payload.url }
+                            : payload,
+                        );
+                        setPendingResult(null);
+                      }
+                      // Apply visual segments if available
+
+                      // before and after
+
+                      if (pendingSegments.length > 0) {
+                        setSegments(pendingSegments);
+                      }
+                    }}
+                  />
+                  {/* "Violation check complete" banner — shown after animation finishes, while AI report finalizes */}
+                  {animationDone && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        marginTop: 14,
+                        padding: "10px 18px",
+                        background: "#f0fdf4",
+                        border: "1px solid #86efac",
+                        borderRadius: 10,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#15803d",
+                      }}
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#16a34a"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      Violation check complete — finalizing AI report…
                       {pagesVisited > 0 && (
                         <span
                           style={{
-                            marginLeft: 8,
+                            marginLeft: 10,
                             color: "#0ea5e9",
-                            fontWeight: 700,
-                            transition: "all 0.4s ease",
+                            fontWeight: 800,
                           }}
                         >
                           {pagesVisited} page{pagesVisited !== 1 ? "s" : ""}
@@ -1440,4091 +1613,3493 @@ Return the edited screenshot with minimal localized edits only.
                       {violationsFound > 0 && (
                         <span
                           style={{
-                            marginLeft: 8,
+                            marginLeft: 6,
                             color: "#e11d48",
-                            fontWeight: 700,
-                            transition: "all 0.4s ease",
+                            fontWeight: 800,
                           }}
                         >
-                          {violationsFound} violation
+                          · {violationsFound} violation
                           {violationsFound !== 1 ? "s" : ""}
                         </span>
                       )}
-                    </>
-                  ) : (
-                    `Checking violations… ${Math.round(progress)}%${
-                      violationsFound > 0
-                        ? ` • ${violationsFound} found so far`
-                        : ""
-                    }`
+                    </div>
                   )}
-                </p>
-              </>
-            )}
+                </div>
+              )}
+            </div>
+          )}
 
-            {/* As soon as we have screenshot + steps, show the animation under the text */}
-            {previewResult && (
-              <div className="mt-6">
-                <AnalysisPlayer
-                  result={previewResult}
-                  onImageLoad={() => {
-                    setImageLoaded(true);
-                    setAnimating(true);
-                  }}
-                  onComplete={() => {
-                    // finish animating; if we have a pending result apply it
-                    setAnimating(false);
-                    setAnimationDone(true);
-                    if (pendingResult) {
-                      const payload = pendingResult;
-                      setAnalysis(
-                        payload.aiAnalysis
-                          ? { ...payload.aiAnalysis, url: payload.url }
-                          : payload,
-                      );
-                      setPendingResult(null);
-                    }
-                    // Apply visual segments if available
+          {!loading && !error && !animating && analysis && (
+            <>
+              {/* Website Preview Section */}
+              <section id="website-preview" ref={sectionRefs.current[0]}>
+                <div className="website-preview-panel">
+                  <h2 className="website-preview-title">Website Preview</h2>
 
-                    // before and after
+                  <div className="website-preview-toggle-group">
+                    <button
+                      className={
+                        "website-preview-toggle-btn" +
+                        (previewMode === "highlighted" ? " active" : "")
+                      }
+                      onClick={() => setPreviewMode("highlighted")}
+                      type="button"
+                    >
+                      Highlighted
+                    </button>
+                    <button
+                      className={
+                        "website-preview-toggle-btn" +
+                        (previewMode === "sidebyside" ? " active" : "")
+                      }
+                      onClick={() => setPreviewMode("sidebyside")}
+                      type="button"
+                    >
+                      Side to side
+                    </button>
+                    <button
+                      className={
+                        "website-preview-toggle-btn" +
+                        (previewMode === "lense" ? " active" : "")
+                      }
+                      onClick={() => setPreviewMode("lense")}
+                      type="button"
+                    >
+                      Lense
+                    </button>
+                  </div>
 
-                    if (pendingSegments.length > 0) {
-                      setSegments(pendingSegments);
-                    }
-                  }}
-                />
-                {/* "Violation check complete" banner — shown after animation finishes, while AI report finalizes */}
-                {animationDone && (
                   <div
+                    className="website-preview-screenshot-wrapper"
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      marginTop: 14,
-                      padding: "10px 18px",
-                      background: "#f0fdf4",
-                      border: "1px solid #86efac",
-                      borderRadius: 10,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "#15803d",
+                      display: "grid",
+                      gridTemplateColumns:
+                        previewMode === "sidebyside"
+                          ? "1fr 1fr"
+                          : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
+                      alignItems: "stretch",
+                      height: "100%",
+                      width: "100%",
+                      background: "#fff",
+                      borderRadius: 12,
+                      overflow: "clip",
                     }}
                   >
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#16a34a"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Violation check complete — finalizing AI report…
-                    {pagesVisited > 0 && (
-                      <span
-                        style={{
-                          marginLeft: 10,
-                          color: "#0ea5e9",
-                          fontWeight: 800,
-                        }}
-                      >
-                        {pagesVisited} page{pagesVisited !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {violationsFound > 0 && (
-                      <span
-                        style={{
-                          marginLeft: 6,
-                          color: "#e11d48",
-                          fontWeight: 800,
-                        }}
-                      >
-                        · {violationsFound} violation
-                        {violationsFound !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                    {previewMode === "highlighted" &&
+                    violationScreenshots &&
+                    violationScreenshots.length > 0 ? (
+                      <>
+                        {/* Left arrow */}
+                        <PreviewArrow
+                          direction="left"
+                          disabled={currentScreenshotIdx === 0}
+                          onClick={() =>
+                            setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
+                          }
+                        />
 
-        {!loading && !error && !animating && analysis && (
-          <>
-            {/* Website Preview Section */}
-            <div className="website-preview-panel">
-              <h2 className="website-preview-title">Website Preview</h2>
+                        {/* Screenshot + highlights + panel */}
+                        {(() => {
+                          const currentVS =
+                            violationScreenshots[currentScreenshotIdx];
+                          // Deduplicate markers by bounding box and issueId
+                          const rawMarkers = currentVS?.markers || [];
+                          const seen = new Set();
+                          const markers = rawMarkers.filter((m) => {
+                            // Use bounding box and issueId as deduplication key
+                            const bbs = (m.boundingBoxes || [])
+                              .map(
+                                (b) => `${b.x},${b.y},${b.width},${b.height}`,
+                              )
+                              .join("|");
+                            const key = `${m.issueId || ""}|${bbs}`;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                          });
+                          const violations = currentVS?.violations || [];
+                          // Map selected marker by issueId for robust mapping
+                          const selectedMarker =
+                            markers[selectedMarkerIdx] || markers[0];
+                          // Find the violation with the same issueId as the selected marker
+                          const selectedViolationData =
+                            violations.find(
+                              (v) => v.issueId === selectedMarker?.issueId,
+                            ) ||
+                            violations[selectedMarkerIdx] ||
+                            violations[0];
+                          const selectedIssueId =
+                            selectedMarker?.issueId ||
+                            selectedViolationData?.issueId ||
+                            "";
+                          const markerCount = Math.max(
+                            markers.length,
+                            violations.length,
+                            1,
+                          );
 
-              <div className="website-preview-toggle-group">
-                <button
-                  className={
-                    "website-preview-toggle-btn" +
-                    (previewMode === "highlighted" ? " active" : "")
-                  }
-                  onClick={() => setPreviewMode("highlighted")}
-                  type="button"
-                >
-                  Highlighted
-                </button>
-                <button
-                  className={
-                    "website-preview-toggle-btn" +
-                    (previewMode === "sidebyside" ? " active" : "")
-                  }
-                  onClick={() => setPreviewMode("sidebyside")}
-                  type="button"
-                >
-                  Side to side
-                </button>
-                <button
-                  className={
-                    "website-preview-toggle-btn" +
-                    (previewMode === "lense" ? " active" : "")
-                  }
-                  onClick={() => setPreviewMode("lense")}
-                  type="button"
-                >
-                  Lense
-                </button>
-              </div>
-
-              <div
-                className="website-preview-screenshot-wrapper"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    previewMode === "sidebyside"
-                      ? "1fr 1fr"
-                      : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
-                  alignItems: "stretch",
-                  height: "100%",
-                  width: "100%",
-                  background: "#fff",
-                  borderRadius: 12,
-                  overflow: "clip",
-                }}
-              >
-                {previewMode === "highlighted" &&
-                violationScreenshots &&
-                violationScreenshots.length > 0 ? (
-                  <>
-                    {/* Left arrow */}
-                    <PreviewArrow
-                      direction="left"
-                      disabled={currentScreenshotIdx === 0}
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
-                      }
-                    />
-
-                    {/* Screenshot + highlights + panel */}
-                    {(() => {
-                      const currentVS =
-                        violationScreenshots[currentScreenshotIdx];
-                      // Deduplicate markers by bounding box and issueId
-                      const rawMarkers = currentVS?.markers || [];
-                      const seen = new Set();
-                      const markers = rawMarkers.filter((m) => {
-                        // Use bounding box and issueId as deduplication key
-                        const bbs = (m.boundingBoxes || [])
-                          .map((b) => `${b.x},${b.y},${b.width},${b.height}`)
-                          .join("|");
-                        const key = `${m.issueId || ""}|${bbs}`;
-                        if (seen.has(key)) return false;
-                        seen.add(key);
-                        return true;
-                      });
-                      const violations = currentVS?.violations || [];
-                      // Map selected marker by issueId for robust mapping
-                      const selectedMarker =
-                        markers[selectedMarkerIdx] || markers[0];
-                      // Find the violation with the same issueId as the selected marker
-                      const selectedViolationData =
-                        violations.find(
-                          (v) => v.issueId === selectedMarker?.issueId,
-                        ) ||
-                        violations[selectedMarkerIdx] ||
-                        violations[0];
-                      const selectedIssueId =
-                        selectedMarker?.issueId ||
-                        selectedViolationData?.issueId ||
-                        "";
-                      const markerCount = Math.max(
-                        markers.length,
-                        violations.length,
-                        1,
-                      );
-
-                      return (
-                        <>
-                          <div
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              position: "relative",
-                            }}
-                          >
-                            <ScreenshotWithHighlights
-                              screenshot={currentVS?.screenshot}
-                              markers={markers}
-                              selectedMarkerIdx={selectedMarkerIdx}
-                              onMarkerClick={(idx) => setSelectedMarkerIdx(idx)}
-                            />
-                            {/* Marker selector dots — shown when there are multiple markers */}
-                            {markerCount > 1 && (
+                          return (
+                            <>
                               <div
                                 style={{
-                                  position: "absolute",
-                                  bottom: 8,
-                                  left: "50%",
-                                  transform: "translateX(-50%)",
-                                  display: "flex",
-                                  gap: 6,
-                                  zIndex: 10,
+                                  width: "100%",
+                                  height: "100%",
+                                  position: "relative",
                                 }}
                               >
-                                {Array.from({ length: markerCount }).map(
-                                  (_, i) => (
-                                    <button
-                                      key={i}
-                                      onClick={() => setSelectedMarkerIdx(i)}
-                                      title={`Issue ${i + 1}`}
-                                      style={{
-                                        width: i === selectedMarkerIdx ? 20 : 8,
-                                        height: 8,
-                                        borderRadius: 999,
-                                        border: "none",
-                                        background:
-                                          i === selectedMarkerIdx
-                                            ? "#ff4d4f"
-                                            : "rgba(255,77,79,0.35)",
-                                        cursor: "pointer",
-                                        padding: 0,
-                                        transition: "all 0.2s ease",
-                                      }}
-                                    />
-                                  ),
+                                <ScreenshotWithHighlights
+                                  screenshot={currentVS?.screenshot}
+                                  markers={markers}
+                                  selectedMarkerIdx={selectedMarkerIdx}
+                                  onMarkerClick={(idx) =>
+                                    setSelectedMarkerIdx(idx)
+                                  }
+                                />
+                                {/* Marker selector dots — shown when there are multiple markers */}
+                                {markerCount > 1 && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      bottom: 8,
+                                      left: "50%",
+                                      transform: "translateX(-50%)",
+                                      display: "flex",
+                                      gap: 6,
+                                      zIndex: 10,
+                                    }}
+                                  >
+                                    {Array.from({ length: markerCount }).map(
+                                      (_, i) => (
+                                        <button
+                                          key={i}
+                                          onClick={() =>
+                                            setSelectedMarkerIdx(i)
+                                          }
+                                          title={`Issue ${i + 1}`}
+                                          style={{
+                                            width:
+                                              i === selectedMarkerIdx ? 20 : 8,
+                                            height: 8,
+                                            borderRadius: 999,
+                                            border: "none",
+                                            background:
+                                              i === selectedMarkerIdx
+                                                ? "#ff4d4f"
+                                                : "rgba(255,77,79,0.35)",
+                                            cursor: "pointer",
+                                            padding: 0,
+                                            transition: "all 0.2s ease",
+                                          }}
+                                        />
+                                      ),
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                            )}
-                          </div>
 
-                          {/* Feedback panel */}
-                          <aside
-                            data-issueid={selectedIssueId}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              background: "#f8fafc",
-                              borderRadius: 10,
-                              border: "1px solid #e5e7eb",
-                              padding: 18,
-                              display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "flex-start",
-                              boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                              overflowY: "auto",
-                              cursor: "pointer",
-                              transition: "box-shadow 0.2s, border 0.2s",
-                            }}
-                            onClick={() => {
-                              if (!selectedIssueId) return;
-                              const highlight = document.querySelector(
-                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                              );
-                              if (highlight) {
-                                highlight.classList.add("pulse-highlight-once");
-                                setTimeout(() => {
-                                  highlight.classList.remove(
-                                    "pulse-highlight-once",
-                                  );
-                                }, 1200);
-                                if (
-                                  typeof highlight.scrollIntoView === "function"
-                                ) {
-                                  highlight.scrollIntoView({
-                                    behavior: "smooth",
-                                    block: "center",
-                                  });
-                                }
-                              }
-                            }}
-                            onMouseEnter={() => {
-                              if (!selectedIssueId) return;
-                              const highlight = document.querySelector(
-                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                              );
-                              if (highlight)
-                                highlight.classList.add("highlight-hover");
-                            }}
-                            onMouseLeave={() => {
-                              if (!selectedIssueId) return;
-                              const highlight = document.querySelector(
-                                `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                              );
-                              if (highlight)
-                                highlight.classList.remove("highlight-hover");
-                            }}
-                          >
-                            {/* Issue counter when there are multiple markers */}
-                            {markerCount > 1 && (
-                              <div
+                              {/* Feedback panel */}
+                              <aside
+                                data-issueid={selectedIssueId}
                                 style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  background: "#f8fafc",
+                                  borderRadius: 10,
+                                  border: "1px solid #e5e7eb",
+                                  padding: 18,
                                   display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  marginBottom: 10,
-                                }}
-                              >
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedMarkerIdx((i) =>
-                                      Math.max(0, i - 1),
-                                    );
-                                  }}
-                                  disabled={selectedMarkerIdx === 0}
-                                  style={{
-                                    width: 22,
-                                    height: 22,
-                                    borderRadius: "50%",
-                                    border: "1px solid #e2e8f0",
-                                    background:
-                                      selectedMarkerIdx === 0
-                                        ? "#f1f5f9"
-                                        : "#fff",
-                                    cursor:
-                                      selectedMarkerIdx === 0
-                                        ? "default"
-                                        : "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    padding: 0,
-                                    color: "#94a3b8",
-                                    fontSize: 12,
-                                  }}
-                                >
-                                  ‹
-                                </button>
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: "#94a3b8",
-                                  }}
-                                >
-                                  Issue {selectedMarkerIdx + 1} of {markerCount}
-                                </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedMarkerIdx((i) =>
-                                      Math.min(markerCount - 1, i + 1),
-                                    );
-                                  }}
-                                  disabled={
-                                    selectedMarkerIdx === markerCount - 1
-                                  }
-                                  style={{
-                                    width: 22,
-                                    height: 22,
-                                    borderRadius: "50%",
-                                    border: "1px solid #e2e8f0",
-                                    background:
-                                      selectedMarkerIdx === markerCount - 1
-                                        ? "#f1f5f9"
-                                        : "#fff",
-                                    cursor:
-                                      selectedMarkerIdx === markerCount - 1
-                                        ? "default"
-                                        : "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    padding: 0,
-                                    color: "#94a3b8",
-                                    fontSize: 12,
-                                  }}
-                                >
-                                  ›
-                                </button>
-                              </div>
-                            )}
-
-                            <div
-                              style={{
-                                fontWeight: 700,
-                                color: "#7c8da0",
-                                marginBottom: 8,
-                              }}
-                            >
-                              {selectedViolationData?.impact?.toUpperCase() ||
-                                "ISSUE"}
-                            </div>
-
-                            <h3
-                              style={{
-                                fontSize: 18,
-                                fontWeight: 700,
-                                margin: 0,
-                                color: "#475569",
-                              }}
-                            >
-                              {getFriendlyTitle(
-                                selectedViolationData?.wcagCriterion,
-                                selectedViolationData?.id,
-                                selectedViolationData?.help ||
-                                  selectedViolationData?.description,
-                              )}
-                            </h3>
-
-                            <p
-                              style={{
-                                color: "#475569",
-                                marginTop: 10,
-                                fontSize: 15,
-                              }}
-                            >
-                              {currentVS?.aiFeedback?.summary ||
-                                selectedViolationData?.help ||
-                                selectedViolationData?.description ||
-                                "This area shows a visual concern that may affect user understanding or ease of use."}
-                            </p>
-
-                            {currentVS?.aiFeedback?.recommendation && (
-                              <p style={{ marginTop: 8, color: "#7c8da0" }}>
-                                <strong>Suggested fix:</strong>{" "}
-                                {currentVS.aiFeedback.recommendation}
-                              </p>
-                            )}
-                          </aside>
-                        </>
-                      );
-                    })()}
-
-                    <PreviewArrow
-                      direction="right"
-                      disabled={
-                        currentScreenshotIdx === violationScreenshots.length - 1
-                      }
-                      onClick={() =>
-                        setCurrentScreenshotIdx((i) =>
-                          Math.min(violationScreenshots.length - 1, i + 1),
-                        )
-                      }
-                    />
-                  </>
-                ) : previewMode === "lense" &&
-                  violationScreenshots &&
-                  violationScreenshots.length > 0 ? (
-                  <>
-                    <div></div>
-                    {/* Screenshot (fills the image grid column) */}
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        position: "relative",
-                      }}
-                    >
-                      <ColorBlindSimulator
-                        imageSrc={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
-                        }
-                        type={colorBlindFilter || "original"}
-                        style={{ maxWidth: "95%" }}
-                      />
-                    </div>
-
-                    {/* Lense panel (fills the panel grid column) */}
-                    <aside className="lense-panel">
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#7c8da0",
-                          marginBottom: 8,
-                          fontSize: 16,
-                        }}
-                      >
-                        Color Vision Filters
-                      </div>
-                      <button
-                        className={
-                          "lense-filter-btn original" +
-                          (!colorBlindFilter ? " active" : "")
-                        }
-                        onClick={() => setColorBlindFilter(null)}
-                        aria-pressed={!colorBlindFilter}
-                      >
-                        Original
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn protanopia" +
-                          (colorBlindFilter === "protanopia" ? " active" : "")
-                        }
-                        onClick={() => setColorBlindFilter("protanopia")}
-                        aria-pressed={colorBlindFilter === "protanopia"}
-                      >
-                        Protanopia (red-blind)
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn deuteranopia" +
-                          (colorBlindFilter === "deuteranopia" ? " active" : "")
-                        }
-                        onClick={() => setColorBlindFilter("deuteranopia")}
-                        aria-pressed={colorBlindFilter === "deuteranopia"}
-                      >
-                        Deuteranopia (green-blind)
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn tritanopia" +
-                          (colorBlindFilter === "tritanopia" ? " active" : "")
-                        }
-                        onClick={() => setColorBlindFilter("tritanopia")}
-                        aria-pressed={colorBlindFilter === "tritanopia"}
-                      >
-                        Tritanopia (blue-blind)
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn monochrome" +
-                          (colorBlindFilter === "monochrome" ? " active" : "")
-                        }
-                        onClick={() => setColorBlindFilter("monochrome")}
-                        aria-pressed={colorBlindFilter === "monochrome"}
-                        style={{
-                          background:
-                            colorBlindFilter === "monochrome"
-                              ? "#d1d5db"
-                              : "#f3f4f6",
-                          color: "#374151",
-                          fontWeight:
-                            colorBlindFilter === "monochrome" ? 700 : 500,
-                          border: "none",
-                          boxShadow: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Monochrome (grayscale)
-                      </button>
-                    </aside>
-                    <div></div>
-                  </>
-                ) : previewMode === "sidebyside" &&
-                  violationScreenshots &&
-                  violationScreenshots.length > 0 ? (
-                  <>
-                    {/* Side by side: left original, right AI-modified */}
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRight: "1px solid #e5e7eb",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      <img
-                        src={
-                          violationScreenshots[currentScreenshotIdx]?.screenshot
-                        }
-                        alt="Original screenshot"
-                        style={{
-                          width: "auto",
-                          height: "auto",
-                          maxWidth: "95%",
-                          maxHeight: "400px",
-                          objectFit: "contain",
-                          borderRadius: "8px",
-                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      {sideBySideLoading ? (
-                        <div
-                          style={{
-                            color: "#7c8da0",
-                            fontWeight: 600,
-                            fontSize: 16,
-                          }}
-                        >
-                          Generating AI-modified screenshot…
-                        </div>
-                      ) : sideBySideAIImage ? (
-                        <img
-                          src={sideBySideAIImage}
-                          alt="AI-modified screenshot"
-                          style={{
-                            width: "auto",
-                            height: "auto",
-                            maxWidth: "95%",
-                            maxHeight: "400px",
-                            objectFit: "contain",
-                            borderRadius: "8px",
-                            boxShadow: "0 2px 8px rgba(124,138,160,0.10)", // match original
-                            border: "1px solid #e5e7eb",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            color: "#7c8da0",
-                            fontWeight: 600,
-                            fontSize: 16,
-                          }}
-                        >
-                          AI-modified screenshot not available.
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : previewMode === "lense" && analysis?.screenshot ? (
-                  <>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      <img
-                        src={analysis.screenshot}
-                        alt="Original screenshot"
-                        style={{
-                          width: "auto",
-                          height: "auto",
-                          maxWidth: "95%",
-                          maxHeight: "400px",
-                          objectFit: "contain",
-                          borderRadius: "8px",
-                          boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      />
-                    </div>
-                    <aside
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "#f8fafc",
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        padding: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "flex-start",
-                        alignItems: "flex-start",
-                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                        overflowY: "auto",
-                        marginLeft: 16,
-                        gap: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#7c8da0",
-                          marginBottom: 8,
-                          fontSize: 16,
-                        }}
-                      >
-                        Color Vision Filters
-                      </div>
-                      {/* Removed duplicate non-interactive filter buttons. Only interactive, AI-calling buttons remain below. */}
-                    </aside>
-                  </>
-                ) : analysis?.screenshot && previewMode === "lense" ? (
-                  <>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#fff",
-                      }}
-                    >
-                      {colorBlindFilter ? (
-                        colorBlindLoading ? (
-                          <div
-                            style={{
-                              color: "#7c8da0",
-                              fontWeight: 600,
-                              fontSize: 16,
-                            }}
-                          >
-                            Generating {colorBlindFilter} simulation…
-                          </div>
-                        ) : colorBlindImage ? (
-                          <img
-                            src={colorBlindImage}
-                            alt={`Screenshot simulated for ${colorBlindFilter}`}
-                            style={{
-                              width: "100%",
-                              height: "auto",
-                              borderRadius: "8px",
-                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                              border: "1px solid #e5e7eb",
-                              display: "block",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              color: "#7c8da0",
-                              fontWeight: 600,
-                              fontSize: 16,
-                            }}
-                          >
-                            Failed to generate simulation.
-                          </div>
-                        )
-                      ) : (
-                        <img
-                          src={analysis.screenshot}
-                          alt="Original screenshot"
-                          style={{
-                            width: "100%",
-                            height: "auto",
-                            borderRadius: "8px",
-                            boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                            border: "1px solid #e5e7eb",
-                            display: "block",
-                          }}
-                        />
-                      )}
-                    </div>
-                    <aside
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "#f8fafc",
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        padding: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "flex-start",
-                        alignItems: "flex-start",
-                        boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                        overflowY: "auto",
-                        marginLeft: 16,
-                        gap: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#7c8da0",
-                          marginBottom: 8,
-                          fontSize: 16,
-                        }}
-                      >
-                        Color Vision Filters
-                      </div>
-                      <button
-                        className={
-                          "lense-filter-btn protanopia" +
-                          (colorBlindFilter === "protanopia" ? " active" : "")
-                        }
-                        onClick={() => handleColorBlindClick("protanopia")}
-                        aria-pressed={colorBlindFilter === "protanopia"}
-                        disabled={colorBlindLoading}
-                        style={{
-                          opacity:
-                            colorBlindLoading &&
-                            colorBlindFilter === "protanopia"
-                              ? 0.7
-                              : 1,
-                          cursor:
-                            colorBlindLoading &&
-                            colorBlindFilter === "protanopia"
-                              ? "wait"
-                              : "pointer",
-                        }}
-                      >
-                        {colorBlindLoading && colorBlindFilter === "protanopia"
-                          ? "Loading…"
-                          : "Protanopia (red-blind)"}
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn deuteranopia" +
-                          (colorBlindFilter === "deuteranopia" ? " active" : "")
-                        }
-                        onClick={() => handleColorBlindClick("deuteranopia")}
-                        aria-pressed={colorBlindFilter === "deuteranopia"}
-                        disabled={colorBlindLoading}
-                        style={{
-                          opacity:
-                            colorBlindLoading &&
-                            colorBlindFilter === "deuteranopia"
-                              ? 0.7
-                              : 1,
-                          cursor:
-                            colorBlindLoading &&
-                            colorBlindFilter === "deuteranopia"
-                              ? "wait"
-                              : "pointer",
-                        }}
-                      >
-                        {colorBlindLoading &&
-                        colorBlindFilter === "deuteranopia"
-                          ? "Loading…"
-                          : "Deuteranopia (green-blind)"}
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn tritanopia" +
-                          (colorBlindFilter === "tritanopia" ? " active" : "")
-                        }
-                        onClick={() => handleColorBlindClick("tritanopia")}
-                        aria-pressed={colorBlindFilter === "tritanopia"}
-                        disabled={colorBlindLoading}
-                        style={{
-                          opacity:
-                            colorBlindLoading &&
-                            colorBlindFilter === "tritanopia"
-                              ? 0.7
-                              : 1,
-                          cursor:
-                            colorBlindLoading &&
-                            colorBlindFilter === "tritanopia"
-                              ? "wait"
-                              : "pointer",
-                        }}
-                      >
-                        {colorBlindLoading && colorBlindFilter === "tritanopia"
-                          ? "Loading…"
-                          : "Tritanopia (blue-blind)"}
-                      </button>
-                      <button
-                        className={
-                          "lense-filter-btn achromatopsia" +
-                          (colorBlindFilter === "achromatopsia"
-                            ? " active"
-                            : "")
-                        }
-                        onClick={() => handleColorBlindClick("achromatopsia")}
-                        aria-pressed={colorBlindFilter === "achromatopsia"}
-                        disabled={colorBlindLoading}
-                        style={{
-                          opacity:
-                            colorBlindLoading &&
-                            colorBlindFilter === "achromatopsia"
-                              ? 0.7
-                              : 1,
-                          cursor:
-                            colorBlindLoading &&
-                            colorBlindFilter === "achromatopsia"
-                              ? "wait"
-                              : "pointer",
-                        }}
-                      >
-                        {colorBlindLoading &&
-                        colorBlindFilter === "achromatopsia"
-                          ? "Loading…"
-                          : "Achromatopsia (grayscale)"}
-                      </button>
-                    </aside>
-                  </>
-                ) : analysis?.screenshot ? (
-                  <img
-                    src={analysis.screenshot}
-                    alt="Website full preview"
-                    className="website-preview-screenshot"
-                  />
-                ) : (
-                  <div className="website-preview-screenshot-placeholder">
-                    No screenshot available.
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* NEW: Two-Column Results Layout */}
-            <div
-              className="results-layout"
-              style={{
-                display: "flex",
-                gap: "24px",
-                marginTop: "32px",
-                minHeight: "600px",
-              }}
-            >
-              {/* LEFT PANEL - Website Preview */}
-              <div
-                className="preview-panel"
-                style={{
-                  background: "#fff",
-                  borderRadius: "16px",
-                  padding: "20px 24px",
-                  boxShadow: "var(--color-accent)",
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  border: "1px solid #e0e7ef",
-                  minHeight: "520px",
-                  marginRight: "auto",
-                  width: "480px",
-                }}
-              >
-                {/* ── Issue Breakdown (inside left panel) ── */}
-                {groups &&
-                  groups.length > 0 &&
-                  (() => {
-                    const totalIssues = groups.reduce(
-                      (s, g) => s + (g.count || 1),
-                      0,
-                    );
-                    const principleColors = {
-                      Perceivable: "#3b82f6",
-                      Operable: "#d97706",
-                      Understandable: "#189b97",
-                      Robust: "#7c3aed",
-                    };
-                    const principleCounts = {
-                      Perceivable: 0,
-                      Operable: 0,
-                      Understandable: 0,
-                      Robust: 0,
-                    };
-                    groups.forEach((g) => {
-                      const p = getPrincipleFromCriterion(g.wcagCriterion);
-                      if (p && p in principleCounts)
-                        principleCounts[p] += g.count || 1;
-                    });
-                    const pieData = Object.entries(principleCounts)
-                      .filter(([, v]) => v > 0)
-                      .map(([label, value]) => ({
-                        label,
-                        value,
-                        color: principleColors[label],
-                      }));
-                    const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
-                    const buildPieSlices = (data, total, cx, cy, r) => {
-                      let angle = -90;
-                      return data.map((d) => {
-                        const sweep = (d.value / total) * 360;
-                        const startRad = (angle * Math.PI) / 180;
-                        const endRad = ((angle + sweep) * Math.PI) / 180;
-                        const x1 = cx + r * Math.cos(startRad);
-                        const y1 = cy + r * Math.sin(startRad);
-                        const x2 = cx + r * Math.cos(endRad);
-                        const y2 = cy + r * Math.sin(endRad);
-                        const large = sweep > 180 ? 1 : 0;
-                        const path =
-                          sweep >= 359.99
-                            ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
-                            : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
-                        angle += sweep;
-                        return {
-                          ...d,
-                          path,
-                          pct: Math.round((d.value / total) * 100),
-                        };
-                      });
-                    };
-                    const slices =
-                      pieTotal > 0
-                        ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
-                        : [];
-                    const sevWeight = (s) => {
-                      const sl = (s || "").toLowerCase();
-                      if (sl === "high" || sl === "critical") return 3;
-                      if (sl === "medium" || sl === "warning") return 2;
-                      return 1;
-                    };
-                    const topCriteria = [...groups]
-                      .sort(
-                        (a, b) =>
-                          sevWeight(b.severity) - sevWeight(a.severity) ||
-                          (b.count || 1) - (a.count || 1),
-                      )
-                      .slice(0, 5);
-                    const sevBadgeStyle = (sev) => {
-                      const sl = (sev || "").toLowerCase();
-                      if (sl === "high" || sl === "critical")
-                        return {
-                          bg: "#fef2f2",
-                          color: "#dc2626",
-                          border: "#fca5a5",
-                        };
-                      if (sl === "medium" || sl === "warning")
-                        return {
-                          bg: "#fffbeb",
-                          color: "#d97706",
-                          border: "#fde68a",
-                        };
-                      return {
-                        bg: "#f0fdf4",
-                        color: "#16a34a",
-                        border: "#86efac",
-                      };
-                    };
-                    return (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#94a3b8",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.6px",
-                            marginBottom: 14,
-                          }}
-                        >
-                          Issue Breakdown
-                        </div>
-                        {/* Pie + legend side by side */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 16,
-                            alignItems: "center",
-                            marginBottom: 16,
-                          }}
-                        >
-                          <svg
-                            width="120"
-                            height="120"
-                            viewBox="0 0 120 120"
-                            style={{ flexShrink: 0 }}
-                          >
-                            {slices.map((s) => (
-                              <path
-                                key={s.label}
-                                d={s.path}
-                                fill={s.color}
-                                opacity={
-                                  hoveredSlice && hoveredSlice !== s.label
-                                    ? 0.4
-                                    : 1
-                                }
-                                style={{
+                                  flexDirection: "column",
+                                  justifyContent: "flex-start",
+                                  boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                                  overflowY: "auto",
                                   cursor: "pointer",
-                                  transition: "opacity 0.15s ease",
+                                  transition: "box-shadow 0.2s, border 0.2s",
                                 }}
-                                onMouseEnter={() => setHoveredSlice(s.label)}
-                                onMouseLeave={() => setHoveredSlice(null)}
-                              />
-                            ))}
-                            {slices.map((s) => (
-                              <path
-                                key={s.label + "-sep"}
-                                d={s.path}
-                                fill="none"
-                                stroke="#fff"
-                                strokeWidth="2"
-                              />
-                            ))}
-                            <circle cx="60" cy="60" r="28" fill="#fff" />
-                            <text
-                              x="60"
-                              y="57"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              fontSize="15"
-                              fontWeight="800"
-                              fill="#0f172a"
-                            >
-                              {hoveredSlice
-                                ? principleCounts[hoveredSlice]
-                                : totalIssues}
-                            </text>
-                            <text
-                              x="60"
-                              y="70"
-                              textAnchor="middle"
-                              fontSize="8"
-                              fill="#94a3b8"
-                            >
-                              {hoveredSlice
-                                ? hoveredSlice.split(" ")[0]
-                                : "total"}
-                            </text>
-                          </svg>
-                          <div style={{ flex: 1 }}>
-                            {pieData.map((s) => (
-                              <div
-                                key={s.label}
-                                onMouseEnter={() => setHoveredSlice(s.label)}
-                                onMouseLeave={() => setHoveredSlice(null)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 7,
-                                  marginBottom: 6,
-                                  cursor: "default",
-                                  opacity:
-                                    hoveredSlice && hoveredSlice !== s.label
-                                      ? 0.4
-                                      : 1,
-                                  transition: "opacity 0.15s ease",
+                                onClick={() => {
+                                  if (!selectedIssueId) return;
+                                  const highlight = document.querySelector(
+                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                  );
+                                  if (highlight) {
+                                    highlight.classList.add(
+                                      "pulse-highlight-once",
+                                    );
+                                    setTimeout(() => {
+                                      highlight.classList.remove(
+                                        "pulse-highlight-once",
+                                      );
+                                    }, 1200);
+                                    if (
+                                      typeof highlight.scrollIntoView ===
+                                      "function"
+                                    ) {
+                                      highlight.scrollIntoView({
+                                        behavior: "smooth",
+                                        block: "center",
+                                      });
+                                    }
+                                  }
+                                }}
+                                onMouseEnter={() => {
+                                  if (!selectedIssueId) return;
+                                  const highlight = document.querySelector(
+                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                  );
+                                  if (highlight)
+                                    highlight.classList.add("highlight-hover");
+                                }}
+                                onMouseLeave={() => {
+                                  if (!selectedIssueId) return;
+                                  const highlight = document.querySelector(
+                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                  );
+                                  if (highlight)
+                                    highlight.classList.remove(
+                                      "highlight-hover",
+                                    );
                                 }}
                               >
-                                <span
-                                  style={{
-                                    width: 9,
-                                    height: 9,
-                                    borderRadius: 2,
-                                    background: s.color,
-                                    flexShrink: 0,
-                                  }}
-                                />
-                                <span
-                                  style={{
-                                    fontSize: 11.5,
-                                    fontWeight: 600,
-                                    color: "#334155",
-                                    flex: 1,
-                                  }}
-                                >
-                                  {s.label}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 11.5,
-                                    fontWeight: 700,
-                                    color: s.color,
-                                  }}
-                                >
-                                  {Math.round((s.value / pieTotal) * 100)}%
-                                </span>
-                              </div>
-                            ))}
-                            {Object.entries(principleCounts)
-                              .filter(([, v]) => v === 0)
-                              .map(([label]) => (
-                                <div
-                                  key={label}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 7,
-                                    marginBottom: 6,
-                                    opacity: 0.3,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      width: 9,
-                                      height: 9,
-                                      borderRadius: 2,
-                                      background: "#e2e8f0",
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                  <span
-                                    style={{
-                                      fontSize: 11.5,
-                                      fontWeight: 600,
-                                      color: "#94a3b8",
-                                      flex: 1,
-                                    }}
-                                  >
-                                    {label}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 11.5,
-                                      fontWeight: 700,
-                                      color: "#cbd5e1",
-                                    }}
-                                  >
-                                    0%
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                        {/* Fix First */}
-                        <div
-                          style={{
-                            borderTop: "1px solid #f1f5f9",
-                            paddingTop: 12,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              color: "#94a3b8",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.5px",
-                              marginBottom: 8,
-                            }}
-                          >
-                            Fix First — Ranked by Priority
-                          </div>
-                          {topCriteria.map((g, i) => {
-                            const badge = sevBadgeStyle(g.severity);
-                            const criterionNum = getCriterionKey(
-                              g.wcagCriterion,
-                            );
-                            return (
-                              <div
-                                key={i}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "flex-start",
-                                  gap: 8,
-                                  padding: "7px 0",
-                                  borderBottom:
-                                    i < topCriteria.length - 1
-                                      ? "1px solid #f1f5f9"
-                                      : "none",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 800,
-                                    color: "#cbd5e1",
-                                    minWidth: 16,
-                                    paddingTop: 1,
-                                  }}
-                                >
-                                  #{i + 1}
-                                </span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
+                                {/* Issue counter when there are multiple markers */}
+                                {markerCount > 1 && (
                                   <div
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
-                                      gap: 5,
-                                      flexWrap: "wrap",
-                                      marginBottom: 2,
+                                      gap: 6,
+                                      marginBottom: 10,
                                     }}
                                   >
-                                    <span
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMarkerIdx((i) =>
+                                          Math.max(0, i - 1),
+                                        );
+                                      }}
+                                      disabled={selectedMarkerIdx === 0}
                                       style={{
-                                        fontSize: 11.5,
-                                        fontWeight: 700,
-                                        color: "#0f172a",
+                                        width: 22,
+                                        height: 22,
+                                        borderRadius: "50%",
+                                        border: "1px solid #e2e8f0",
+                                        background:
+                                          selectedMarkerIdx === 0
+                                            ? "#f1f5f9"
+                                            : "#fff",
+                                        cursor:
+                                          selectedMarkerIdx === 0
+                                            ? "default"
+                                            : "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        padding: 0,
+                                        color: "#94a3b8",
+                                        fontSize: 12,
                                       }}
                                     >
-                                      {getFriendlyTitle(
-                                        g.wcagCriterion,
-                                        g.id,
-                                        g.problem,
-                                      )}
-                                    </span>
+                                      ‹
+                                    </button>
                                     <span
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: 11,
                                         fontWeight: 700,
-                                        background: badge.bg,
-                                        color: badge.color,
-                                        border: `1px solid ${badge.border}`,
-                                        borderRadius: 999,
-                                        padding: "1px 6px",
-                                      }}
-                                    >
-                                      {g.severity}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontSize: 10.5,
                                         color: "#94a3b8",
                                       }}
                                     >
-                                      {g.count} instance
-                                      {g.count !== 1 ? "s" : ""}
+                                      Issue {selectedMarkerIdx + 1} of{" "}
+                                      {markerCount}
                                     </span>
-                                  </div>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: 11,
-                                      color: "#64748b",
-                                      lineHeight: 1.4,
-                                      overflow: "hidden",
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: "vertical",
-                                    }}
-                                  >
-                                    {g.problem}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-              </div>
-
-              {/* RIGHT PANEL – Accessibility Issues */}
-              <div
-                style={{
-                  width: "100%",
-                  background: "#ffffff",
-                  borderRadius: "14px",
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                  boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
-                }}
-              >
-                {/* ================= SUMMARY HEADER ================= */}
-                <div
-                  style={{
-                    padding: "20px 24px",
-                    background: "#ffffff",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  <h2 className="issues-panel-heading">Accessibility Issues</h2>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: "16px",
-                    }}
-                  >
-                    {/* Total Issues */}
-                    <div
-                      style={{
-                        background: "#f1f5f9",
-                        padding: "12px 16px",
-                        borderRadius: "12px",
-                        minWidth: "120px",
-                        boxShadow: "var(--color-accent)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#64748b",
-                        }}
-                      >
-                        TOTAL ISSUES
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 28,
-                          fontWeight: 900,
-                          lineHeight: 1,
-                          color:
-                            Object.values(groupedByPrinciple || {}).flat()
-                              .length === 0
-                              ? "#16a34a"
-                              : "#b3261e",
-                        }}
-                      >
-                        {Object.values(groupedByPrinciple || {}).flat().length}
-                      </div>
-                    </div>
-
-                    {/* Conformance Levels */}
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          marginBottom: 6,
-                        }}
-                      >
-                        CONFORMANCE LEVELS
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {/* Level A */}
-                        <span
-                          style={{
-                            background: "#f1f5f9",
-                            border: "1px solid #475569",
-                            color: "#475569",
-                            padding: "6px 12px",
-                            borderRadius: "999px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          A: {levelAScore ?? "-"}%
-                          <InfoTooltip
-                            label="Level A"
-                            description="The minimum WCAG conformance level. Addresses the most basic accessibility barriers that prevent some users from accessing content."
-                          />
-                        </span>
-
-                        {/* Level AA */}
-                        <span
-                          style={{
-                            background: "#fff7ed",
-                            border: "1px solid #b45309",
-                            color: "#b45309",
-                            padding: "6px 12px",
-                            borderRadius: "999px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          AA: {levelAAScore ?? "-"}%
-                          <InfoTooltip
-                            label="Level AA"
-                            description="The most widely adopted WCAG level. Addresses the most common and impactful accessibility issues affecting users with disabilities."
-                          />
-                        </span>
-
-                        {/* Level AAA */}
-                        <span
-                          style={{
-                            background: "#ecfeff",
-                            border: "1px solid #0ea5a4",
-                            color: "#0ea5a4",
-                            padding: "6px 12px",
-                            borderRadius: "999px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          AAA: {levelAAAScore ?? "-"}%
-                          <InfoTooltip
-                            label="Level AAA"
-                            description="The highest WCAG conformance level. Represents optimal accessibility but can be difficult to achieve across all content."
-                          />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {(() => {
-                  // Debugging output
-                  console.log("analysis:", analysis);
-                  console.log("analysis.groupedByPrinciple:", analysis?.groups);
-                  const fallback = (() => {
-                    const violations = analysis?.violations || [];
-                    const result = {
-                      Perceivable: [],
-                      Operable: [],
-                      Understandable: [],
-                      Robust: [],
-                    };
-                    violations.forEach((v) => {
-                      const p =
-                        v.principle ||
-                        v.pourPrinciple ||
-                        v.category ||
-                        v.wcagPrinciple;
-                      if (p && result[p]) {
-                        result[p].push(v);
-                      }
-                    });
-                    return result;
-                  })();
-                  console.log("fallback groupedByPrinciple:", fallback);
-                  return (
-                    <ViolationsFilterSection
-                      violations={analysis?.violations || []}
-                      groupedByPrinciple={groupedByPrinciple}
-                      siteUrl={analysis?.url || url || ""}
-                    />
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* HCI Report */}
-            <div className="hci-section-wrap" style={{ display: "block" }}>
-              {/* HCI Report Section */}
-              <div className="hci-card">
-                {/* Header row: title + reading time + export */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: 16,
-                  }}
-                >
-                  <h2 className="hci-card-heading" style={{ margin: 0 }}>
-                    HCI Report
-                  </h2>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {hciParagraphs.length > 0 && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: "#94a3b8",
-                          fontWeight: 500,
-                        }}
-                      >
-                        ~
-                        {Math.ceil(
-                          hciParagraphs.join(" ").split(/\s+/).length / 200,
-                        )}{" "}
-                        min read
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {hciParagraphs.length > 0 ? (
-                  (() => {
-                    // ── Theme detection ──────────────────────────────────────
-                    const detectTheme = (text) => {
-                      const t = text.toLowerCase();
-                      if (
-                        /mobile|responsive|touch|small screen|screen size/.test(
-                          t,
-                        )
-                      )
-                        return {
-                          label: "Mobile",
-                          color: "#0ea5e9",
-                          bg: "#f0f9ff",
-                        };
-                      if (
-                        /cognitive|mental load|burden|frustrat|comprehend|discoverability|learnability/.test(
-                          t,
-                        )
-                      )
-                        return {
-                          label: "Cognitive Load",
-                          color: "#8b5cf6",
-                          bg: "#f5f3ff",
-                        };
-                      if (
-                        /interact|click|hover|link|button|navigat|pattern|feedback/.test(
-                          t,
-                        )
-                      )
-                        return {
-                          label: "Interaction",
-                          color: "#f59e0b",
-                          bg: "#fffbeb",
-                        };
-                      if (
-                        /visual|design|layout|color|font|typograph|aesthetic|clean|modern|hierarchy/.test(
-                          t,
-                        )
-                      )
-                        return {
-                          label: "Visual Design",
-                          color: "#189b97",
-                          bg: "#f0fdfa",
-                        };
-                      if (
-                        /overall|conclusion|recommend|priorit|essential|key|addressing|strengthen|strengthens/.test(
-                          t,
-                        )
-                      )
-                        return {
-                          label: "Conclusion",
-                          color: "#16a34a",
-                          bg: "#f0fdf4",
-                        };
-                      return {
-                        label: "Analysis",
-                        color: "#64748b",
-                        bg: "#f8fafc",
-                      };
-                    };
-
-                    // ── Paragraph-level sentiment ────────────────────────────
-                    const detectSentiment = (text) => {
-                      const neg = (
-                        text.match(
-                          /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|doesn.t|inadequate|insufficient|concern/gi,
-                        ) || []
-                      ).length;
-                      const pos = (
-                        text.match(
-                          /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|responsive|legib|effective|appropriate|strength/gi,
-                        ) || []
-                      ).length;
-                      if (neg > pos + 1)
-                        return {
-                          label: "Issues identified",
-                          color: "#ef4444",
-                          bg: "#fef2f2",
-                        };
-                      if (pos > neg)
-                        return {
-                          label: "Strengths noted",
-                          color: "#16a34a",
-                          bg: "#f0fdf4",
-                        };
-                      return {
-                        label: "Mixed",
-                        color: "#f59e0b",
-                        bg: "#fffbeb",
-                      };
-                    };
-
-                    // ── Sentence-level sentiment (for inline highlighting) ───
-                    const sentenceSentiment = (s) => {
-                      const neg = (
-                        s.match(
-                          /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|inadequate|insufficient/gi,
-                        ) || []
-                      ).length;
-                      const pos = (
-                        s.match(
-                          /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|effective|appropriate|strength/gi,
-                        ) || []
-                      ).length;
-                      if (neg > pos)
-                        return {
-                          bg: "#fff5f5",
-                          borderBottom: "1px solid #fca5a5",
-                        };
-                      if (pos > neg)
-                        return {
-                          bg: "#f0fdf4",
-                          borderBottom: "1px solid #86efac",
-                        };
-                      return { bg: "transparent", borderBottom: "none" };
-                    };
-
-                    // ── Glossary: wrap known terms with underline + title ────
-                    const applyGlossary = (text) => {
-                      const sortedTerms = Object.keys(HCI_GLOSSARY).sort(
-                        (a, b) => b.length - a.length,
-                      );
-                      const escaped = sortedTerms.map((t) =>
-                        t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-                      );
-                      const re = new RegExp(
-                        `\\b(${escaped.join("|")})\\b`,
-                        "gi",
-                      );
-                      return text.replace(re, (match) => {
-                        const def =
-                          HCI_GLOSSARY[
-                            Object.keys(HCI_GLOSSARY).find(
-                              (k) => k.toLowerCase() === match.toLowerCase(),
-                            )
-                          ] || "";
-                        return `<span title="${def.replace(/"/g, "&quot;")}" style="border-bottom:1.5px dotted #94a3b8;cursor:help;">${match}</span>`;
-                      });
-                    };
-
-                    // ── Key takeaways ────────────────────────────────────────
-                    const allText = hciParagraphs.join(" ");
-                    const sentences = allText
-                      .split(/(?<=[.!?])\s+/)
-                      .map((s) => s.trim())
-                      .filter((s) => s.length > 50);
-                    const actionRe =
-                      /should|must|ensure|critical|significant|barrier|priorit|recommend|essential|address|improv|fix|add|provid|implement|consider/i;
-                    const takeaways = [
-                      ...new Set(sentences.filter((s) => actionRe.test(s))),
-                    ].slice(0, 5);
-
-                    // ── Related issues count per theme ───────────────────────
-                    const relatedIssues = (themeLabel) => {
-                      const criteria = THEME_CRITERIA[themeLabel] || [];
-                      if (criteria.length === 0) return [];
-                      return groups.filter((g) => {
-                        const k = getCriterionKey(g.wcagCriterion);
-                        return k && criteria.includes(k);
-                      });
-                    };
-
-                    const visibleParas = hciExpanded
-                      ? hciParagraphs
-                      : hciParagraphs.slice(0, 2);
-
-                    return (
-                      <>
-                        {/* Key Takeaways */}
-                        {takeaways.length > 0 && (
-                          <div
-                            style={{
-                              background: "#fffbeb",
-                              border: "1px solid #fde68a",
-                              borderRadius: 12,
-                              padding: "16px 20px",
-                              marginBottom: 20,
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontWeight: 700,
-                                fontSize: 12,
-                                color: "#92400e",
-                                marginBottom: 10,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.6px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              <svg
-                                width="13"
-                                height="13"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#92400e"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                              </svg>
-                              Key Takeaways
-                            </div>
-                            <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
-                              {takeaways.map((t, i) => (
-                                <li
-                                  key={i}
-                                  style={{
-                                    fontSize: 13.5,
-                                    color: "#78350f",
-                                    lineHeight: 1.65,
-                                    marginBottom:
-                                      i < takeaways.length - 1 ? 8 : 0,
-                                  }}
-                                >
-                                  {t}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Glossary hint */}
-                        <p
-                          style={{
-                            fontSize: 11.5,
-                            color: "#94a3b8",
-                            marginBottom: 14,
-                            fontStyle: "italic",
-                          }}
-                        >
-                          Hover over underlined terms for definitions. Sentence
-                          backgrounds indicate identified issues (red) or
-                          strengths (green).
-                        </p>
-
-                        {/* Themed paragraph cards with sentence highlighting + related issues */}
-                        {visibleParas.map((para, idx) => {
-                          const theme = detectTheme(para);
-                          const sentiment = detectSentiment(para);
-                          const related = relatedIssues(theme.label);
-                          // Split into sentences for inline highlighting
-                          const paraSegs = para
-                            .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
-                            .map((s) => s.trim())
-                            .filter(Boolean);
-
-                          return (
-                            <div
-                              key={idx}
-                              style={{
-                                borderLeft: `3px solid ${theme.color}`,
-                                background: theme.bg,
-                                borderRadius: "0 12px 12px 0",
-                                padding: "14px 18px",
-                                marginBottom: 10,
-                              }}
-                            >
-                              {/* Card header */}
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  marginBottom: 10,
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.6px",
-                                    color: theme.color,
-                                  }}
-                                >
-                                  {theme.label}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    background: sentiment.bg,
-                                    color: sentiment.color,
-                                    borderRadius: 999,
-                                    padding: "2px 10px",
-                                    border: `1px solid ${sentiment.color}33`,
-                                  }}
-                                >
-                                  {sentiment.label}
-                                </span>
-                              </div>
-
-                              {/* Sentence-level highlighting with glossary */}
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: 14.5,
-                                  color: "#334155",
-                                  lineHeight: 1.8,
-                                }}
-                              >
-                                {paraSegs.map((seg, si) => {
-                                  const ss = sentenceSentiment(seg);
-                                  return (
-                                    <span
-                                      key={si}
-                                      dangerouslySetInnerHTML={{
-                                        __html: applyGlossary(seg) + " ",
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMarkerIdx((i) =>
+                                          Math.min(markerCount - 1, i + 1),
+                                        );
                                       }}
+                                      disabled={
+                                        selectedMarkerIdx === markerCount - 1
+                                      }
                                       style={{
-                                        backgroundColor: ss.bg,
-                                        borderRadius: 3,
-                                        padding:
-                                          ss.bg !== "transparent"
-                                            ? "1px 2px"
-                                            : 0,
-                                        borderBottom: ss.borderBottom,
+                                        width: 22,
+                                        height: 22,
+                                        borderRadius: "50%",
+                                        border: "1px solid #e2e8f0",
+                                        background:
+                                          selectedMarkerIdx === markerCount - 1
+                                            ? "#f1f5f9"
+                                            : "#fff",
+                                        cursor:
+                                          selectedMarkerIdx === markerCount - 1
+                                            ? "default"
+                                            : "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        padding: 0,
+                                        color: "#94a3b8",
+                                        fontSize: 12,
                                       }}
-                                    />
-                                  );
-                                })}
-                              </p>
+                                    >
+                                      ›
+                                    </button>
+                                  </div>
+                                )}
 
-                              {/* Related issues chips */}
-                              {related.length > 0 && (
                                 <div
                                   style={{
-                                    marginTop: 12,
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: 6,
-                                    alignItems: "center",
+                                    fontWeight: 700,
+                                    color: "#7c8da0",
+                                    marginBottom: 8,
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      color: "#94a3b8",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {related.length} related issue
-                                    {related.length > 1 ? "s" : ""}:
-                                  </span>
-                                  {related.map((g, ri) => (
-                                    <span
-                                      key={ri}
-                                      style={{
-                                        fontSize: 11,
-                                        fontWeight: 600,
-                                        background: "#fff",
-                                        border: `1px solid ${theme.color}55`,
-                                        color: theme.color,
-                                        borderRadius: 999,
-                                        padding: "2px 9px",
-                                        cursor: "default",
-                                      }}
-                                      title={g.problem}
-                                    >
-                                      {getCriterionKey(g.wcagCriterion)}
-                                    </span>
-                                  ))}
+                                  {selectedViolationData?.impact?.toUpperCase() ||
+                                    "ISSUE"}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
 
-                        {/* Expand/collapse */}
-                        {hciParagraphs.length > 2 && (
-                          <button
-                            onClick={() => setHciExpanded((e) => !e)}
-                            style={{
-                              background: "none",
-                              border: "1px solid #e2e8f0",
-                              color: "#64748b",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              borderRadius: 8,
-                              padding: "8px 16px",
-                              cursor: "pointer",
-                              marginTop: 6,
-                              width: "100%",
-                              boxShadow: "none",
-                            }}
-                          >
-                            {hciExpanded
-                              ? "Show less"
-                              : `Show full analysis (${hciParagraphs.length - 2} more section${hciParagraphs.length - 2 > 1 ? "s" : ""})`}
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()
-                ) : (
-                  <p
-                    style={{
-                      fontSize: "15px",
-                      color: "#475569",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    {hciText}
-                  </p>
-                )}
-              </div>
-            </div>
+                                <h3
+                                  style={{
+                                    fontSize: 18,
+                                    fontWeight: 700,
+                                    margin: 0,
+                                    color: "#475569",
+                                  }}
+                                >
+                                  {getFriendlyTitle(
+                                    selectedViolationData?.wcagCriterion,
+                                    selectedViolationData?.id,
+                                    selectedViolationData?.help ||
+                                      selectedViolationData?.description,
+                                  )}
+                                </h3>
 
-            {/* ── Mobile Experience Section ── */}
-            {analysis &&
-              (() => {
-                const mobileData =
-                  analysis.aiAnalysis?.mobileAccessibility ||
-                  analysis.mobileAccessibility;
+                                <p
+                                  style={{
+                                    color: "#475569",
+                                    marginTop: 10,
+                                    fontSize: 15,
+                                  }}
+                                >
+                                  {currentVS?.aiFeedback?.summary ||
+                                    selectedViolationData?.help ||
+                                    selectedViolationData?.description ||
+                                    "This area shows a visual concern that may affect user understanding or ease of use."}
+                                </p>
 
-                // Use AI-generated mobile data
-                const {
-                  overallMobileScore,
-                  mobileIssues = [],
-                  mobileStrengths = [],
-                  mobileNextSteps = [],
-                  responsiveScore = 0,
-                  touchScore = 0,
-                  readabilityScore = 0,
-                  navigationScore = 0,
-                  mobileFormScore = 0,
-                  contentAccessScore = 0,
-                } = mobileData;
-
-                const subScores = [
-                  {
-                    label: "Responsive",
-                    score: responsiveScore,
-                    icon: "⬡",
-                    color: "#0ea5e9",
-                  },
-                  {
-                    label: "Touch",
-                    score: touchScore,
-                    icon: "👆",
-                    color: "#f59e0b",
-                  },
-                  {
-                    label: "Readability",
-                    score: readabilityScore,
-                    icon: "Aa",
-                    color: "#8b5cf6",
-                  },
-                  {
-                    label: "Navigation",
-                    score: navigationScore,
-                    icon: "☰",
-                    color: "#10b981",
-                  },
-                  {
-                    label: "Forms",
-                    score: mobileFormScore,
-                    icon: "📝",
-                    color: "#6366f1",
-                  },
-                  {
-                    label: "Content",
-                    score: contentAccessScore,
-                    icon: "📄",
-                    color: "#ec4899",
-                  },
-                ];
-
-                const scoreColor = (s) =>
-                  s >= 80 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
-                const sevColor = (s) => {
-                  const sl = (s || "").toLowerCase();
-                  if (sl === "high" || sl === "critical" || sl === "serious")
-                    return "#dc2626";
-                  if (sl === "medium" || sl === "moderate" || sl === "warning")
-                    return "#d97706";
-                  return "#16a34a";
-                };
-
-                // ── Device size options (frameW/H = outer shell, pad = inner padding, screenH = content area height) ──
-                const DEVICE_SIZES = [
-                  {
-                    label: "SE",
-                    sub: "iPhone SE",
-                    w: 375,
-                    frameW: 148,
-                    frameH: 294,
-                    pad: 5,
-                    screenH: 250,
-                    radius: 28,
-                    island: false,
-                    homeBar: false,
-                    homeBtn: true,
-                  },
-                  {
-                    label: "14",
-                    sub: "iPhone 14/15",
-                    w: 390,
-                    frameW: 155,
-                    frameH: 310,
-                    pad: 6,
-                    screenH: 268,
-                    radius: 30,
-                    island: true,
-                    homeBar: true,
-                    homeBtn: false,
-                  },
-                  {
-                    label: "Pro Max",
-                    sub: "iPhone Pro Max",
-                    w: 430,
-                    frameW: 168,
-                    frameH: 326,
-                    pad: 6,
-                    screenH: 280,
-                    radius: 32,
-                    island: true,
-                    homeBar: true,
-                    homeBtn: false,
-                  },
-                  {
-                    label: "Galaxy",
-                    sub: "Samsung Galaxy S",
-                    w: 360,
-                    frameW: 145,
-                    frameH: 302,
-                    pad: 5,
-                    screenH: 264,
-                    radius: 24,
-                    island: false,
-                    homeBar: false,
-                    homeBtn: false,
-                  },
-                  {
-                    label: "Pixel",
-                    sub: "Google Pixel 7",
-                    w: 412,
-                    frameW: 160,
-                    frameH: 316,
-                    pad: 6,
-                    screenH: 272,
-                    radius: 20,
-                    island: false,
-                    homeBar: true,
-                    homeBtn: false,
-                  },
-                  {
-                    label: "iPad",
-                    sub: "iPad Mini",
-                    w: 768,
-                    frameW: 218,
-                    frameH: 290,
-                    pad: 8,
-                    screenH: 248,
-                    radius: 14,
-                    island: false,
-                    homeBar: true,
-                    homeBtn: false,
-                  },
-                ];
-
-                // ── Active device dimensions ──
-                const dev =
-                  DEVICE_SIZES.find((d) => d.w === mobilePreviewWidth) ||
-                  DEVICE_SIZES[1];
-                const screenW = dev.frameW - dev.pad * 2;
-                const scale = screenW / dev.w;
-                const iframeH = Math.round(dev.screenH / scale);
-
-                const sevBg = (s) => {
-                  const sl = (s || "").toLowerCase();
-                  if (sl === "high" || sl === "critical" || sl === "serious")
-                    return "#fef2f2";
-                  if (sl === "medium" || sl === "moderate" || sl === "warning")
-                    return "#fffbeb";
-                  return "#f0fdf4";
-                };
-
-                const sevBorder = (s) => {
-                  const sl = (s || "").toLowerCase();
-                  if (sl === "high" || sl === "critical" || sl === "serious")
-                    return "#fca5a5";
-                  if (sl === "medium" || sl === "moderate" || sl === "warning")
-                    return "#fde68a";
-                  return "#bbf7d0";
-                };
-
-                const highIssues = mobileIssues.filter(
-                  (i) => i.severity === "High",
-                ).length;
-                const mediumIssues = mobileIssues.filter(
-                  (i) => i.severity === "Medium",
-                ).length;
-                const lowIssues = mobileIssues.filter(
-                  (i) => i.severity === "Low",
-                ).length;
-
-                return (
-                  <div
-                    style={{
-                      background: "#fff",
-                      borderRadius: 18,
-                      padding: "24px 28px",
-                      boxShadow: "var(--shadow)",
-                      marginTop: 32,
-                      border: "1px solid var(--border-light)",
-                    }}
-                  >
-                    {/* Header */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        marginBottom: 20,
-                        borderBottom: "1px solid #f1f5f9",
-                        paddingBottom: 16,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 10,
-                          background: "#f0f9ff",
-                          border: "1px solid #bae6fd",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#0ea5e9"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="5" y="2" width="14" height="20" rx="2" />
-                          <line x1="12" y1="18" x2="12.01" y2="18" />
-                        </svg>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <h2 style={{ margin: "0 0 2px", fontSize: 18 }}>
-                          Mobile Experience
-                        </h2>
-                        <p
-                          style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}
-                        >
-                          AI-powered mobile accessibility analysis
-                        </p>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 36,
-                            fontWeight: 900,
-                            color: scoreColor(overallMobileScore),
-                            lineHeight: 1,
-                            letterSpacing: "-1px",
-                          }}
-                        >
-                          {overallMobileScore}%
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#94a3b8",
-                            marginTop: 2,
-                          }}
-                        >
-                          Mobile Score
-                        </div>
-
-                        {mobileIssues.length > 0 && (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 4,
-                              justifyContent: "flex-end",
-                              marginTop: 6,
-                            }}
-                          >
-                            {highIssues > 0 && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  background: "#fef2f2",
-                                  color: "#dc2626",
-                                  border: "1px solid #fca5a5",
-                                  borderRadius: 999,
-                                  padding: "1px 7px",
-                                }}
-                              >
-                                {highIssues} High
-                              </span>
-                            )}
-                            {mediumIssues > 0 && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  background: "#fffbeb",
-                                  color: "#d97706",
-                                  border: "1px solid #fde68a",
-                                  borderRadius: 999,
-                                  padding: "1px 7px",
-                                }}
-                              >
-                                {mediumIssues} Med
-                              </span>
-                            )}
-                            {lowIssues > 0 && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  background: "#f0fdf4",
-                                  color: "#16a34a",
-                                  border: "1px solid #bbf7d0",
-                                  borderRadius: 999,
-                                  padding: "1px 7px",
-                                }}
-                              >
-                                {lowIssues} Low
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Sub-score row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        marginBottom: 24,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {subScores.map((s) => (
-                        <div
-                          key={s.label}
-                          style={{
-                            flex: "1 1 120px",
-                            background: s.score >= 80 ? "#f0fdf4" : "#f8fafc",
-                            border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
-                            borderTop: `3px solid ${scoreColor(s.score)}`,
-                            borderRadius: 10,
-                            padding: "10px 12px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "baseline",
-                              gap: 6,
-                              marginBottom: 4,
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: 22,
-                                fontWeight: 900,
-                                color: scoreColor(s.score),
-                                lineHeight: 1,
-                              }}
-                            >
-                              {s.score}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: "#64748b",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.4px",
-                              }}
-                            >
-                              {s.label}
-                            </div>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 10.5,
-                              color: s.score >= 80 ? "#16a34a" : "#64748b",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {s.score >= 80 ? "✓ Good" : "Needs work"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 28,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      {/* ── Device mockup ── */}
-                      <div
-                        style={{
-                          flexShrink: 0,
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: 6,
-                          transition: "all 0.25s ease",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: dev.frameW,
-                            height: dev.frameH,
-                            background:
-                              "linear-gradient(145deg,#1e293b 0%,#0f172a 100%)",
-                            borderRadius: dev.radius,
-                            padding: `10px ${dev.pad}px ${dev.homeBtn ? 14 : 8}px`,
-                            boxShadow:
-                              "0 24px 64px rgba(0,0,0,0.38), inset 0 0 0 1.5px rgba(255,255,255,0.11), 0 0 0 7px rgba(15,23,42,0.07)",
-                            position: "relative",
-                            transition: "all 0.25s ease",
-                          }}
-                        >
-                          {/* Volume / side buttons — phones only */}
-                          {!dev.island || true ? (
-                            <>
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  left: -3,
-                                  top: 68,
-                                  width: 3,
-                                  height: 22,
-                                  background: "#334155",
-                                  borderRadius: "2px 0 0 2px",
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  left: -3,
-                                  top: 98,
-                                  width: 3,
-                                  height: 34,
-                                  background: "#334155",
-                                  borderRadius: "2px 0 0 2px",
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  left: -3,
-                                  top: 138,
-                                  width: 3,
-                                  height: 34,
-                                  background: "#334155",
-                                  borderRadius: "2px 0 0 2px",
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  right: -3,
-                                  top: 98,
-                                  width: 3,
-                                  height: 50,
-                                  background: "#334155",
-                                  borderRadius: "0 2px 2px 0",
-                                }}
-                              />
+                                {currentVS?.aiFeedback?.recommendation && (
+                                  <p style={{ marginTop: 8, color: "#7c8da0" }}>
+                                    <strong>Suggested fix:</strong>{" "}
+                                    {currentVS.aiFeedback.recommendation}
+                                  </p>
+                                )}
+                              </aside>
                             </>
-                          ) : null}
+                          );
+                        })()}
 
-                          {/* Top chrome: Dynamic island or punch-hole dot */}
-                          {dev.island ? (
+                        <PreviewArrow
+                          direction="right"
+                          disabled={
+                            currentScreenshotIdx ===
+                            violationScreenshots.length - 1
+                          }
+                          onClick={() =>
+                            setCurrentScreenshotIdx((i) =>
+                              Math.min(violationScreenshots.length - 1, i + 1),
+                            )
+                          }
+                        />
+                      </>
+                    ) : previewMode === "lense" &&
+                      violationScreenshots &&
+                      violationScreenshots.length > 0 ? (
+                      <>
+                        <div></div>
+                        {/* Screenshot (fills the image grid column) */}
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                          }}
+                        >
+                          <ColorBlindSimulator
+                            imageSrc={
+                              violationScreenshots[currentScreenshotIdx]
+                                ?.screenshot
+                            }
+                            type={colorBlindFilter || "original"}
+                            style={{ maxWidth: "95%" }}
+                          />
+                        </div>
+
+                        {/* Lense panel (fills the panel grid column) */}
+                        <aside className="lense-panel">
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              color: "#7c8da0",
+                              marginBottom: 8,
+                              fontSize: 16,
+                            }}
+                          >
+                            Color Vision Filters
+                          </div>
+                          <button
+                            className={
+                              "lense-filter-btn original" +
+                              (!colorBlindFilter ? " active" : "")
+                            }
+                            onClick={() => setColorBlindFilter(null)}
+                            aria-pressed={!colorBlindFilter}
+                          >
+                            Original
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn protanopia" +
+                              (colorBlindFilter === "protanopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => setColorBlindFilter("protanopia")}
+                            aria-pressed={colorBlindFilter === "protanopia"}
+                          >
+                            Protanopia (red-blind)
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn deuteranopia" +
+                              (colorBlindFilter === "deuteranopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => setColorBlindFilter("deuteranopia")}
+                            aria-pressed={colorBlindFilter === "deuteranopia"}
+                          >
+                            Deuteranopia (green-blind)
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn tritanopia" +
+                              (colorBlindFilter === "tritanopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => setColorBlindFilter("tritanopia")}
+                            aria-pressed={colorBlindFilter === "tritanopia"}
+                          >
+                            Tritanopia (blue-blind)
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn monochrome" +
+                              (colorBlindFilter === "monochrome"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => setColorBlindFilter("monochrome")}
+                            aria-pressed={colorBlindFilter === "monochrome"}
+                            style={{
+                              background:
+                                colorBlindFilter === "monochrome"
+                                  ? "#d1d5db"
+                                  : "#f3f4f6",
+                              color: "#374151",
+                              fontWeight:
+                                colorBlindFilter === "monochrome" ? 700 : 500,
+                              border: "none",
+                              boxShadow: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Monochrome (grayscale)
+                          </button>
+                        </aside>
+                        <div></div>
+                      </>
+                    ) : previewMode === "sidebyside" &&
+                      violationScreenshots &&
+                      violationScreenshots.length > 0 ? (
+                      <>
+                        {/* Side by side: left original, right AI-modified */}
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            borderRight: "1px solid #e5e7eb",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#fff",
+                          }}
+                        >
+                          <img
+                            src={
+                              violationScreenshots[currentScreenshotIdx]
+                                ?.screenshot
+                            }
+                            alt="Original screenshot"
+                            style={{
+                              width: "auto",
+                              height: "auto",
+                              maxWidth: "95%",
+                              maxHeight: "400px",
+                              objectFit: "contain",
+                              borderRadius: "8px",
+                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                              border: "1px solid #e5e7eb",
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#fff",
+                          }}
+                        >
+                          {sideBySideLoading ? (
                             <div
                               style={{
-                                width: 44,
-                                height: 8,
-                                background: "#0f172a",
-                                borderRadius: 999,
-                                margin: "0 auto 6px",
-                                boxShadow:
-                                  "inset 0 0 0 1px rgba(255,255,255,0.07)",
+                                color: "#7c8da0",
+                                fontWeight: 600,
+                                fontSize: 16,
+                              }}
+                            >
+                              Generating AI-modified screenshot…
+                            </div>
+                          ) : sideBySideAIImage ? (
+                            <img
+                              src={sideBySideAIImage}
+                              alt="AI-modified screenshot"
+                              style={{
+                                width: "auto",
+                                height: "auto",
+                                maxWidth: "95%",
+                                maxHeight: "400px",
+                                objectFit: "contain",
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 8px rgba(124,138,160,0.10)", // match original
+                                border: "1px solid #e5e7eb",
                               }}
                             />
                           ) : (
                             <div
                               style={{
-                                display: "flex",
-                                justifyContent: "center",
-                                alignItems: "center",
-                                height: 14,
-                                marginBottom: 4,
+                                color: "#7c8da0",
+                                fontWeight: 600,
+                                fontSize: 16,
                               }}
                             >
-                              <div
-                                style={{
-                                  width: 8,
-                                  height: 8,
-                                  background: "#1e293b",
-                                  borderRadius: "50%",
-                                  boxShadow:
-                                    "inset 0 0 0 1px rgba(255,255,255,0.1)",
-                                }}
-                              />
+                              AI-modified screenshot not available.
                             </div>
                           )}
-
-                          {/* Screen */}
+                        </div>
+                      </>
+                    ) : previewMode === "lense" && analysis?.screenshot ? (
+                      <>
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#fff",
+                          }}
+                        >
+                          <img
+                            src={analysis.screenshot}
+                            alt="Original screenshot"
+                            style={{
+                              width: "auto",
+                              height: "auto",
+                              maxWidth: "95%",
+                              maxHeight: "400px",
+                              objectFit: "contain",
+                              borderRadius: "8px",
+                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                              border: "1px solid #e5e7eb",
+                            }}
+                          />
+                        </div>
+                        <aside
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            background: "#f8fafc",
+                            borderRadius: 10,
+                            border: "1px solid #e5e7eb",
+                            padding: 18,
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "flex-start",
+                            alignItems: "flex-start",
+                            boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                            overflowY: "auto",
+                            marginLeft: 16,
+                            gap: 12,
+                          }}
+                        >
                           <div
                             style={{
-                              borderRadius: Math.max(dev.radius - 10, 8),
-                              overflow: "hidden",
-                              height: dev.screenH,
-                              background: "#0f172a",
-                              position: "relative",
+                              fontWeight: 700,
+                              color: "#7c8da0",
+                              marginBottom: 8,
+                              fontSize: 16,
                             }}
                           >
-                            {!mobileIframeError && analysis.url ? (
-                              <iframe
-                                key={mobilePreviewWidth}
-                                src={analysis.url}
-                                title="Responsive preview"
-                                onError={() => setMobileIframeError(true)}
+                            Color Vision Filters
+                          </div>
+                          {/* Removed duplicate non-interactive filter buttons. Only interactive, AI-calling buttons remain below. */}
+                        </aside>
+                      </>
+                    ) : analysis?.screenshot && previewMode === "lense" ? (
+                      <>
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#fff",
+                          }}
+                        >
+                          {colorBlindFilter ? (
+                            colorBlindLoading ? (
+                              <div
                                 style={{
-                                  width: dev.w,
-                                  height: iframeH,
-                                  border: "none",
-                                  transform: `scale(${scale})`,
-                                  transformOrigin: "top left",
-                                  pointerEvents: "none",
-                                  display: "block",
+                                  color: "#7c8da0",
+                                  fontWeight: 600,
+                                  fontSize: 16,
                                 }}
-                              />
-                            ) : previewResult?.screenshot ||
-                              analysis.screenshot ? (
+                              >
+                                Generating {colorBlindFilter} simulation…
+                              </div>
+                            ) : colorBlindImage ? (
                               <img
-                                src={
-                                  previewResult?.screenshot ||
-                                  analysis.screenshot
-                                }
-                                alt="Desktop screenshot (responsive preview unavailable)"
+                                src={colorBlindImage}
+                                alt={`Screenshot simulated for ${colorBlindFilter}`}
                                 style={{
                                   width: "100%",
-                                  objectFit: "cover",
-                                  objectPosition: "top center",
+                                  height: "auto",
+                                  borderRadius: "8px",
+                                  boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                                  border: "1px solid #e5e7eb",
                                   display: "block",
                                 }}
                               />
                             ) : (
                               <div
                                 style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  color: "#475569",
-                                  fontSize: 11,
+                                  color: "#7c8da0",
+                                  fontWeight: 600,
+                                  fontSize: 16,
                                 }}
                               >
-                                No preview
+                                Failed to generate simulation.
                               </div>
-                            )}
-                            <div
+                            )
+                          ) : (
+                            <img
+                              src={analysis.screenshot}
+                              alt="Original screenshot"
                               style={{
-                                position: "absolute",
-                                inset: 0,
-                                background:
-                                  "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 40%)",
-                                pointerEvents: "none",
+                                width: "100%",
+                                height: "auto",
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                                border: "1px solid #e5e7eb",
+                                display: "block",
                               }}
                             />
-                          </div>
-
-                          {/* Bottom chrome: home bar or home button */}
-                          {dev.homeBar && (
-                            <div
-                              style={{
-                                width: 44,
-                                height: 3,
-                                background: "rgba(255,255,255,0.22)",
-                                borderRadius: 999,
-                                margin: "6px auto 0",
-                              }}
-                            />
-                          )}
-                          {dev.homeBtn && (
-                            <div
-                              style={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: "50%",
-                                border: "2px solid rgba(255,255,255,0.18)",
-                                margin: "6px auto 0",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: 12,
-                                  height: 12,
-                                  borderRadius: "50%",
-                                  background: "rgba(255,255,255,0.08)",
-                                }}
-                              />
-                            </div>
                           )}
                         </div>
-
-                        {/* Device label */}
-                        <span
+                        <aside
                           style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            color: "#94a3b8",
-                            letterSpacing: "0.3px",
-                            textAlign: "center",
+                            width: "100%",
+                            height: "100%",
+                            background: "#f8fafc",
+                            borderRadius: 10,
+                            border: "1px solid #e5e7eb",
+                            padding: 18,
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "flex-start",
+                            alignItems: "flex-start",
+                            boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                            overflowY: "auto",
+                            marginLeft: 16,
+                            gap: 12,
                           }}
                         >
-                          {!mobileIframeError && analysis.url
-                            ? `${dev.sub} · ${dev.w}px`
-                            : "Desktop screenshot"}
-                        </span>
-                        {(mobileIframeError || !analysis.url) && (
-                          <span
+                          <div
                             style={{
-                              fontSize: 10,
-                              color: "#cbd5e1",
-                              textAlign: "center",
-                              maxWidth: dev.frameW,
+                              fontWeight: 700,
+                              color: "#7c8da0",
+                              marginBottom: 8,
+                              fontSize: 16,
                             }}
                           >
-                            Site blocked iframe embedding
-                          </span>
-                        )}
-
-                        {/* Device size chips */}
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 4,
-                            justifyContent: "center",
-                            marginTop: 4,
-                            maxWidth: Math.max(dev.frameW, 200),
-                          }}
-                        >
-                          {DEVICE_SIZES.map((d) => {
-                            const active = mobilePreviewWidth === d.w;
-                            return (
-                              <button
-                                key={d.w}
-                                title={`${d.sub} (${d.w}px)`}
-                                onClick={() => {
-                                  setMobilePreviewWidth(d.w);
-                                  setMobileIframeError(false);
-                                }}
-                                style={{
-                                  padding: "3px 8px",
-                                  fontSize: 10,
-                                  fontWeight: active ? 700 : 500,
-                                  borderRadius: 999,
-                                  border: `1px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
-                                  background: active ? "#e0f2fe" : "#f8fafc",
-                                  color: active ? "#0369a1" : "#64748b",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s",
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                {d.label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                            Color Vision Filters
+                          </div>
+                          <button
+                            className={
+                              "lense-filter-btn protanopia" +
+                              (colorBlindFilter === "protanopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => handleColorBlindClick("protanopia")}
+                            aria-pressed={colorBlindFilter === "protanopia"}
+                            disabled={colorBlindLoading}
+                            style={{
+                              opacity:
+                                colorBlindLoading &&
+                                colorBlindFilter === "protanopia"
+                                  ? 0.7
+                                  : 1,
+                              cursor:
+                                colorBlindLoading &&
+                                colorBlindFilter === "protanopia"
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {colorBlindLoading &&
+                            colorBlindFilter === "protanopia"
+                              ? "Loading…"
+                              : "Protanopia (red-blind)"}
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn deuteranopia" +
+                              (colorBlindFilter === "deuteranopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() =>
+                              handleColorBlindClick("deuteranopia")
+                            }
+                            aria-pressed={colorBlindFilter === "deuteranopia"}
+                            disabled={colorBlindLoading}
+                            style={{
+                              opacity:
+                                colorBlindLoading &&
+                                colorBlindFilter === "deuteranopia"
+                                  ? 0.7
+                                  : 1,
+                              cursor:
+                                colorBlindLoading &&
+                                colorBlindFilter === "deuteranopia"
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {colorBlindLoading &&
+                            colorBlindFilter === "deuteranopia"
+                              ? "Loading…"
+                              : "Deuteranopia (green-blind)"}
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn tritanopia" +
+                              (colorBlindFilter === "tritanopia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() => handleColorBlindClick("tritanopia")}
+                            aria-pressed={colorBlindFilter === "tritanopia"}
+                            disabled={colorBlindLoading}
+                            style={{
+                              opacity:
+                                colorBlindLoading &&
+                                colorBlindFilter === "tritanopia"
+                                  ? 0.7
+                                  : 1,
+                              cursor:
+                                colorBlindLoading &&
+                                colorBlindFilter === "tritanopia"
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {colorBlindLoading &&
+                            colorBlindFilter === "tritanopia"
+                              ? "Loading…"
+                              : "Tritanopia (blue-blind)"}
+                          </button>
+                          <button
+                            className={
+                              "lense-filter-btn achromatopsia" +
+                              (colorBlindFilter === "achromatopsia"
+                                ? " active"
+                                : "")
+                            }
+                            onClick={() =>
+                              handleColorBlindClick("achromatopsia")
+                            }
+                            aria-pressed={colorBlindFilter === "achromatopsia"}
+                            disabled={colorBlindLoading}
+                            style={{
+                              opacity:
+                                colorBlindLoading &&
+                                colorBlindFilter === "achromatopsia"
+                                  ? 0.7
+                                  : 1,
+                              cursor:
+                                colorBlindLoading &&
+                                colorBlindFilter === "achromatopsia"
+                                  ? "wait"
+                                  : "pointer",
+                            }}
+                          >
+                            {colorBlindLoading &&
+                            colorBlindFilter === "achromatopsia"
+                              ? "Loading…"
+                              : "Achromatopsia (grayscale)"}
+                          </button>
+                        </aside>
+                      </>
+                    ) : analysis?.screenshot ? (
+                      <img
+                        src={analysis.screenshot}
+                        alt="Website full preview"
+                        className="website-preview-screenshot"
+                      />
+                    ) : (
+                      <div className="website-preview-screenshot-placeholder">
+                        No screenshot available.
                       </div>
+                    )}
+                  </div>
+                </div>
+              </section>
 
-                      {/* Right: AI-powered mobile issues */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* Mobile Strengths */}
-                        {mobileStrengths.length > 0 && (
-                          <>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#16a34a",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.5px",
-                                marginBottom: 10,
-                              }}
-                            >
-                              Mobile Strengths ({mobileStrengths.length})
-                            </div>
-                            {mobileStrengths.map((strength, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  display: "flex",
-                                  gap: 6,
-                                  padding: "7px 10px",
-                                  background: "#f0fdf4",
-                                  border: "1px solid #bbf7d0",
-                                  borderLeft: "3px solid #16a34a",
-                                  borderRadius: 8,
-                                  marginBottom: 5,
-                                }}
-                              >
-                                <svg
-                                  width="11"
-                                  height="11"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#16a34a"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  style={{ flexShrink: 0, marginTop: 2 }}
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontSize: 11.5,
-                                    color: "#15803d",
-                                    lineHeight: 1.5,
-                                  }}
-                                >
-                                  {strength}
-                                </p>
-                              </div>
-                            ))}
-                          </>
-                        )}
-
-                        {/* Mobile Issues */}
-                        {mobileIssues.length > 0 && (
-                          <>
+              {/* NEW: Two-Column Results Layout */}
+              <section id="accessibility-issues" ref={sectionRefs.current[1]}>
+                <div
+                  className="results-layout"
+                  style={{
+                    display: "flex",
+                    gap: "24px",
+                    marginTop: "32px",
+                    minHeight: "600px",
+                  }}
+                >
+                  {/* LEFT PANEL - Website Preview */}
+                  <div
+                    className="preview-panel"
+                    style={{
+                      background: "#fff",
+                      borderRadius: "16px",
+                      padding: "20px 24px",
+                      boxShadow: "var(--color-accent)",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      border: "1px solid #e0e7ef",
+                      minHeight: "520px",
+                      marginRight: "auto",
+                      width: "480px",
+                    }}
+                  >
+                    {/* ── Issue Breakdown (inside left panel) ── */}
+                    {groups &&
+                      groups.length > 0 &&
+                      (() => {
+                        const totalIssues = groups.reduce(
+                          (s, g) => s + (g.count || 1),
+                          0,
+                        );
+                        const principleColors = {
+                          Perceivable: "#3b82f6",
+                          Operable: "#d97706",
+                          Understandable: "#189b97",
+                          Robust: "#7c3aed",
+                        };
+                        const principleCounts = {
+                          Perceivable: 0,
+                          Operable: 0,
+                          Understandable: 0,
+                          Robust: 0,
+                        };
+                        groups.forEach((g) => {
+                          const p = getPrincipleFromCriterion(g.wcagCriterion);
+                          if (p && p in principleCounts)
+                            principleCounts[p] += g.count || 1;
+                        });
+                        const pieData = Object.entries(principleCounts)
+                          .filter(([, v]) => v > 0)
+                          .map(([label, value]) => ({
+                            label,
+                            value,
+                            color: principleColors[label],
+                          }));
+                        const pieTotal = pieData.reduce(
+                          (s, d) => s + d.value,
+                          0,
+                        );
+                        const buildPieSlices = (data, total, cx, cy, r) => {
+                          let angle = -90;
+                          return data.map((d) => {
+                            const sweep = (d.value / total) * 360;
+                            const startRad = (angle * Math.PI) / 180;
+                            const endRad = ((angle + sweep) * Math.PI) / 180;
+                            const x1 = cx + r * Math.cos(startRad);
+                            const y1 = cy + r * Math.sin(startRad);
+                            const x2 = cx + r * Math.cos(endRad);
+                            const y2 = cy + r * Math.sin(endRad);
+                            const large = sweep > 180 ? 1 : 0;
+                            const path =
+                              sweep >= 359.99
+                                ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
+                                : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+                            angle += sweep;
+                            return {
+                              ...d,
+                              path,
+                              pct: Math.round((d.value / total) * 100),
+                            };
+                          });
+                        };
+                        const slices =
+                          pieTotal > 0
+                            ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
+                            : [];
+                        const sevWeight = (s) => {
+                          const sl = (s || "").toLowerCase();
+                          if (sl === "high" || sl === "critical") return 3;
+                          if (sl === "medium" || sl === "warning") return 2;
+                          return 1;
+                        };
+                        const topCriteria = [...groups]
+                          .sort(
+                            (a, b) =>
+                              sevWeight(b.severity) - sevWeight(a.severity) ||
+                              (b.count || 1) - (a.count || 1),
+                          )
+                          .slice(0, 5);
+                        const sevBadgeStyle = (sev) => {
+                          const sl = (sev || "").toLowerCase();
+                          if (sl === "high" || sl === "critical")
+                            return {
+                              bg: "#fef2f2",
+                              color: "#dc2626",
+                              border: "#fca5a5",
+                            };
+                          if (sl === "medium" || sl === "warning")
+                            return {
+                              bg: "#fffbeb",
+                              color: "#d97706",
+                              border: "#fde68a",
+                            };
+                          return {
+                            bg: "#f0fdf4",
+                            color: "#16a34a",
+                            border: "#86efac",
+                          };
+                        };
+                        return (
+                          <div>
                             <div
                               style={{
                                 fontSize: 11,
                                 fontWeight: 700,
                                 color: "#94a3b8",
                                 textTransform: "uppercase",
-                                letterSpacing: "0.5px",
-                                margin: "18px 0 10px",
+                                letterSpacing: "0.6px",
+                                marginBottom: 14,
                               }}
                             >
-                              Mobile Issues ({mobileIssues.length})
+                              Issue Breakdown
                             </div>
-                            {mobileIssues.map((issue, i) => {
-                              const cardKey = `mobile-issue-${i}`;
-                              const isOpen = !!expandedItems[cardKey];
-
-                              return (
-                                <div
-                                  key={i}
-                                  style={{
-                                    borderRadius: 10,
-                                    background: sevBg(issue.severity),
-                                    border: `1px solid ${sevBorder(issue.severity)}`,
-                                    borderLeft: `3px solid ${sevColor(issue.severity)}`,
-                                    marginBottom: 8,
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  {/* Header */}
-                                  <button
-                                    onClick={() => toggleExpanded(cardKey)}
+                            {/* Pie + legend side by side */}
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 16,
+                                alignItems: "center",
+                                marginBottom: 16,
+                              }}
+                            >
+                              <svg
+                                width="120"
+                                height="120"
+                                viewBox="0 0 120 120"
+                                style={{ flexShrink: 0 }}
+                              >
+                                {slices.map((s) => (
+                                  <path
+                                    key={s.label}
+                                    d={s.path}
+                                    fill={s.color}
+                                    opacity={
+                                      hoveredSlice && hoveredSlice !== s.label
+                                        ? 0.4
+                                        : 1
+                                    }
                                     style={{
-                                      width: "100%",
-                                      background: "transparent",
-                                      border: "none",
-                                      padding: "11px 14px",
                                       cursor: "pointer",
+                                      transition: "opacity 0.15s ease",
+                                    }}
+                                    onMouseEnter={() =>
+                                      setHoveredSlice(s.label)
+                                    }
+                                    onMouseLeave={() => setHoveredSlice(null)}
+                                  />
+                                ))}
+                                {slices.map((s) => (
+                                  <path
+                                    key={s.label + "-sep"}
+                                    d={s.path}
+                                    fill="none"
+                                    stroke="#fff"
+                                    strokeWidth="2"
+                                  />
+                                ))}
+                                <circle cx="60" cy="60" r="28" fill="#fff" />
+                                <text
+                                  x="60"
+                                  y="57"
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fontSize="15"
+                                  fontWeight="800"
+                                  fill="#0f172a"
+                                >
+                                  {hoveredSlice
+                                    ? principleCounts[hoveredSlice]
+                                    : totalIssues}
+                                </text>
+                                <text
+                                  x="60"
+                                  y="70"
+                                  textAnchor="middle"
+                                  fontSize="8"
+                                  fill="#94a3b8"
+                                >
+                                  {hoveredSlice
+                                    ? hoveredSlice.split(" ")[0]
+                                    : "total"}
+                                </text>
+                              </svg>
+                              <div style={{ flex: 1 }}>
+                                {pieData.map((s) => (
+                                  <div
+                                    key={s.label}
+                                    onMouseEnter={() =>
+                                      setHoveredSlice(s.label)
+                                    }
+                                    onMouseLeave={() => setHoveredSlice(null)}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 7,
+                                      marginBottom: 6,
+                                      cursor: "default",
+                                      opacity:
+                                        hoveredSlice && hoveredSlice !== s.label
+                                          ? 0.4
+                                          : 1,
+                                      transition: "opacity 0.15s ease",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 9,
+                                        height: 9,
+                                        borderRadius: 2,
+                                        background: s.color,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 600,
+                                        color: "#334155",
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {s.label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 700,
+                                        color: s.color,
+                                      }}
+                                    >
+                                      {Math.round((s.value / pieTotal) * 100)}%
+                                    </span>
+                                  </div>
+                                ))}
+                                {Object.entries(principleCounts)
+                                  .filter(([, v]) => v === 0)
+                                  .map(([label]) => (
+                                    <div
+                                      key={label}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 7,
+                                        marginBottom: 6,
+                                        opacity: 0.3,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: 9,
+                                          height: 9,
+                                          borderRadius: 2,
+                                          background: "#e2e8f0",
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      <span
+                                        style={{
+                                          fontSize: 11.5,
+                                          fontWeight: 600,
+                                          color: "#94a3b8",
+                                          flex: 1,
+                                        }}
+                                      >
+                                        {label}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 11.5,
+                                          fontWeight: 700,
+                                          color: "#cbd5e1",
+                                        }}
+                                      >
+                                        0%
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                            {/* Fix First */}
+                            <div
+                              style={{
+                                borderTop: "1px solid #f1f5f9",
+                                paddingTop: 12,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: "#94a3b8",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.5px",
+                                  marginBottom: 8,
+                                }}
+                              >
+                                Fix First — Ranked by Priority
+                              </div>
+                              {topCriteria.map((g, i) => {
+                                const badge = sevBadgeStyle(g.severity);
+                                const criterionNum = getCriterionKey(
+                                  g.wcagCriterion,
+                                );
+                                return (
+                                  <div
+                                    key={i}
+                                    style={{
                                       display: "flex",
                                       alignItems: "flex-start",
                                       gap: 8,
-                                      textAlign: "left",
+                                      padding: "7px 0",
+                                      borderBottom:
+                                        i < topCriteria.length - 1
+                                          ? "1px solid #f1f5f9"
+                                          : "none",
                                     }}
                                   >
+                                    <span
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        color: "#cbd5e1",
+                                        minWidth: 16,
+                                        paddingTop: 1,
+                                      }}
+                                    >
+                                      #{i + 1}
+                                    </span>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div
                                         style={{
                                           display: "flex",
                                           alignItems: "center",
-                                          gap: 8,
-                                          marginBottom: 4,
+                                          gap: 5,
                                           flexWrap: "wrap",
+                                          marginBottom: 2,
                                         }}
                                       >
                                         <span
                                           style={{
-                                            fontSize: 12.5,
+                                            fontSize: 11.5,
                                             fontWeight: 700,
                                             color: "#0f172a",
                                           }}
                                         >
-                                          {issue.category
-                                            .charAt(0)
-                                            .toUpperCase() +
-                                            issue.category.slice(1)}{" "}
-                                          Issue
+                                          {getFriendlyTitle(
+                                            g.wcagCriterion,
+                                            g.id,
+                                            g.problem,
+                                          )}
                                         </span>
                                         <span
                                           style={{
                                             fontSize: 10,
                                             fontWeight: 700,
-                                            color: sevColor(issue.severity),
-                                            background: "#fff",
-                                            border: `1px solid ${sevBorder(issue.severity)}`,
+                                            background: badge.bg,
+                                            color: badge.color,
+                                            border: `1px solid ${badge.border}`,
                                             borderRadius: 999,
-                                            padding: "1px 7px",
-                                            textTransform: "uppercase",
-                                            flexShrink: 0,
+                                            padding: "1px 6px",
                                           }}
                                         >
-                                          {issue.severity}
+                                          {g.severity}
                                         </span>
-                                        {issue.wcagCriterion && (
-                                          <span
-                                            style={{
-                                              fontSize: 10,
-                                              fontWeight: 600,
-                                              color: "#7c8da0",
-                                              background: "#f1f5f9",
-                                              border: "1px solid #e2e8f0",
-                                              borderRadius: 999,
-                                              padding: "1px 7px",
-                                              flexShrink: 0,
-                                            }}
-                                          >
-                                            WCAG {issue.wcagCriterion}
-                                          </span>
-                                        )}
+                                        <span
+                                          style={{
+                                            fontSize: 10.5,
+                                            color: "#94a3b8",
+                                          }}
+                                        >
+                                          {g.count} instance
+                                          {g.count !== 1 ? "s" : ""}
+                                        </span>
                                       </div>
                                       <p
                                         style={{
                                           margin: 0,
-                                          fontSize: 12,
-                                          color: "#475569",
-                                          lineHeight: 1.5,
-                                        }}
-                                      >
-                                        {issue.problem}
-                                      </p>
-                                    </div>
-                                    <svg
-                                      width="14"
-                                      height="14"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="#94a3b8"
-                                      strokeWidth="2.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      style={{
-                                        flexShrink: 0,
-                                        marginTop: 2,
-                                        transition: "transform 0.2s",
-                                        transform: isOpen
-                                          ? "rotate(180deg)"
-                                          : "rotate(0deg)",
-                                      }}
-                                    >
-                                      <polyline points="6 9 12 15 18 9" />
-                                    </svg>
-                                  </button>
-
-                                  {/* Expanded details */}
-                                  {isOpen && (
-                                    <div
-                                      style={{
-                                        padding: "0 14px 14px 14px",
-                                        borderTop: `1px solid ${sevBorder(issue.severity)}`,
-                                      }}
-                                    >
-                                      {/* Evidence */}
-                                      <div
-                                        style={{
-                                          marginTop: 10,
-                                          padding: "6px 10px",
-                                          background: "rgba(0,0,0,0.04)",
-                                          borderRadius: 6,
                                           fontSize: 11,
                                           color: "#64748b",
-                                          fontFamily: "monospace",
-                                          wordBreak: "break-all",
+                                          lineHeight: 1.4,
+                                          overflow: "hidden",
+                                          display: "-webkit-box",
+                                          WebkitLineClamp: 2,
+                                          WebkitBoxOrient: "vertical",
                                         }}
                                       >
-                                        🔍 {issue.evidence}
-                                      </div>
+                                        {g.problem}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                  </div>
 
-                                      {/* Affected users */}
-                                      <div style={{ marginTop: 10 }}>
-                                        <div
-                                          style={{
-                                            fontSize: 10.5,
-                                            fontWeight: 700,
-                                            color: "#64748b",
-                                            textTransform: "uppercase",
-                                            letterSpacing: "0.4px",
-                                            marginBottom: 4,
-                                          }}
-                                        >
-                                          Affected users
-                                        </div>
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 6,
-                                          }}
-                                        >
-                                          <svg
-                                            width="12"
-                                            height="12"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="#7c8da0"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          >
-                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                            <circle cx="9" cy="7" r="4" />
-                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                          </svg>
-                                          <span
-                                            style={{
-                                              fontSize: 12,
-                                              color: "#475569",
-                                            }}
-                                          >
-                                            {issue.affectedUsers}
-                                          </span>
-                                        </div>
-                                      </div>
+                  {/* RIGHT PANEL – Accessibility Issues */}
+                  <div
+                    style={{
+                      width: "100%",
+                      background: "#ffffff",
+                      borderRadius: "14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                      boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    {/* ================= SUMMARY HEADER ================= */}
+                    <div
+                      style={{
+                        padding: "20px 24px",
+                        background: "#ffffff",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      <h2 className="issues-panel-heading">
+                        Accessibility Issues
+                      </h2>
 
-                                      {/* Recommendation */}
-                                      <div
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "16px",
+                        }}
+                      >
+                        {/* Total Issues */}
+                        <div
+                          style={{
+                            background: "#f1f5f9",
+                            padding: "12px 16px",
+                            borderRadius: "12px",
+                            minWidth: "120px",
+                            boxShadow: "var(--color-accent)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#64748b",
+                            }}
+                          >
+                            TOTAL ISSUES
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 28,
+                              fontWeight: 900,
+                              lineHeight: 1,
+                              color:
+                                Object.values(groupedByPrinciple || {}).flat()
+                                  .length === 0
+                                  ? "#16a34a"
+                                  : "#b3261e",
+                            }}
+                          >
+                            {
+                              Object.values(groupedByPrinciple || {}).flat()
+                                .length
+                            }
+                          </div>
+                        </div>
+
+                        {/* Conformance Levels */}
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#64748b",
+                              marginBottom: 6,
+                            }}
+                          >
+                            CONFORMANCE LEVELS
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "8px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {/* Level A */}
+                            <span
+                              style={{
+                                background: "#f1f5f9",
+                                border: "1px solid #475569",
+                                color: "#475569",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              A: {levelAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level A"
+                                description="The minimum WCAG conformance level. Addresses the most basic accessibility barriers that prevent some users from accessing content."
+                              />
+                            </span>
+
+                            {/* Level AA */}
+                            <span
+                              style={{
+                                background: "#fff7ed",
+                                border: "1px solid #b45309",
+                                color: "#b45309",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              AA: {levelAAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level AA"
+                                description="The most widely adopted WCAG level. Addresses the most common and impactful accessibility issues affecting users with disabilities."
+                              />
+                            </span>
+
+                            {/* Level AAA */}
+                            <span
+                              style={{
+                                background: "#ecfeff",
+                                border: "1px solid #0ea5a4",
+                                color: "#0ea5a4",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              AAA: {levelAAAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level AAA"
+                                description="The highest WCAG conformance level. Represents optimal accessibility but can be difficult to achieve across all content."
+                              />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      // Debugging output
+                      console.log("analysis:", analysis);
+                      console.log(
+                        "analysis.groupedByPrinciple:",
+                        analysis?.groups,
+                      );
+                      const fallback = (() => {
+                        const violations = analysis?.violations || [];
+                        const result = {
+                          Perceivable: [],
+                          Operable: [],
+                          Understandable: [],
+                          Robust: [],
+                        };
+                        violations.forEach((v) => {
+                          const p =
+                            v.principle ||
+                            v.pourPrinciple ||
+                            v.category ||
+                            v.wcagPrinciple;
+                          if (p && result[p]) {
+                            result[p].push(v);
+                          }
+                        });
+                        return result;
+                      })();
+                      console.log("fallback groupedByPrinciple:", fallback);
+                      return (
+                        <ViolationsFilterSection
+                          violations={analysis?.violations || []}
+                          groupedByPrinciple={groupedByPrinciple}
+                          siteUrl={analysis?.url || url || ""}
+                        />
+                      );
+                    })()}
+                  </div>
+                </div>
+              </section>
+
+              {/* HCI Report */}
+              <section id="hci-report" ref={sectionRefs.current[2]}>
+                <div className="hci-section-wrap" style={{ display: "block" }}>
+                  {/* HCI Report Section */}
+                  <div className="hci-card">
+                    {/* Header row: title + reading time + export */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <h2 className="hci-card-heading" style={{ margin: 0 }}>
+                        HCI Report
+                      </h2>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {hciParagraphs.length > 0 && (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "#94a3b8",
+                              fontWeight: 500,
+                            }}
+                          >
+                            ~
+                            {Math.ceil(
+                              hciParagraphs.join(" ").split(/\s+/).length / 200,
+                            )}{" "}
+                            min read
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {hciParagraphs.length > 0 ? (
+                      (() => {
+                        // ── Theme detection ──────────────────────────────────────
+                        const detectTheme = (text) => {
+                          const t = text.toLowerCase();
+                          if (
+                            /mobile|responsive|touch|small screen|screen size/.test(
+                              t,
+                            )
+                          )
+                            return {
+                              label: "Mobile",
+                              color: "#0ea5e9",
+                              bg: "#f0f9ff",
+                            };
+                          if (
+                            /cognitive|mental load|burden|frustrat|comprehend|discoverability|learnability/.test(
+                              t,
+                            )
+                          )
+                            return {
+                              label: "Cognitive Load",
+                              color: "#8b5cf6",
+                              bg: "#f5f3ff",
+                            };
+                          if (
+                            /interact|click|hover|link|button|navigat|pattern|feedback/.test(
+                              t,
+                            )
+                          )
+                            return {
+                              label: "Interaction",
+                              color: "#f59e0b",
+                              bg: "#fffbeb",
+                            };
+                          if (
+                            /visual|design|layout|color|font|typograph|aesthetic|clean|modern|hierarchy/.test(
+                              t,
+                            )
+                          )
+                            return {
+                              label: "Visual Design",
+                              color: "#189b97",
+                              bg: "#f0fdfa",
+                            };
+                          if (
+                            /overall|conclusion|recommend|priorit|essential|key|addressing|strengthen|strengthens/.test(
+                              t,
+                            )
+                          )
+                            return {
+                              label: "Conclusion",
+                              color: "#16a34a",
+                              bg: "#f0fdf4",
+                            };
+                          return {
+                            label: "Analysis",
+                            color: "#64748b",
+                            bg: "#f8fafc",
+                          };
+                        };
+
+                        // ── Paragraph-level sentiment ────────────────────────────
+                        const detectSentiment = (text) => {
+                          const neg = (
+                            text.match(
+                              /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|doesn.t|inadequate|insufficient|concern/gi,
+                            ) || []
+                          ).length;
+                          const pos = (
+                            text.match(
+                              /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|responsive|legib|effective|appropriate|strength/gi,
+                            ) || []
+                          ).length;
+                          if (neg > pos + 1)
+                            return {
+                              label: "Issues identified",
+                              color: "#ef4444",
+                              bg: "#fef2f2",
+                            };
+                          if (pos > neg)
+                            return {
+                              label: "Strengths noted",
+                              color: "#16a34a",
+                              bg: "#f0fdf4",
+                            };
+                          return {
+                            label: "Mixed",
+                            color: "#f59e0b",
+                            bg: "#fffbeb",
+                          };
+                        };
+
+                        // ── Sentence-level sentiment (for inline highlighting) ───
+                        const sentenceSentiment = (s) => {
+                          const neg = (
+                            s.match(
+                              /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|inadequate|insufficient/gi,
+                            ) || []
+                          ).length;
+                          const pos = (
+                            s.match(
+                              /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|effective|appropriate|strength/gi,
+                            ) || []
+                          ).length;
+                          if (neg > pos)
+                            return {
+                              bg: "#fff5f5",
+                              borderBottom: "1px solid #fca5a5",
+                            };
+                          if (pos > neg)
+                            return {
+                              bg: "#f0fdf4",
+                              borderBottom: "1px solid #86efac",
+                            };
+                          return { bg: "transparent", borderBottom: "none" };
+                        };
+
+                        // ── Glossary: wrap known terms with underline + title ────
+                        const applyGlossary = (text) => {
+                          const sortedTerms = Object.keys(HCI_GLOSSARY).sort(
+                            (a, b) => b.length - a.length,
+                          );
+                          const escaped = sortedTerms.map((t) =>
+                            t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                          );
+                          const re = new RegExp(
+                            `\\b(${escaped.join("|")})\\b`,
+                            "gi",
+                          );
+                          return text.replace(re, (match) => {
+                            const def =
+                              HCI_GLOSSARY[
+                                Object.keys(HCI_GLOSSARY).find(
+                                  (k) =>
+                                    k.toLowerCase() === match.toLowerCase(),
+                                )
+                              ] || "";
+                            return `<span title="${def.replace(/"/g, "&quot;")}" style="border-bottom:1.5px dotted #94a3b8;cursor:help;">${match}</span>`;
+                          });
+                        };
+
+                        // ── Key takeaways ────────────────────────────────────────
+                        const allText = hciParagraphs.join(" ");
+                        const sentences = allText
+                          .split(/(?<=[.!?])\s+/)
+                          .map((s) => s.trim())
+                          .filter((s) => s.length > 50);
+                        const actionRe =
+                          /should|must|ensure|critical|significant|barrier|priorit|recommend|essential|address|improv|fix|add|provid|implement|consider/i;
+                        const takeaways = [
+                          ...new Set(sentences.filter((s) => actionRe.test(s))),
+                        ].slice(0, 5);
+
+                        // ── Related issues count per theme ───────────────────────
+                        const relatedIssues = (themeLabel) => {
+                          const criteria = THEME_CRITERIA[themeLabel] || [];
+                          if (criteria.length === 0) return [];
+                          return groups.filter((g) => {
+                            const k = getCriterionKey(g.wcagCriterion);
+                            return k && criteria.includes(k);
+                          });
+                        };
+
+                        const visibleParas = hciExpanded
+                          ? hciParagraphs
+                          : hciParagraphs.slice(0, 2);
+
+                        return (
+                          <>
+                            {/* Key Takeaways */}
+                            {takeaways.length > 0 && (
+                              <div
+                                style={{
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  borderRadius: 12,
+                                  padding: "16px 20px",
+                                  marginBottom: 20,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    fontSize: 12,
+                                    color: "#92400e",
+                                    marginBottom: 10,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <svg
+                                    width="13"
+                                    height="13"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#92400e"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                  </svg>
+                                  Key Takeaways
+                                </div>
+                                <ul
+                                  style={{ margin: 0, padding: "0 0 0 16px" }}
+                                >
+                                  {takeaways.map((t, i) => (
+                                    <li
+                                      key={i}
+                                      style={{
+                                        fontSize: 13.5,
+                                        color: "#78350f",
+                                        lineHeight: 1.65,
+                                        marginBottom:
+                                          i < takeaways.length - 1 ? 8 : 0,
+                                      }}
+                                    >
+                                      {t}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Glossary hint */}
+                            <p
+                              style={{
+                                fontSize: 11.5,
+                                color: "#94a3b8",
+                                marginBottom: 14,
+                                fontStyle: "italic",
+                              }}
+                            >
+                              Hover over underlined terms for definitions.
+                              Sentence backgrounds indicate identified issues
+                              (red) or strengths (green).
+                            </p>
+
+                            {/* Themed paragraph cards with sentence highlighting + related issues */}
+                            {visibleParas.map((para, idx) => {
+                              const theme = detectTheme(para);
+                              const sentiment = detectSentiment(para);
+                              const related = relatedIssues(theme.label);
+                              // Split into sentences for inline highlighting
+                              const paraSegs = para
+                                .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+                                .map((s) => s.trim())
+                                .filter(Boolean);
+
+                              return (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    borderLeft: `3px solid ${theme.color}`,
+                                    background: theme.bg,
+                                    borderRadius: "0 12px 12px 0",
+                                    padding: "14px 18px",
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  {/* Card header */}
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      marginBottom: 10,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.6px",
+                                        color: theme.color,
+                                      }}
+                                    >
+                                      {theme.label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        background: sentiment.bg,
+                                        color: sentiment.color,
+                                        borderRadius: 999,
+                                        padding: "2px 10px",
+                                        border: `1px solid ${sentiment.color}33`,
+                                      }}
+                                    >
+                                      {sentiment.label}
+                                    </span>
+                                  </div>
+
+                                  {/* Sentence-level highlighting with glossary */}
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 14.5,
+                                      color: "#334155",
+                                      lineHeight: 1.8,
+                                    }}
+                                  >
+                                    {paraSegs.map((seg, si) => {
+                                      const ss = sentenceSentiment(seg);
+                                      return (
+                                        <span
+                                          key={si}
+                                          dangerouslySetInnerHTML={{
+                                            __html: applyGlossary(seg) + " ",
+                                          }}
+                                          style={{
+                                            backgroundColor: ss.bg,
+                                            borderRadius: 3,
+                                            padding:
+                                              ss.bg !== "transparent"
+                                                ? "1px 2px"
+                                                : 0,
+                                            borderBottom: ss.borderBottom,
+                                          }}
+                                        />
+                                      );
+                                    })}
+                                  </p>
+
+                                  {/* Related issues chips */}
+                                  {related.length > 0 && (
+                                    <div
+                                      style={{
+                                        marginTop: 12,
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: 6,
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
                                         style={{
-                                          marginTop: 10,
-                                          padding: "10px 12px",
-                                          background: "#f0fdf4",
-                                          border: "1px solid #bbf7d0",
-                                          borderRadius: 8,
+                                          fontSize: 11,
+                                          color: "#94a3b8",
+                                          fontWeight: 600,
                                         }}
                                       >
-                                        <div
+                                        {related.length} related issue
+                                        {related.length > 1 ? "s" : ""}:
+                                      </span>
+                                      {related.map((g, ri) => (
+                                        <span
+                                          key={ri}
                                           style={{
-                                            fontSize: 10.5,
-                                            fontWeight: 700,
-                                            color: "#15803d",
-                                            textTransform: "uppercase",
-                                            letterSpacing: "0.4px",
-                                            marginBottom: 4,
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            background: "#fff",
+                                            border: `1px solid ${theme.color}55`,
+                                            color: theme.color,
+                                            borderRadius: 999,
+                                            padding: "2px 9px",
+                                            cursor: "default",
                                           }}
+                                          title={g.problem}
                                         >
-                                          Recommended fix
-                                        </div>
-                                        <p
-                                          style={{
-                                            margin: 0,
-                                            fontSize: 12,
-                                            color: "#166534",
-                                            lineHeight: 1.6,
-                                          }}
-                                        >
-                                          {issue.recommendation}
-                                        </p>
-                                      </div>
+                                          {getCriterionKey(g.wcagCriterion)}
+                                        </span>
+                                      ))}
                                     </div>
                                   )}
                                 </div>
                               );
                             })}
-                          </>
-                        )}
 
-                        {/* Mobile Next Steps */}
-                        {mobileNextSteps.length > 0 && (
-                          <>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#94a3b8",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.5px",
-                                margin: "18px 0 10px",
-                              }}
-                            >
-                              Mobile Next Steps
-                            </div>
-                            {mobileNextSteps.map((step, i) => (
-                              <label
-                                key={i}
+                            {/* Expand/collapse */}
+                            {hciParagraphs.length > 2 && (
+                              <button
+                                onClick={() => setHciExpanded((e) => !e)}
                                 style={{
-                                  display: "flex",
-                                  gap: 8,
-                                  alignItems: "flex-start",
-                                  padding: "8px 12px",
-                                  background: "#fffbeb",
-                                  border: "1px solid #fde68a",
-                                  borderLeft: "3px solid #f59e0b",
+                                  background: "none",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#64748b",
+                                  fontSize: 13,
+                                  fontWeight: 600,
                                   borderRadius: 8,
-                                  marginBottom: 6,
+                                  padding: "8px 16px",
                                   cursor: "pointer",
-                                  userSelect: "none",
+                                  marginTop: 6,
+                                  width: "100%",
+                                  boxShadow: "none",
                                 }}
                               >
-                                <input
-                                  type="checkbox"
-                                  style={{
-                                    accentColor: "#f59e0b",
-                                    marginTop: 2,
-                                    marginRight: 4,
-                                    width: 16,
-                                    height: 16,
-                                    flexShrink: 0,
-                                  }}
-                                />
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    color: "#92400e",
-                                    lineHeight: 1.55,
-                                  }}
-                                >
-                                  {step}
-                                </span>
-                              </label>
-                            ))}
+                                {hciExpanded
+                                  ? "Show less"
+                                  : `Show full analysis (${hciParagraphs.length - 2} more section${hciParagraphs.length - 2 > 1 ? "s" : ""})`}
+                              </button>
+                            )}
                           </>
-                        )}
-
-                        {/* No issues case */}
-                        {mobileIssues.length === 0 && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              padding: "12px 14px",
-                              background: "#f0fdf4",
-                              border: "1px solid #bbf7d0",
-                              borderRadius: 10,
-                              marginBottom: 16,
-                            }}
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#16a34a"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                            <span
-                              style={{
-                                fontSize: 12.5,
-                                fontWeight: 600,
-                                color: "#15803d",
-                              }}
-                            >
-                              No mobile accessibility issues detected by AI
-                              analysis.
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                        );
+                      })()
+                    ) : (
+                      <p
+                        style={{
+                          fontSize: "15px",
+                          color: "#475569",
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        {hciText}
+                      </p>
+                    )}
                   </div>
-                );
-              })()}
+                </div>
+              </section>
 
-            {/* ── Specialized Audits Section ── */}
-            {analysis &&
-              (() => {
-                const sevColor = (s) => {
-                  const sl = (s || "").toLowerCase();
-                  if (sl === "high" || sl === "critical" || sl === "serious")
-                    return "#dc2626";
-                  if (sl === "medium" || sl === "moderate" || sl === "warning")
-                    return "#d97706";
-                  return "#16a34a";
-                };
+              {/* ── Mobile Experience Section ── */}
+              <section id="mobile-experience" ref={sectionRefs.current[3]}>
+                {analysis &&
+                  (() => {
+                    const mobileData =
+                      analysis.aiAnalysis?.mobileAccessibility ||
+                      analysis.mobileAccessibility;
 
-                // ── Info popup content ──
-                const AUDIT_INFO = {
-                  specialized: {
-                    title: "Specialized Audits",
-                    icon: "🔍",
-                    what: "A set of focused deep-dive checks that go beyond the general WCAG score, each targeting a specific accessibility domain.",
-                    why: "General scores can mask domain-specific failure patterns. A site might score 80 overall but have every single form completely inaccessible to screen reader users — the specialized audits surface exactly those kinds of blind spots.",
-                    how: "Each audit maps to a cluster of WCAG success criteria that share a common impact pattern. Issues are detected by combining flagged WCAG violation groups with keyword analysis of the AI's written findings.",
-                    wcag: "Covers criteria across all four POUR principles — Perceivable, Operable, Understandable, and Robust.",
-                  },
-                  form: {
-                    title: "Form Accessibility",
-                    icon: "📋",
-                    what: "Checks whether form controls — inputs, selects, textareas, buttons — are properly labeled, whether errors are clearly communicated, and whether fields are programmatically identifiable.",
-                    why: "Forms are the primary interaction point for critical tasks: login, checkout, contact, registration. An inaccessible form locks users out of core functionality entirely — it's not a minor inconvenience, it's a blocker.",
-                    how: "Screen reader users depend on programmatic labels to know what each field is for. Users with cognitive disabilities need clear, specific error messages. Motor-impaired users rely on autocomplete to avoid repetitive typing. All of these are testable with WCAG criteria.",
-                    wcag: "WCAG 1.3.1 (Info & Relationships), 1.3.5 (Input Purpose / autocomplete), 3.3.1 (Error Identification), 3.3.2 (Labels or Instructions), 3.3.3 (Error Suggestion), 3.3.4 (Error Prevention).",
-                  },
-                  aria: {
-                    title: "ARIA Usage",
-                    icon: "🧩",
-                    what: "Verifies that ARIA roles, properties, and states are used correctly — and flags cases where ARIA is absent when needed, or present in ways that actively break assistive technology.",
-                    why: "ARIA is the bridge between modern UI patterns and screen readers. But it's a double-edged tool: incorrect ARIA usage is often worse than no ARIA at all. A button with the wrong role, or a modal without the right aria attributes, can make an interface completely unusable for blind users.",
-                    how: "Common ARIA mistakes include: missing accessible names on interactive elements, redundant or conflicting roles, required child roles missing from parent containers, and aria-hidden applied to focusable elements. Each of these silently breaks screen reader navigation.",
-                    wcag: "WCAG 4.1.1 (Parsing), 4.1.2 (Name, Role, Value) — both part of the Robust principle, which ensures content can be interpreted by a wide range of assistive technologies.",
-                  },
-                };
+                    // Use AI-generated mobile data
+                    const {
+                      overallMobileScore,
+                      mobileIssues = [],
+                      mobileStrengths = [],
+                      mobileNextSteps = [],
+                      responsiveScore = 0,
+                      touchScore = 0,
+                      readabilityScore = 0,
+                      navigationScore = 0,
+                      mobileFormScore = 0,
+                      contentAccessScore = 0,
+                    } = mobileData;
 
-                // Reusable "?" info button
-                const InfoBtn = ({ infoKey }) => (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAuditInfoOpen((prev) =>
-                        prev === infoKey ? null : infoKey,
-                      );
-                    }}
-                    title="Learn more about this section"
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: "50%",
-                      border: "1.5px solid #94a3b8",
-                      background: "transparent",
-                      color: "#94a3b8",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: 0,
-                      lineHeight: 1,
-                      flexShrink: 0,
-                      transition: "all 0.15s",
-                      ...(auditInfoOpen === infoKey
-                        ? {
-                            borderColor: "#7c3aed",
-                            color: "#7c3aed",
-                            background: "#f5f3ff",
-                          }
-                        : {}),
-                    }}
-                  >
-                    ?
-                  </button>
-                );
+                    const subScores = [
+                      {
+                        label: "Responsive",
+                        score: responsiveScore,
+                        icon: "⬡",
+                        color: "#0ea5e9",
+                      },
+                      {
+                        label: "Touch",
+                        score: touchScore,
+                        icon: "👆",
+                        color: "#f59e0b",
+                      },
+                      {
+                        label: "Readability",
+                        score: readabilityScore,
+                        icon: "Aa",
+                        color: "#8b5cf6",
+                      },
+                      {
+                        label: "Navigation",
+                        score: navigationScore,
+                        icon: "☰",
+                        color: "#10b981",
+                      },
+                      {
+                        label: "Forms",
+                        score: mobileFormScore,
+                        icon: "📝",
+                        color: "#6366f1",
+                      },
+                      {
+                        label: "Content",
+                        score: contentAccessScore,
+                        icon: "📄",
+                        color: "#ec4899",
+                      },
+                    ];
 
-                // Extract sentences matching a regex from a text string
-                const sentences = (text) =>
-                  (text || "")
-                    .match(/[^.!?]+[.!?]+/g)
-                    ?.map((s) => s.trim())
-                    .filter(Boolean) || [];
-                const aiTexts = [
-                  ai.overallSummary || "",
-                  ai.hciSummary || "",
-                  ...(ai.nextSteps || []),
-                ];
-                const extractFromAll = (re) => [
-                  ...new Set(
-                    aiTexts.flatMap((t) =>
-                      sentences(t).filter((s) => re.test(s)),
-                    ),
-                  ),
-                ];
+                    const scoreColor = (s) =>
+                      s >= 80 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
+                    const sevColor = (s) => {
+                      const sl = (s || "").toLowerCase();
+                      if (
+                        sl === "high" ||
+                        sl === "critical" ||
+                        sl === "serious"
+                      )
+                        return "#dc2626";
+                      if (
+                        sl === "medium" ||
+                        sl === "moderate" ||
+                        sl === "warning"
+                      )
+                        return "#d97706";
+                      return "#16a34a";
+                    };
 
-                // ── 1. Form Accessibility ──
-                const FORM_CRIT = new Set([
-                  "1.3.1",
-                  "1.3.5",
-                  "3.3.1",
-                  "3.3.2",
-                  "3.3.3",
-                  "3.3.4",
-                  "4.1.3",
-                ]);
-                const formRe =
-                  /\bform\b|\binput\b|\blabel\b|\bfield\b|\bsubmit\b|error.{0,20}message|validation|autocomplete|placeholder|\brequired\b/i;
-                const formGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (
-                    (k && FORM_CRIT.has(k)) ||
-                    formRe.test(g.problem || "") ||
-                    formRe.test(g.wcagCriterion || "")
-                  );
-                });
-                const formInsights = extractFromAll(formRe).slice(0, 3);
+                    // ── Device size options (frameW/H = outer shell, pad = inner padding, screenH = content area height) ──
+                    const DEVICE_SIZES = [
+                      {
+                        label: "SE",
+                        sub: "iPhone SE",
+                        w: 375,
+                        frameW: 148,
+                        frameH: 294,
+                        pad: 5,
+                        screenH: 250,
+                        radius: 28,
+                        island: false,
+                        homeBar: false,
+                        homeBtn: true,
+                      },
+                      {
+                        label: "14",
+                        sub: "iPhone 14/15",
+                        w: 390,
+                        frameW: 155,
+                        frameH: 310,
+                        pad: 6,
+                        screenH: 268,
+                        radius: 30,
+                        island: true,
+                        homeBar: true,
+                        homeBtn: false,
+                      },
+                      {
+                        label: "Pro Max",
+                        sub: "iPhone Pro Max",
+                        w: 430,
+                        frameW: 168,
+                        frameH: 326,
+                        pad: 6,
+                        screenH: 280,
+                        radius: 32,
+                        island: true,
+                        homeBar: true,
+                        homeBtn: false,
+                      },
+                      {
+                        label: "Galaxy",
+                        sub: "Samsung Galaxy S",
+                        w: 360,
+                        frameW: 145,
+                        frameH: 302,
+                        pad: 5,
+                        screenH: 264,
+                        radius: 24,
+                        island: false,
+                        homeBar: false,
+                        homeBtn: false,
+                      },
+                      {
+                        label: "Pixel",
+                        sub: "Google Pixel 7",
+                        w: 412,
+                        frameW: 160,
+                        frameH: 316,
+                        pad: 6,
+                        screenH: 272,
+                        radius: 20,
+                        island: false,
+                        homeBar: true,
+                        homeBtn: false,
+                      },
+                      {
+                        label: "iPad",
+                        sub: "iPad Mini",
+                        w: 768,
+                        frameW: 218,
+                        frameH: 290,
+                        pad: 8,
+                        screenH: 248,
+                        radius: 14,
+                        island: false,
+                        homeBar: true,
+                        homeBtn: false,
+                      },
+                    ];
 
-                // ── 2. ARIA Usage ──
-                const ARIA_CRIT = new Set(["4.1.1", "4.1.2"]);
-                const ariaRe =
-                  /\baria[-_\s]|\brole\s*=|landmark|aria.label|aria.labelledby|aria.describedby|aria.hidden|accessible.name|assistive.tech/i;
-                const ariaGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (
-                    (k && ARIA_CRIT.has(k)) ||
-                    ariaRe.test(g.problem || "") ||
-                    ariaRe.test(g.wcagCriterion || "")
-                  );
-                });
-                const ariaInsights = extractFromAll(ariaRe).slice(0, 3);
+                    // ── Active device dimensions ──
+                    const dev =
+                      DEVICE_SIZES.find((d) => d.w === mobilePreviewWidth) ||
+                      DEVICE_SIZES[1];
+                    const screenW = dev.frameW - dev.pad * 2;
+                    const scale = screenW / dev.w;
+                    const iframeH = Math.round(dev.screenH / scale);
 
-                // ── 3. Animation / Motion ──
-                const MOTION_CRIT = new Set([
-                  "2.2.2",
-                  "2.3.1",
-                  "2.3.2",
-                  "2.3.3",
-                ]);
-                const motionRe =
-                  /animation|motion|carousel|autoplay|auto.play|\btransition\b|parallax|flicker|blink|reduced.motion|vestibular|moving.content|scrolling.effect/i;
-                const motionGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (
-                    (k && MOTION_CRIT.has(k)) ||
-                    motionRe.test(g.problem || "") ||
-                    motionRe.test(g.wcagCriterion || "")
-                  );
-                });
-                const motionInsights = extractFromAll(motionRe).slice(0, 3);
+                    // ── Build srcdoc for mobile preview ──
+                    // Using srcdoc bypasses X-Frame-Options/CSP headers that block live URL iframes.
+                    // We also inject the correct viewport width so CSS media queries fire properly.
+                    const mobileHtml = (() => {
+                      const html =
+                        typeof analysis?.html === "string" ? analysis.html : "";
+                      if (!html) return null;
+                      const viewportTag = `<meta name="viewport" content="width=${dev.w}, initial-scale=1, maximum-scale=5">`;
+                      // Replace existing viewport meta if present, otherwise inject after <head>
+                      if (/name=["']viewport["']/i.test(html)) {
+                        return html.replace(
+                          /<meta[^>]*name=["']viewport["'][^>]*>/i,
+                          viewportTag,
+                        );
+                      }
+                      if (/<head[^>]*>/i.test(html)) {
+                        return html.replace(
+                          /(<head[^>]*>)/i,
+                          `$1${viewportTag}`,
+                        );
+                      }
+                      return viewportTag + html;
+                    })();
 
-                // ── 4. Language Attributes ──
-                const LANG_CRIT = new Set(["3.1.1", "3.1.2"]);
-                const langRe =
-                  /\blang\b|language.{0,15}attr|html.{0,10}lang|xml.lang|lang.{0,15}attribute|\blocale\b/i;
-                const langGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (
-                    (k && LANG_CRIT.has(k)) ||
-                    langRe.test(g.problem || "") ||
-                    langRe.test(g.wcagCriterion || "")
-                  );
-                });
-                const langInsights = extractFromAll(langRe).slice(0, 3);
-                // Check html lang from raw HTML if available
-                const hasLangAttr =
-                  analysis.html && analysis.html.length > 0
-                    ? /<html[^>]+lang\s*=/i.test(analysis.html)
-                    : null;
+                    const sevBg = (s) => {
+                      const sl = (s || "").toLowerCase();
+                      if (
+                        sl === "high" ||
+                        sl === "critical" ||
+                        sl === "serious"
+                      )
+                        return "#fef2f2";
+                      if (
+                        sl === "medium" ||
+                        sl === "moderate" ||
+                        sl === "warning"
+                      )
+                        return "#fffbeb";
+                      return "#f0fdf4";
+                    };
 
-                // ── 10. Cognitive Accessibility Score ──
-                const COG_CRIT = new Set([
-                  "1.4.12",
-                  "2.4.2",
-                  "2.4.6",
-                  "3.1.1",
-                  "3.1.2",
-                  "3.1.3",
-                  "3.1.4",
-                  "3.1.5",
-                  "3.2.1",
-                  "3.2.2",
-                  "3.2.3",
-                  "3.2.4",
-                  "3.3.1",
-                  "3.3.2",
-                  "3.3.3",
-                  "3.3.4",
-                ]);
-                const cogRe =
-                  /cognitive|reading.level|comprehension|plain.language|readability|consistent|predictable|jargon|complex\s|instruction|error.prevention|memory|attention|\bclear\b|confus/i;
-                const cogGroups = groups.filter((g) => {
-                  const k = getCriterionKey(g.wcagCriterion);
-                  return (k && COG_CRIT.has(k)) || cogRe.test(g.problem || "");
-                });
-                const cogInsights = extractFromAll(cogRe).slice(0, 4);
-                const cogNegRe =
-                  /difficult|unclear|confus|hard\s|poor|lack|missing|inconsistent|complex\s|no\s+clear|jargon/i;
-                const cogNegHits = cogInsights.filter((s) =>
-                  cogNegRe.test(s),
-                ).length;
-                const cogScore = Math.max(
-                  10,
-                  Math.min(100, 95 - cogGroups.length * 12 - cogNegHits * 8),
-                );
-                const cogColor =
-                  cogScore >= 75
-                    ? "#16a34a"
-                    : cogScore >= 50
-                      ? "#d97706"
-                      : "#dc2626";
+                    const sevBorder = (s) => {
+                      const sl = (s || "").toLowerCase();
+                      if (
+                        sl === "high" ||
+                        sl === "critical" ||
+                        sl === "serious"
+                      )
+                        return "#fca5a5";
+                      if (
+                        sl === "medium" ||
+                        sl === "moderate" ||
+                        sl === "warning"
+                      )
+                        return "#fde68a";
+                      return "#bbf7d0";
+                    };
 
-                const COG_CHECKS = [
-                  { label: "Consistent navigation (3.2.3)", key: "3.2.3" },
-                  { label: "Consistent identification (3.2.4)", key: "3.2.4" },
-                  { label: "Labels/instructions (3.3.2)", key: "3.3.2" },
-                  { label: "Error prevention (3.3.4)", key: "3.3.4" },
-                  { label: "Page title (2.4.2)", key: "2.4.2" },
-                  { label: "Headings/labels (2.4.6)", key: "2.4.6" },
-                ].map((c) => ({
-                  ...c,
-                  pass: !cogGroups.some(
-                    (g) => getCriterionKey(g.wcagCriterion) === c.key,
-                  ),
-                }));
+                    const highIssues = mobileIssues.filter(
+                      (i) => i.severity === "High",
+                    ).length;
+                    const mediumIssues = mobileIssues.filter(
+                      (i) => i.severity === "Medium",
+                    ).length;
+                    const lowIssues = mobileIssues.filter(
+                      (i) => i.severity === "Low",
+                    ).length;
 
-                // ── Shared audit card renderer ──
-                const AuditCard = ({
-                  icon,
-                  iconBg,
-                  iconStroke,
-                  title,
-                  subtitle,
-                  issueGroups,
-                  insights,
-                  extraChecks,
-                  infoKey,
-                }) => {
-                  const hasIssues = issueGroups.length > 0;
-                  const hasData =
-                    hasIssues ||
-                    insights.length > 0 ||
-                    (extraChecks && extraChecks.some((c) => !c.pass));
-                  return (
-                    <div
-                      style={{
-                        background: "#fff",
-                        borderRadius: 14,
-                        padding: "18px 20px",
-                        border: `1px solid ${hasIssues ? "#fca5a5" : "#e2e8f0"}`,
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                      }}
-                    >
-                      {/* Card header */}
+                    return (
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          marginBottom: 14,
+                          background: "#fff",
+                          borderRadius: 18,
+                          padding: "24px 28px",
+                          boxShadow: "var(--shadow)",
+                          marginTop: 32,
+                          border: "1px solid var(--border-light)",
                         }}
                       >
-                        <div
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 8,
-                            background: iconBg,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke={iconStroke}
-                            strokeWidth="2.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            dangerouslySetInnerHTML={{ __html: icon }}
-                          />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: "#0f172a",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            {title}
-                            {infoKey && <InfoBtn infoKey={infoKey} />}
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                            {subtitle}
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            background: hasIssues
-                              ? "#fef2f2"
-                              : insights.length > 0
-                                ? "#fffbeb"
-                                : "#f0fdf4",
-                            color: hasIssues
-                              ? "#dc2626"
-                              : insights.length > 0
-                                ? "#d97706"
-                                : "#16a34a",
-                            border: `1px solid ${hasIssues ? "#fca5a5" : insights.length > 0 ? "#fde68a" : "#bbf7d0"}`,
-                            whiteSpace: "nowrap",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {hasIssues
-                            ? `${issueGroups.length} issue${issueGroups.length > 1 ? "s" : ""}`
-                            : insights.length > 0
-                              ? "Warnings"
-                              : "Clean"}
-                        </div>
-                      </div>
-
-                      {/* Extra binary checks */}
-                      {extraChecks && extraChecks.length > 0 && (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 4,
-                            marginBottom:
-                              issueGroups.length > 0 || insights.length > 0
-                                ? 12
-                                : 0,
-                          }}
-                        >
-                          {extraChecks.map((c, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                fontSize: 11,
-                                color: c.pass ? "#15803d" : "#b91c1c",
-                              }}
-                            >
-                              {c.pass ? (
-                                <svg
-                                  width="10"
-                                  height="10"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#16a34a"
-                                  strokeWidth="3"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              ) : (
-                                <svg
-                                  width="10"
-                                  height="10"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#dc2626"
-                                  strokeWidth="3"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <line x1="18" y1="6" x2="6" y2="18" />
-                                  <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                              )}
-                              {c.label}
-                              {c.detail && (
-                                <span
-                                  style={{ color: "#64748b", fontWeight: 400 }}
-                                >
-                                  {" "}
-                                  — {c.detail}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* WCAG violation groups */}
-                      {issueGroups.map((g, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            background: "#fafafa",
-                            border: "1px solid #f1f5f9",
-                            borderLeft: `3px solid ${sevColor(g.severity)}`,
-                            marginBottom: 6,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              flexWrap: "wrap",
-                              marginBottom: g.problem ? 3 : 0,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 11.5,
-                                fontWeight: 700,
-                                color: "#0f172a",
-                              }}
-                            >
-                              {getFriendlyTitle(
-                                g.wcagCriterion,
-                                g.id,
-                                g.problem,
-                              )}
-                            </span>
-                            {g.severity && (
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  fontWeight: 700,
-                                  color: "#fff",
-                                  background: sevColor(g.severity),
-                                  borderRadius: 999,
-                                  padding: "1px 6px",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {g.severity}
-                              </span>
-                            )}
-                            {typeof g.count === "number" && (
-                              <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                                {g.count} instance{g.count !== 1 ? "s" : ""}
-                              </span>
-                            )}
-                          </div>
-                          {g.problem && (
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: 11,
-                                color: "#475569",
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              {g.problem}
-                            </p>
-                          )}
-                          {g.recommendation && (
-                            <p
-                              style={{
-                                margin: "3px 0 0",
-                                fontSize: 10.5,
-                                color: "#0ea5e9",
-                                fontStyle: "italic",
-                              }}
-                            >
-                              → {g.recommendation}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-
-                      {/* AI insights */}
-                      {insights.map((s, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex",
-                            gap: 6,
-                            padding: "7px 10px",
-                            background: "#f8fafc",
-                            border: "1px solid #e2e8f0",
-                            borderLeft: "3px solid #94a3b8",
-                            borderRadius: 8,
-                            marginBottom: 5,
-                          }}
-                        >
-                          <svg
-                            width="11"
-                            height="11"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#64748b"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{ flexShrink: 0, marginTop: 2 }}
-                          >
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="8" x2="12" y2="12" />
-                            <line x1="12" y1="16" x2="12.01" y2="16" />
-                          </svg>
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: 11,
-                              color: "#475569",
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {s}
-                          </p>
-                        </div>
-                      ))}
-
-                      {!hasData && (
+                        {/* Header */}
                         <div
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 6,
-                            fontSize: 11.5,
-                            color: "#15803d",
+                            gap: 12,
+                            marginBottom: 20,
+                            borderBottom: "1px solid #f1f5f9",
+                            paddingBottom: 16,
                           }}
                         >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#16a34a"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                          No issues detected in this area.
-                        </div>
-                      )}
-                    </div>
-                  );
-                };
-
-                const info = auditInfoOpen ? AUDIT_INFO[auditInfoOpen] : null;
-
-                return (
-                  <>
-                    {/* Info modal overlay */}
-                    {info && (
-                      <div
-                        onClick={() => setAuditInfoOpen(null)}
-                        style={{
-                          position: "fixed",
-                          inset: 0,
-                          background: "rgba(15,23,42,0.45)",
-                          zIndex: 1000,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: 24,
-                        }}
-                      >
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            background: "#fff",
-                            borderRadius: 18,
-                            padding: "28px 30px",
-                            maxWidth: 520,
-                            width: "100%",
-                            boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
-                            position: "relative",
-                          }}
-                        >
-                          {/* Close */}
-                          <button
-                            onClick={() => setAuditInfoOpen(null)}
+                          <div
                             style={{
-                              position: "absolute",
-                              top: 14,
-                              right: 14,
-                              width: 28,
-                              height: 28,
-                              borderRadius: "50%",
-                              border: "none",
-                              background: "#f1f5f9",
-                              color: "#64748b",
-                              fontSize: 14,
-                              cursor: "pointer",
+                              width: 38,
+                              height: 38,
+                              borderRadius: 10,
+                              background: "#f0f9ff",
+                              border: "1px solid #bae6fd",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              padding: 0,
+                              flexShrink: 0,
                             }}
                           >
-                            ✕
-                          </button>
-
-                          {/* Header */}
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              marginBottom: 20,
-                            }}
-                          >
-                            <span style={{ fontSize: 26 }}>{info.icon}</span>
-                            <div>
-                              <h3
-                                style={{
-                                  margin: 0,
-                                  fontSize: 16,
-                                  fontWeight: 800,
-                                  color: "#0f172a",
-                                }}
-                              >
-                                {info.title}
-                              </h3>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#7c3aed",
-                                  background: "#f5f3ff",
-                                  border: "1px solid #ddd6fe",
-                                  borderRadius: 999,
-                                  padding: "1px 8px",
-                                }}
-                              >
-                                Accessibility Audit
-                              </span>
-                            </div>
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#0ea5e9"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="5" y="2" width="14" height="20" rx="2" />
+                              <line x1="12" y1="18" x2="12.01" y2="18" />
+                            </svg>
                           </div>
-
-                          {/* Sections */}
-                          {[
-                            {
-                              label: "What it checks",
-                              text: info.what,
-                              color: "#0ea5e9",
-                              bg: "#f0f9ff",
-                              border: "#bae6fd",
-                            },
-                            {
-                              label: "Why it matters",
-                              text: info.why,
-                              color: "#d97706",
-                              bg: "#fffbeb",
-                              border: "#fde68a",
-                            },
-                            {
-                              label: "How it works",
-                              text: info.how,
-                              color: "#7c3aed",
-                              bg: "#f5f3ff",
-                              border: "#ddd6fe",
-                            },
-                            {
-                              label: "WCAG criteria",
-                              text: info.wcag,
-                              color: "#059669",
-                              bg: "#f0fdf4",
-                              border: "#bbf7d0",
-                            },
-                          ].map(({ label, text, color, bg, border }) => (
-                            <div
-                              key={label}
+                          <div style={{ flex: 1 }}>
+                            <h2 style={{ margin: "0 0 2px", fontSize: 18 }}>
+                              Mobile Experience
+                            </h2>
+                            <p
                               style={{
-                                background: bg,
-                                border: `1px solid ${border}`,
+                                margin: 0,
+                                fontSize: 12,
+                                color: "#94a3b8",
+                              }}
+                            >
+                              AI-powered mobile accessibility analysis
+                            </p>
+                          </div>
+                          <div style={{ textAlign: "right", flexShrink: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 36,
+                                fontWeight: 900,
+                                color: scoreColor(overallMobileScore),
+                                lineHeight: 1,
+                                letterSpacing: "-1px",
+                              }}
+                            >
+                              {overallMobileScore}%
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#94a3b8",
+                                marginTop: 2,
+                              }}
+                            >
+                              Mobile Score
+                            </div>
+
+                            {mobileIssues.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 4,
+                                  justifyContent: "flex-end",
+                                  marginTop: 6,
+                                }}
+                              >
+                                {highIssues > 0 && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      background: "#fef2f2",
+                                      color: "#dc2626",
+                                      border: "1px solid #fca5a5",
+                                      borderRadius: 999,
+                                      padding: "1px 7px",
+                                    }}
+                                  >
+                                    {highIssues} High
+                                  </span>
+                                )}
+                                {mediumIssues > 0 && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      background: "#fffbeb",
+                                      color: "#d97706",
+                                      border: "1px solid #fde68a",
+                                      borderRadius: 999,
+                                      padding: "1px 7px",
+                                    }}
+                                  >
+                                    {mediumIssues} Med
+                                  </span>
+                                )}
+                                {lowIssues > 0 && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      background: "#f0fdf4",
+                                      color: "#16a34a",
+                                      border: "1px solid #bbf7d0",
+                                      borderRadius: 999,
+                                      padding: "1px 7px",
+                                    }}
+                                  >
+                                    {lowIssues} Low
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Sub-score row */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            marginBottom: 24,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {subScores.map((s) => (
+                            <div
+                              key={s.label}
+                              style={{
+                                flex: "1 1 120px",
+                                background:
+                                  s.score >= 80 ? "#f0fdf4" : "#f8fafc",
+                                border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
+                                borderTop: `3px solid ${scoreColor(s.score)}`,
                                 borderRadius: 10,
-                                padding: "11px 14px",
-                                marginBottom: 10,
+                                padding: "10px 12px",
                               }}
                             >
                               <div
                                 style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color,
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.5px",
+                                  display: "flex",
+                                  alignItems: "baseline",
+                                  gap: 6,
                                   marginBottom: 4,
                                 }}
                               >
-                                {label}
+                                <div
+                                  style={{
+                                    fontSize: 22,
+                                    fontWeight: 900,
+                                    color: scoreColor(s.score),
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  {s.score}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    color: "#64748b",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.4px",
+                                  }}
+                                >
+                                  {s.label}
+                                </div>
                               </div>
-                              <p
+                              <div
                                 style={{
-                                  margin: 0,
-                                  fontSize: 12.5,
-                                  color: "#374151",
-                                  lineHeight: 1.6,
+                                  fontSize: 10.5,
+                                  color: s.score >= 80 ? "#16a34a" : "#64748b",
+                                  fontWeight: 600,
                                 }}
                               >
-                                {text}
-                              </p>
+                                {s.score >= 80 ? "✓ Good" : "Needs work"}
+                              </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
 
-                    <div style={{ marginTop: 32 }}>
-                      {/* Section header */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          marginBottom: 16,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 9,
-                            background: "#f5f3ff",
-                            border: "1px solid #ddd6fe",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#7c3aed"
-                            strokeWidth="2.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="11" cy="11" r="8" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                          </svg>
-                        </div>
-                        <div>
-                          <h2
-                            style={{
-                              margin: 0,
-                              fontSize: 17,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            Specialized Audits
-                            <InfoBtn infoKey="specialized" />
-                          </h2>
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: 11.5,
-                              color: "#94a3b8",
-                            }}
-                          >
-                            Targeted checks for forms, ARIA, motion, language,
-                            and cognitive load
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* 2×2 audit grid */}
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 14,
-                          marginBottom: 14,
-                        }}
-                      >
-                        <AuditCard
-                          icon='<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="15" x2="16" y2="15"/>'
-                          iconBg="#fef9c3"
-                          iconStroke="#ca8a04"
-                          title="Form Accessibility"
-                          subtitle="Labels, errors, validation, autocomplete"
-                          issueGroups={formGroups}
-                          insights={formInsights}
-                          extraChecks={[]}
-                          infoKey="form"
-                        />
-                        <AuditCard
-                          icon='<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>'
-                          iconBg="#ede9fe"
-                          iconStroke="#7c3aed"
-                          title="ARIA Usage"
-                          subtitle="Roles, accessible names, landmarks"
-                          issueGroups={ariaGroups}
-                          insights={ariaInsights}
-                          extraChecks={[]}
-                          infoKey="aria"
-                        />
-                        <AuditCard
-                          icon='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
-                          iconBg="#fff7ed"
-                          iconStroke="#ea580c"
-                          title="Animation & Motion"
-                          subtitle="Flashing, autoplay, reduced-motion support"
-                          issueGroups={motionGroups}
-                          insights={motionInsights}
-                          extraChecks={[]}
-                        />
-                        <AuditCard
-                          icon='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
-                          iconBg="#ecfdf5"
-                          iconStroke="#059669"
-                          title="Language Attributes"
-                          subtitle="html[lang], lang on passages, locale"
-                          issueGroups={langGroups}
-                          insights={langInsights}
-                          extraChecks={
-                            hasLangAttr !== null
-                              ? [
-                                  {
-                                    label: "html[lang] attribute",
-                                    pass: hasLangAttr,
-                                    detail: hasLangAttr
-                                      ? "Present"
-                                      : "Missing — screen readers cannot determine page language",
-                                  },
-                                ]
-                              : []
-                          }
-                        />
-                      </div>
-
-                      {/* ── Cognitive Accessibility Score (full width) ── */}
-                      <div
-                        style={{
-                          background: "#fff",
-                          borderRadius: 14,
-                          padding: "20px 24px",
-                          border: "1px solid #e2e8f0",
-                          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                        }}
-                      >
                         <div
                           style={{
                             display: "flex",
+                            gap: 28,
                             alignItems: "flex-start",
-                            gap: 20,
                           }}
                         >
-                          {/* Circular score */}
+                          {/* ── Device mockup ── */}
                           <div
                             style={{
                               flexShrink: 0,
                               display: "flex",
                               flexDirection: "column",
                               alignItems: "center",
-                              gap: 4,
+                              gap: 6,
+                              transition: "all 0.25s ease",
                             }}
                           >
-                            <svg width="80" height="80" viewBox="0 0 80 80">
-                              <circle
-                                cx="40"
-                                cy="40"
-                                r="32"
-                                fill="none"
-                                stroke="#f1f5f9"
-                                strokeWidth="8"
-                              />
-                              <circle
-                                cx="40"
-                                cy="40"
-                                r="32"
-                                fill="none"
-                                stroke={cogColor}
-                                strokeWidth="8"
-                                strokeDasharray={`${(2 * Math.PI * 32 * cogScore) / 100} ${2 * Math.PI * 32 * (1 - cogScore / 100)}`}
-                                strokeDashoffset={2 * Math.PI * 32 * 0.25}
-                                strokeLinecap="round"
-                              />
-                              <text
-                                x="40"
-                                y="37"
-                                textAnchor="middle"
-                                fontSize="16"
-                                fontWeight="800"
-                                fill={cogColor}
+                            <div
+                              style={{
+                                width: dev.frameW,
+                                height: dev.frameH,
+                                background:
+                                  "linear-gradient(145deg,#1e293b 0%,#0f172a 100%)",
+                                borderRadius: dev.radius,
+                                padding: `10px ${dev.pad}px ${dev.homeBtn ? 14 : 8}px`,
+                                boxShadow:
+                                  "0 24px 64px rgba(0,0,0,0.38), inset 0 0 0 1.5px rgba(255,255,255,0.11), 0 0 0 7px rgba(15,23,42,0.07)",
+                                position: "relative",
+                                transition: "all 0.25s ease",
+                              }}
+                            >
+                              {/* Volume / side buttons — phones only */}
+                              {!dev.island || true ? (
+                                <>
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      left: -3,
+                                      top: 68,
+                                      width: 3,
+                                      height: 22,
+                                      background: "#334155",
+                                      borderRadius: "2px 0 0 2px",
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      left: -3,
+                                      top: 98,
+                                      width: 3,
+                                      height: 34,
+                                      background: "#334155",
+                                      borderRadius: "2px 0 0 2px",
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      left: -3,
+                                      top: 138,
+                                      width: 3,
+                                      height: 34,
+                                      background: "#334155",
+                                      borderRadius: "2px 0 0 2px",
+                                    }}
+                                  />
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      right: -3,
+                                      top: 98,
+                                      width: 3,
+                                      height: 50,
+                                      background: "#334155",
+                                      borderRadius: "0 2px 2px 0",
+                                    }}
+                                  />
+                                </>
+                              ) : null}
+
+                              {/* Top chrome: Dynamic island or punch-hole dot */}
+                              {dev.island ? (
+                                <div
+                                  style={{
+                                    width: 44,
+                                    height: 8,
+                                    background: "#0f172a",
+                                    borderRadius: 999,
+                                    margin: "0 auto 6px",
+                                    boxShadow:
+                                      "inset 0 0 0 1px rgba(255,255,255,0.07)",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "center",
+                                    alignItems: "center",
+                                    height: 14,
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      background: "#1e293b",
+                                      borderRadius: "50%",
+                                      boxShadow:
+                                        "inset 0 0 0 1px rgba(255,255,255,0.1)",
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Screen */}
+                              <div
+                                style={{
+                                  borderRadius: Math.max(dev.radius - 10, 8),
+                                  overflow: "hidden",
+                                  height: dev.screenH,
+                                  background: "#0f172a",
+                                  position: "relative",
+                                }}
                               >
-                                {cogScore}
-                              </text>
-                              <text
-                                x="40"
-                                y="50"
-                                textAnchor="middle"
-                                fontSize="8"
-                                fill="#94a3b8"
-                              >
-                                /100
-                              </text>
-                            </svg>
+                                {!mobileIframeError &&
+                                (mobileHtml || analysis.url) ? (
+                                  <iframe
+                                    key={mobilePreviewWidth}
+                                    {...(mobileHtml
+                                      ? { srcDoc: mobileHtml }
+                                      : { src: analysis.url })}
+                                    title="Responsive preview"
+                                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                    onError={() => setMobileIframeError(true)}
+                                    style={{
+                                      width: dev.w,
+                                      height: iframeH,
+                                      border: "none",
+                                      transform: `scale(${scale})`,
+                                      transformOrigin: "top left",
+                                      pointerEvents: "none",
+                                      display: "block",
+                                    }}
+                                  />
+                                ) : previewResult?.screenshot ||
+                                  analysis.screenshot ? (
+                                  <img
+                                    src={
+                                      previewResult?.screenshot ||
+                                      analysis.screenshot
+                                    }
+                                    alt="Desktop screenshot (responsive preview unavailable)"
+                                    style={{
+                                      width: "100%",
+                                      objectFit: "cover",
+                                      objectPosition: "top center",
+                                      display: "block",
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      color: "#475569",
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    No preview
+                                  </div>
+                                )}
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    background:
+                                      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 40%)",
+                                    pointerEvents: "none",
+                                  }}
+                                />
+                              </div>
+
+                              {/* Bottom chrome: home bar or home button */}
+                              {dev.homeBar && (
+                                <div
+                                  style={{
+                                    width: 44,
+                                    height: 3,
+                                    background: "rgba(255,255,255,0.22)",
+                                    borderRadius: 999,
+                                    margin: "6px auto 0",
+                                  }}
+                                />
+                              )}
+                              {dev.homeBtn && (
+                                <div
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: "50%",
+                                    border: "2px solid rgba(255,255,255,0.18)",
+                                    margin: "6px auto 0",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 12,
+                                      height: 12,
+                                      borderRadius: "50%",
+                                      background: "rgba(255,255,255,0.08)",
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Device label */}
                             <span
                               style={{
                                 fontSize: 10,
                                 fontWeight: 600,
                                 color: "#94a3b8",
+                                letterSpacing: "0.3px",
+                                textAlign: "center",
                               }}
                             >
-                              Cognitive Score
+                              {!mobileIframeError &&
+                              (mobileHtml || analysis.url)
+                                ? `${dev.sub} · ${dev.w}px`
+                                : "Desktop screenshot"}
                             </span>
-                          </div>
+                            {(mobileIframeError ||
+                              (!mobileHtml && !analysis.url)) && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  color: "#cbd5e1",
+                                  textAlign: "center",
+                                  maxWidth: dev.frameW,
+                                }}
+                              >
+                                Preview unavailable
+                              </span>
+                            )}
 
-                          {/* Right content */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* Device size chips */}
                             <div
                               style={{
                                 display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                marginBottom: 10,
+                                flexWrap: "wrap",
+                                gap: 4,
+                                justifyContent: "center",
+                                marginTop: 4,
+                                maxWidth: Math.max(dev.frameW, 200),
                               }}
                             >
+                              {DEVICE_SIZES.map((d) => {
+                                const active = mobilePreviewWidth === d.w;
+                                return (
+                                  <button
+                                    key={d.w}
+                                    title={`${d.sub} (${d.w}px)`}
+                                    onClick={() => {
+                                      setMobilePreviewWidth(d.w);
+                                      setMobileIframeError(false);
+                                    }}
+                                    style={{
+                                      padding: "3px 8px",
+                                      fontSize: 10,
+                                      fontWeight: active ? 700 : 500,
+                                      borderRadius: 999,
+                                      border: `1px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
+                                      background: active
+                                        ? "#e0f2fe"
+                                        : "#f8fafc",
+                                      color: active ? "#0369a1" : "#64748b",
+                                      cursor: "pointer",
+                                      transition: "all 0.15s",
+                                      lineHeight: 1.4,
+                                    }}
+                                  >
+                                    {d.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Right: AI-powered mobile issues */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* Mobile Strengths */}
+                            {mobileStrengths.length > 0 && (
+                              <>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#16a34a",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  Mobile Strengths ({mobileStrengths.length})
+                                </div>
+                                {mobileStrengths.map((strength, i) => (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      display: "flex",
+                                      gap: 6,
+                                      padding: "7px 10px",
+                                      background: "#f0fdf4",
+                                      border: "1px solid #bbf7d0",
+                                      borderLeft: "3px solid #16a34a",
+                                      borderRadius: 8,
+                                      marginBottom: 5,
+                                    }}
+                                  >
+                                    <svg
+                                      width="11"
+                                      height="11"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="#16a34a"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      style={{ flexShrink: 0, marginTop: 2 }}
+                                    >
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                    <p
+                                      style={{
+                                        margin: 0,
+                                        fontSize: 11.5,
+                                        color: "#15803d",
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {strength}
+                                    </p>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Mobile Issues */}
+                            {mobileIssues.length > 0 && (
+                              <>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#94a3b8",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    margin: "18px 0 10px",
+                                  }}
+                                >
+                                  Mobile Issues ({mobileIssues.length})
+                                </div>
+                                {mobileIssues.map((issue, i) => {
+                                  const cardKey = `mobile-issue-${i}`;
+                                  const isOpen = !!expandedItems[cardKey];
+
+                                  return (
+                                    <div
+                                      key={i}
+                                      style={{
+                                        borderRadius: 10,
+                                        background: sevBg(issue.severity),
+                                        border: `1px solid ${sevBorder(issue.severity)}`,
+                                        borderLeft: `3px solid ${sevColor(issue.severity)}`,
+                                        marginBottom: 8,
+                                        overflow: "hidden",
+                                      }}
+                                    >
+                                      {/* Header */}
+                                      <button
+                                        onClick={() => toggleExpanded(cardKey)}
+                                        style={{
+                                          width: "100%",
+                                          background: "transparent",
+                                          border: "none",
+                                          padding: "11px 14px",
+                                          cursor: "pointer",
+                                          display: "flex",
+                                          alignItems: "flex-start",
+                                          gap: 8,
+                                          textAlign: "left",
+                                        }}
+                                      >
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: 8,
+                                              marginBottom: 4,
+                                              flexWrap: "wrap",
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                fontSize: 12.5,
+                                                fontWeight: 700,
+                                                color: "#0f172a",
+                                              }}
+                                            >
+                                              {issue.category
+                                                .charAt(0)
+                                                .toUpperCase() +
+                                                issue.category.slice(1)}{" "}
+                                              Issue
+                                            </span>
+                                            <span
+                                              style={{
+                                                fontSize: 10,
+                                                fontWeight: 700,
+                                                color: sevColor(issue.severity),
+                                                background: "#fff",
+                                                border: `1px solid ${sevBorder(issue.severity)}`,
+                                                borderRadius: 999,
+                                                padding: "1px 7px",
+                                                textTransform: "uppercase",
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              {issue.severity}
+                                            </span>
+                                            {issue.wcagCriterion && (
+                                              <span
+                                                style={{
+                                                  fontSize: 10,
+                                                  fontWeight: 600,
+                                                  color: "#7c8da0",
+                                                  background: "#f1f5f9",
+                                                  border: "1px solid #e2e8f0",
+                                                  borderRadius: 999,
+                                                  padding: "1px 7px",
+                                                  flexShrink: 0,
+                                                }}
+                                              >
+                                                WCAG {issue.wcagCriterion}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p
+                                            style={{
+                                              margin: 0,
+                                              fontSize: 12,
+                                              color: "#475569",
+                                              lineHeight: 1.5,
+                                            }}
+                                          >
+                                            {issue.problem}
+                                          </p>
+                                        </div>
+                                        <svg
+                                          width="14"
+                                          height="14"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="#94a3b8"
+                                          strokeWidth="2.5"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          style={{
+                                            flexShrink: 0,
+                                            marginTop: 2,
+                                            transition: "transform 0.2s",
+                                            transform: isOpen
+                                              ? "rotate(180deg)"
+                                              : "rotate(0deg)",
+                                          }}
+                                        >
+                                          <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                      </button>
+
+                                      {/* Expanded details */}
+                                      {isOpen && (
+                                        <div
+                                          style={{
+                                            padding: "0 14px 14px 14px",
+                                            borderTop: `1px solid ${sevBorder(issue.severity)}`,
+                                          }}
+                                        >
+                                          {/* Evidence */}
+                                          <div
+                                            style={{
+                                              marginTop: 10,
+                                              padding: "6px 10px",
+                                              background: "rgba(0,0,0,0.04)",
+                                              borderRadius: 6,
+                                              fontSize: 11,
+                                              color: "#64748b",
+                                              fontFamily: "monospace",
+                                              wordBreak: "break-all",
+                                            }}
+                                          >
+                                            🔍 {issue.evidence}
+                                          </div>
+
+                                          {/* Affected users */}
+                                          <div style={{ marginTop: 10 }}>
+                                            <div
+                                              style={{
+                                                fontSize: 10.5,
+                                                fontWeight: 700,
+                                                color: "#64748b",
+                                                textTransform: "uppercase",
+                                                letterSpacing: "0.4px",
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              Affected users
+                                            </div>
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 6,
+                                              }}
+                                            >
+                                              <svg
+                                                width="12"
+                                                height="12"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="#7c8da0"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              >
+                                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                                <circle cx="9" cy="7" r="4" />
+                                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                              </svg>
+                                              <span
+                                                style={{
+                                                  fontSize: 12,
+                                                  color: "#475569",
+                                                }}
+                                              >
+                                                {issue.affectedUsers}
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {/* Recommendation */}
+                                          <div
+                                            style={{
+                                              marginTop: 10,
+                                              padding: "10px 12px",
+                                              background: "#f0fdf4",
+                                              border: "1px solid #bbf7d0",
+                                              borderRadius: 8,
+                                            }}
+                                          >
+                                            <div
+                                              style={{
+                                                fontSize: 10.5,
+                                                fontWeight: 700,
+                                                color: "#15803d",
+                                                textTransform: "uppercase",
+                                                letterSpacing: "0.4px",
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              Recommended fix
+                                            </div>
+                                            <p
+                                              style={{
+                                                margin: 0,
+                                                fontSize: 12,
+                                                color: "#166534",
+                                                lineHeight: 1.6,
+                                              }}
+                                            >
+                                              {issue.recommendation}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            )}
+
+                            {/* Mobile Next Steps */}
+                            {mobileNextSteps.length > 0 && (
+                              <>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#94a3b8",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    margin: "18px 0 10px",
+                                  }}
+                                >
+                                  Mobile Next Steps
+                                </div>
+                                {mobileNextSteps.map((step, i) => (
+                                  <label
+                                    key={i}
+                                    style={{
+                                      display: "flex",
+                                      gap: 8,
+                                      alignItems: "flex-start",
+                                      padding: "8px 12px",
+                                      background: "#fffbeb",
+                                      border: "1px solid #fde68a",
+                                      borderLeft: "3px solid #f59e0b",
+                                      borderRadius: 8,
+                                      marginBottom: 6,
+                                      cursor: "pointer",
+                                      userSelect: "none",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      style={{
+                                        accentColor: "#f59e0b",
+                                        marginTop: 2,
+                                        marginRight: 4,
+                                        width: 16,
+                                        height: 16,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        fontSize: 12,
+                                        color: "#92400e",
+                                        lineHeight: 1.55,
+                                      }}
+                                    >
+                                      {step}
+                                    </span>
+                                  </label>
+                                ))}
+                              </>
+                            )}
+
+                            {/* No issues case */}
+                            {mobileIssues.length === 0 && (
                               <div
                                 style={{
-                                  width: 28,
-                                  height: 28,
-                                  borderRadius: 7,
-                                  background: "#f0fdf4",
-                                  border: "1px solid #bbf7d0",
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "center",
+                                  gap: 10,
+                                  padding: "12px 14px",
+                                  background: "#f0fdf4",
+                                  border: "1px solid #bbf7d0",
+                                  borderRadius: 10,
+                                  marginBottom: 16,
                                 }}
                               >
                                 <svg
-                                  width="13"
-                                  height="13"
+                                  width="14"
+                                  height="14"
                                   viewBox="0 0 24 24"
                                   fill="none"
                                   stroke="#16a34a"
-                                  strokeWidth="2.2"
+                                  strokeWidth="2.5"
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                 >
-                                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                                  <circle cx="12" cy="12" r="10" />
+                                  <polyline points="20 6 9 17 4 12" />
                                 </svg>
-                              </div>
-                              <div>
-                                <div
+                                <span
                                   style={{
-                                    fontSize: 13,
-                                    fontWeight: 700,
-                                    color: "#0f172a",
+                                    fontSize: 12.5,
+                                    fontWeight: 600,
+                                    color: "#15803d",
                                   }}
                                 >
-                                  Cognitive Accessibility
-                                </div>
-                                <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                                  Readability, consistency, error prevention,
-                                  predictability
-                                </div>
+                                  No mobile accessibility issues detected by AI
+                                  analysis.
+                                </span>
                               </div>
-                            </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+              </section>
 
-                            {/* Checks grid */}
+              {/* ── Specialized Audits Section ── */}
+              <section id="specialized-audits" ref={sectionRefs.current[4]}>
+                {analysis &&
+                  (() => {
+                    const sevColor = (s) => {
+                      const sl = (s || "").toLowerCase();
+                      if (
+                        sl === "high" ||
+                        sl === "critical" ||
+                        sl === "serious"
+                      )
+                        return "#dc2626";
+                      if (
+                        sl === "medium" ||
+                        sl === "moderate" ||
+                        sl === "warning"
+                      )
+                        return "#d97706";
+                      return "#16a34a";
+                    };
+
+                    // ── Info popup content ──
+                    const AUDIT_INFO = {
+                      specialized: {
+                        title: "Specialized Audits",
+                        icon: "🔍",
+                        what: "A set of focused deep-dive checks that go beyond the general WCAG score, each targeting a specific accessibility domain.",
+                        why: "General scores can mask domain-specific failure patterns. A site might score 80 overall but have every single form completely inaccessible to screen reader users — the specialized audits surface exactly those kinds of blind spots.",
+                        how: "Each audit maps to a cluster of WCAG success criteria that share a common impact pattern. Issues are detected by combining flagged WCAG violation groups with keyword analysis of the AI's written findings.",
+                        wcag: "Covers criteria across all four POUR principles — Perceivable, Operable, Understandable, and Robust.",
+                      },
+                      form: {
+                        title: "Form Accessibility",
+                        icon: "📋",
+                        what: "Checks whether form controls — inputs, selects, textareas, buttons — are properly labeled, whether errors are clearly communicated, and whether fields are programmatically identifiable.",
+                        why: "Forms are the primary interaction point for critical tasks: login, checkout, contact, registration. An inaccessible form locks users out of core functionality entirely — it's not a minor inconvenience, it's a blocker.",
+                        how: "Screen reader users depend on programmatic labels to know what each field is for. Users with cognitive disabilities need clear, specific error messages. Motor-impaired users rely on autocomplete to avoid repetitive typing. All of these are testable with WCAG criteria.",
+                        wcag: "WCAG 1.3.1 (Info & Relationships), 1.3.5 (Input Purpose / autocomplete), 3.3.1 (Error Identification), 3.3.2 (Labels or Instructions), 3.3.3 (Error Suggestion), 3.3.4 (Error Prevention).",
+                      },
+                      aria: {
+                        title: "ARIA Usage",
+                        icon: "🧩",
+                        what: "Verifies that ARIA roles, properties, and states are used correctly — and flags cases where ARIA is absent when needed, or present in ways that actively break assistive technology.",
+                        why: "ARIA is the bridge between modern UI patterns and screen readers. But it's a double-edged tool: incorrect ARIA usage is often worse than no ARIA at all. A button with the wrong role, or a modal without the right aria attributes, can make an interface completely unusable for blind users.",
+                        how: "Common ARIA mistakes include: missing accessible names on interactive elements, redundant or conflicting roles, required child roles missing from parent containers, and aria-hidden applied to focusable elements. Each of these silently breaks screen reader navigation.",
+                        wcag: "WCAG 4.1.1 (Parsing), 4.1.2 (Name, Role, Value) — both part of the Robust principle, which ensures content can be interpreted by a wide range of assistive technologies.",
+                      },
+                    };
+
+                    // Reusable "?" info button
+                    const InfoBtn = ({ infoKey }) => (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAuditInfoOpen((prev) =>
+                            prev === infoKey ? null : infoKey,
+                          );
+                        }}
+                        title="Learn more about this section"
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: "50%",
+                          border: "1.5px solid #94a3b8",
+                          background: "transparent",
+                          color: "#94a3b8",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: 0,
+                          lineHeight: 1,
+                          flexShrink: 0,
+                          transition: "all 0.15s",
+                          ...(auditInfoOpen === infoKey
+                            ? {
+                                borderColor: "#7c3aed",
+                                color: "#7c3aed",
+                                background: "#f5f3ff",
+                              }
+                            : {}),
+                        }}
+                      >
+                        ?
+                      </button>
+                    );
+
+                    // Extract sentences matching a regex from a text string
+                    const sentences = (text) =>
+                      (text || "")
+                        .match(/[^.!?]+[.!?]+/g)
+                        ?.map((s) => s.trim())
+                        .filter(Boolean) || [];
+                    const aiTexts = [
+                      ai.overallSummary || "",
+                      ai.hciSummary || "",
+                      ...(ai.nextSteps || []),
+                    ];
+                    const extractFromAll = (re) => [
+                      ...new Set(
+                        aiTexts.flatMap((t) =>
+                          sentences(t).filter((s) => re.test(s)),
+                        ),
+                      ),
+                    ];
+
+                    // ── 1. Form Accessibility ──
+                    const FORM_CRIT = new Set([
+                      "1.3.1",
+                      "1.3.5",
+                      "3.3.1",
+                      "3.3.2",
+                      "3.3.3",
+                      "3.3.4",
+                      "4.1.3",
+                    ]);
+                    const formRe =
+                      /\bform\b|\binput\b|\blabel\b|\bfield\b|\bsubmit\b|error.{0,20}message|validation|autocomplete|placeholder|\brequired\b/i;
+                    const formGroups = groups.filter((g) => {
+                      const k = getCriterionKey(g.wcagCriterion);
+                      return (
+                        (k && FORM_CRIT.has(k)) ||
+                        formRe.test(g.problem || "") ||
+                        formRe.test(g.wcagCriterion || "")
+                      );
+                    });
+                    const formInsights = extractFromAll(formRe).slice(0, 3);
+
+                    // ── 2. ARIA Usage ──
+                    const ARIA_CRIT = new Set(["4.1.1", "4.1.2"]);
+                    const ariaRe =
+                      /\baria[-_\s]|\brole\s*=|landmark|aria.label|aria.labelledby|aria.describedby|aria.hidden|accessible.name|assistive.tech/i;
+                    const ariaGroups = groups.filter((g) => {
+                      const k = getCriterionKey(g.wcagCriterion);
+                      return (
+                        (k && ARIA_CRIT.has(k)) ||
+                        ariaRe.test(g.problem || "") ||
+                        ariaRe.test(g.wcagCriterion || "")
+                      );
+                    });
+                    const ariaInsights = extractFromAll(ariaRe).slice(0, 3);
+
+                    // ── 3. Animation / Motion ──
+                    const MOTION_CRIT = new Set([
+                      "2.2.2",
+                      "2.3.1",
+                      "2.3.2",
+                      "2.3.3",
+                    ]);
+                    const motionRe =
+                      /animation|motion|carousel|autoplay|auto.play|\btransition\b|parallax|flicker|blink|reduced.motion|vestibular|moving.content|scrolling.effect/i;
+                    const motionGroups = groups.filter((g) => {
+                      const k = getCriterionKey(g.wcagCriterion);
+                      return (
+                        (k && MOTION_CRIT.has(k)) ||
+                        motionRe.test(g.problem || "") ||
+                        motionRe.test(g.wcagCriterion || "")
+                      );
+                    });
+                    const motionInsights = extractFromAll(motionRe).slice(0, 3);
+
+                    // ── 4. Language Attributes ──
+                    const LANG_CRIT = new Set(["3.1.1", "3.1.2"]);
+                    const langRe =
+                      /\blang\b|language.{0,15}attr|html.{0,10}lang|xml.lang|lang.{0,15}attribute|\blocale\b/i;
+                    const langGroups = groups.filter((g) => {
+                      const k = getCriterionKey(g.wcagCriterion);
+                      return (
+                        (k && LANG_CRIT.has(k)) ||
+                        langRe.test(g.problem || "") ||
+                        langRe.test(g.wcagCriterion || "")
+                      );
+                    });
+                    const langInsights = extractFromAll(langRe).slice(0, 3);
+                    // Check html lang from raw HTML if available
+                    const hasLangAttr =
+                      analysis.html && analysis.html.length > 0
+                        ? /<html[^>]+lang\s*=/i.test(analysis.html)
+                        : null;
+
+                    // ── 10. Cognitive Accessibility Score ──
+                    const COG_CRIT = new Set([
+                      "1.4.12",
+                      "2.4.2",
+                      "2.4.6",
+                      "3.1.1",
+                      "3.1.2",
+                      "3.1.3",
+                      "3.1.4",
+                      "3.1.5",
+                      "3.2.1",
+                      "3.2.2",
+                      "3.2.3",
+                      "3.2.4",
+                      "3.3.1",
+                      "3.3.2",
+                      "3.3.3",
+                      "3.3.4",
+                    ]);
+                    const cogRe =
+                      /cognitive|reading.level|comprehension|plain.language|readability|consistent|predictable|jargon|complex\s|instruction|error.prevention|memory|attention|\bclear\b|confus/i;
+                    const cogGroups = groups.filter((g) => {
+                      const k = getCriterionKey(g.wcagCriterion);
+                      return (
+                        (k && COG_CRIT.has(k)) || cogRe.test(g.problem || "")
+                      );
+                    });
+                    const cogInsights = extractFromAll(cogRe).slice(0, 4);
+                    const cogNegRe =
+                      /difficult|unclear|confus|hard\s|poor|lack|missing|inconsistent|complex\s|no\s+clear|jargon/i;
+                    const cogNegHits = cogInsights.filter((s) =>
+                      cogNegRe.test(s),
+                    ).length;
+                    const cogScore = Math.max(
+                      10,
+                      Math.min(
+                        100,
+                        95 - cogGroups.length * 12 - cogNegHits * 8,
+                      ),
+                    );
+                    const cogColor =
+                      cogScore >= 75
+                        ? "#16a34a"
+                        : cogScore >= 50
+                          ? "#d97706"
+                          : "#dc2626";
+
+                    const COG_CHECKS = [
+                      { label: "Consistent navigation (3.2.3)", key: "3.2.3" },
+                      {
+                        label: "Consistent identification (3.2.4)",
+                        key: "3.2.4",
+                      },
+                      { label: "Labels/instructions (3.3.2)", key: "3.3.2" },
+                      { label: "Error prevention (3.3.4)", key: "3.3.4" },
+                      { label: "Page title (2.4.2)", key: "2.4.2" },
+                      { label: "Headings/labels (2.4.6)", key: "2.4.6" },
+                    ].map((c) => ({
+                      ...c,
+                      pass: !cogGroups.some(
+                        (g) => getCriterionKey(g.wcagCriterion) === c.key,
+                      ),
+                    }));
+
+                    // ── Shared audit card renderer ──
+                    const AuditCard = ({
+                      icon,
+                      iconBg,
+                      iconStroke,
+                      title,
+                      subtitle,
+                      issueGroups,
+                      insights,
+                      extraChecks,
+                      infoKey,
+                    }) => {
+                      const hasIssues = issueGroups.length > 0;
+                      const hasData =
+                        hasIssues ||
+                        insights.length > 0 ||
+                        (extraChecks && extraChecks.some((c) => !c.pass));
+                      return (
+                        <div
+                          style={{
+                            background: "#fff",
+                            borderRadius: 14,
+                            padding: "18px 20px",
+                            border: `1px solid ${hasIssues ? "#fca5a5" : "#e2e8f0"}`,
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                          }}
+                        >
+                          {/* Card header */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              marginBottom: 14,
+                            }}
+                          >
                             <div
                               style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(3,1fr)",
-                                gap: 6,
-                                marginBottom: cogInsights.length > 0 ? 14 : 0,
+                                width: 32,
+                                height: 32,
+                                borderRadius: 8,
+                                background: iconBg,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
                               }}
                             >
-                              {COG_CHECKS.map((c, i) => (
+                              <svg
+                                width="15"
+                                height="15"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke={iconStroke}
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                dangerouslySetInnerHTML={{ __html: icon }}
+                              />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                }}
+                              >
+                                {title}
+                                {infoKey && <InfoBtn infoKey={infoKey} />}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                                {subtitle}
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                background: hasIssues
+                                  ? "#fef2f2"
+                                  : insights.length > 0
+                                    ? "#fffbeb"
+                                    : "#f0fdf4",
+                                color: hasIssues
+                                  ? "#dc2626"
+                                  : insights.length > 0
+                                    ? "#d97706"
+                                    : "#16a34a",
+                                border: `1px solid ${hasIssues ? "#fca5a5" : insights.length > 0 ? "#fde68a" : "#bbf7d0"}`,
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {hasIssues
+                                ? `${issueGroups.length} issue${issueGroups.length > 1 ? "s" : ""}`
+                                : insights.length > 0
+                                  ? "Warnings"
+                                  : "Clean"}
+                            </div>
+                          </div>
+
+                          {/* Extra binary checks */}
+                          {extraChecks && extraChecks.length > 0 && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 4,
+                                marginBottom:
+                                  issueGroups.length > 0 || insights.length > 0
+                                    ? 12
+                                    : 0,
+                              }}
+                            >
+                              {extraChecks.map((c, i) => (
                                 <div
                                   key={i}
                                   style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: 5,
-                                    fontSize: 10.5,
+                                    gap: 6,
+                                    fontSize: 11,
                                     color: c.pass ? "#15803d" : "#b91c1c",
-                                    background: c.pass ? "#f0fdf4" : "#fef2f2",
-                                    border: `1px solid ${c.pass ? "#bbf7d0" : "#fca5a5"}`,
-                                    borderRadius: 7,
-                                    padding: "5px 8px",
                                   }}
                                 >
                                   {c.pass ? (
                                     <svg
-                                      width="9"
-                                      height="9"
+                                      width="10"
+                                      height="10"
                                       viewBox="0 0 24 24"
                                       fill="none"
                                       stroke="#16a34a"
@@ -5536,8 +5111,8 @@ Return the edited screenshot with minimal localized edits only.
                                     </svg>
                                   ) : (
                                     <svg
-                                      width="9"
-                                      height="9"
+                                      width="10"
+                                      height="10"
                                       viewBox="0 0 24 24"
                                       fill="none"
                                       stroke="#dc2626"
@@ -5549,744 +5124,1466 @@ Return the edited screenshot with minimal localized edits only.
                                       <line x1="6" y1="6" x2="18" y2="18" />
                                     </svg>
                                   )}
-                                  <span>{c.label}</span>
+                                  {c.label}
+                                  {c.detail && (
+                                    <span
+                                      style={{
+                                        color: "#64748b",
+                                        fontWeight: 400,
+                                      }}
+                                    >
+                                      {" "}
+                                      — {c.detail}
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>
+                          )}
 
-                            {/* AI insights */}
-                            {cogInsights.length > 0 && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 5,
-                                }}
-                              >
-                                {cogInsights.map((s, i) => (
-                                  <div
-                                    key={i}
-                                    style={{
-                                      display: "flex",
-                                      gap: 6,
-                                      padding: "7px 10px",
-                                      background: "#fafafa",
-                                      border: "1px solid #e2e8f0",
-                                      borderLeft: "3px solid #7c3aed",
-                                      borderRadius: 8,
-                                    }}
-                                  >
-                                    <svg
-                                      width="11"
-                                      height="11"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="#7c3aed"
-                                      strokeWidth="2.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      style={{ flexShrink: 0, marginTop: 2 }}
-                                    >
-                                      <circle cx="12" cy="12" r="10" />
-                                      <line x1="12" y1="8" x2="12" y2="12" />
-                                      <line
-                                        x1="12"
-                                        y1="16"
-                                        x2="12.01"
-                                        y2="16"
-                                      />
-                                    </svg>
-                                    <p
-                                      style={{
-                                        margin: 0,
-                                        fontSize: 11,
-                                        color: "#475569",
-                                        lineHeight: 1.5,
-                                      }}
-                                    >
-                                      {s}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {cogInsights.length === 0 &&
-                              cogGroups.length === 0 && (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    fontSize: 11.5,
-                                    color: "#15803d",
-                                  }}
-                                >
-                                  <svg
-                                    width="12"
-                                    height="12"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#16a34a"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                  No cognitive accessibility issues detected.
-                                </div>
-                              )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-
-            <div
-              className="next-steps"
-              style={{
-                background: "#fff",
-                borderRadius: "18px",
-                padding: "20px 24px",
-                boxShadow: "var(--shadow)",
-                marginTop: "32px",
-                border: "1px solid var(--border-light)",
-                borderTop: "3px solid #d97706",
-              }}
-            >
-              {(() => {
-                if (nextSteps.length === 0) {
-                  return (
-                    <>
-                      <h2 className="next-steps-heading">Next Steps</h2>
-                      <p style={{ color: "#64748b", fontSize: 14 }}>
-                        No specific recommendations were generated.
-                      </p>
-                    </>
-                  );
-                }
-
-                // ── Effort tag detection ─────────────────────────────────
-                const detectEffort = (text) => {
-                  const t = text.toLowerCase();
-                  if (
-                    /test|audit|review|screen reader|assistive|manual|verify|check/.test(
-                      t,
-                    )
-                  )
-                    return {
-                      label: "Testing",
-                      color: "#7c3aed",
-                      bg: "#f5f3ff",
-                    };
-                  if (
-                    /aria|semantic|landmark|structure|heading|role|hierarchy|implement|refactor/.test(
-                      t,
-                    )
-                  )
-                    return {
-                      label: "Structural",
-                      color: "#0ea5e9",
-                      bg: "#f0f9ff",
-                    };
-                  if (
-                    /alt text|alt=|label|contrast|lang|skip|button text|link text|descriptive/.test(
-                      t,
-                    )
-                  )
-                    return {
-                      label: "Quick win",
-                      color: "#16a34a",
-                      bg: "#f0fdf4",
-                    };
-                  return { label: "Moderate", color: "#d97706", bg: "#fffbeb" };
-                };
-
-                // ── Phase grouping ───────────────────────────────────────
-                const phaseOrder = [
-                  "Quick win",
-                  "Moderate",
-                  "Structural",
-                  "Testing",
-                ];
-                const phaseLabels = {
-                  "Quick win": {
-                    title: "Quick Wins",
-                    sub: "Under 30 min each",
-                    color: "#16a34a",
-                    border: "#86efac",
-                  },
-                  Moderate: {
-                    title: "Moderate Fixes",
-                    sub: "Require code changes",
-                    color: "#d97706",
-                    border: "#fde68a",
-                  },
-                  Structural: {
-                    title: "Structural Changes",
-                    sub: "Architecture / markup",
-                    color: "#0ea5e9",
-                    border: "#bae6fd",
-                  },
-                  Testing: {
-                    title: "Testing & Validation",
-                    sub: "Manual & tool verification",
-                    color: "#7c3aed",
-                    border: "#ddd6fe",
-                  },
-                };
-
-                // ── WCAG criterion linking ───────────────────────────────
-                const stepCriteria = (text) => {
-                  const t = text.toLowerCase();
-                  const matches = [];
-                  if (/alt text|alternative text|img/.test(t))
-                    matches.push("1.1.1");
-                  if (/label|form field|input/.test(t)) matches.push("1.3.1");
-                  if (/contrast|color.*text|text.*color/.test(t))
-                    matches.push("1.4.3");
-                  if (/keyboard|tab |focus/.test(t)) matches.push("2.1.1");
-                  if (/skip|bypass/.test(t)) matches.push("2.4.1");
-                  if (/link text|descriptive.*link|link.*descriptive/.test(t))
-                    matches.push("2.4.4");
-                  if (/focus.*visible|visible.*focus|focus ring/.test(t))
-                    matches.push("2.4.7");
-                  if (/error|validation/.test(t)) matches.push("3.3.1");
-                  if (/button.*name|accessible.*name|aria-label/.test(t))
-                    matches.push("4.1.2");
-                  if (/lang|language/.test(t)) matches.push("3.1.1");
-                  // Filter to only criteria that are actually in the groups list
-                  return matches.filter((c) =>
-                    groups.some((g) => getCriterionKey(g.wcagCriterion) === c),
-                  );
-                };
-
-                // Annotate each step
-                const annotated = nextSteps.map((step, idx) => ({
-                  step,
-                  idx,
-                  effort: detectEffort(step),
-                  criteria: stepCriteria(step),
-                }));
-
-                // Group by phase
-                const grouped = {};
-                phaseOrder.forEach((p) => {
-                  grouped[p] = [];
-                });
-                annotated.forEach((item) => {
-                  grouped[item.effort.label].push(item);
-                });
-
-                // Progress
-                const totalCount = nextSteps.length;
-                const doneCount = doneSteps.size;
-                const pct =
-                  totalCount > 0
-                    ? Math.round((doneCount / totalCount) * 100)
-                    : 0;
-                const allDone = doneCount === totalCount;
-
-                // Copy as markdown checklist
-                const copyChecklist = () => {
-                  const md = nextSteps
-                    .map((s, i) => `- [${doneSteps.has(i) ? "x" : " "}] ${s}`)
-                    .join("\n");
-                  navigator.clipboard?.writeText(
-                    `## Accessibility Next Steps\n\n${md}`,
-                  );
-                };
-                const handleCopyChecklist = () => {
-                  copyChecklist();
-                  setChecklistCopied(true);
-                  setTimeout(() => setChecklistCopied(false), 2000);
-                };
-
-                // Phase icons (SVG paths)
-                const phaseIcons = {
-                  "Quick win": (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                  ),
-                  Moderate: (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-                    </svg>
-                  ),
-                  Structural: (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="2" y="3" width="6" height="4" rx="1" />
-                      <rect x="9" y="3" width="13" height="4" rx="1" />
-                      <rect x="2" y="10" width="6" height="4" rx="1" />
-                      <rect x="9" y="10" width="13" height="4" rx="1" />
-                      <rect x="2" y="17" width="6" height="4" rx="1" />
-                      <rect x="9" y="17" width="13" height="4" rx="1" />
-                    </svg>
-                  ),
-                  Testing: (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 1-2-2H9zm0 0V9" />
-                    </svg>
-                  ),
-                };
-
-                const activePhasesCount = phaseOrder.filter(
-                  (p) => grouped[p].length > 0,
-                ).length;
-
-                return (
-                  <>
-                    {/* ── Header ── */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: 14,
-                      }}
-                    >
-                      <div>
-                        <h2
-                          className="next-steps-heading"
-                          style={{ margin: "0 0 2px" }}
-                        >
-                          Next Steps
-                        </h2>
-                        <p
-                          style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}
-                        >
-                          Remediation roadmap · {totalCount} actions across{" "}
-                          {activePhasesCount} phase
-                          {activePhasesCount > 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleCopyChecklist}
-                        style={{
-                          background: checklistCopied ? "#f0fdf4" : "#f8fafc",
-                          border: `1px solid ${checklistCopied ? "#86efac" : "#e2e8f0"}`,
-                          color: checklistCopied ? "#16a34a" : "#475569",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          borderRadius: 8,
-                          padding: "7px 14px",
-                          cursor: "pointer",
-                          boxShadow: "none",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          flexShrink: 0,
-                          transition: "all 0.2s",
-                        }}
-                      >
-                        {checklistCopied ? (
-                          <>
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                          {/* WCAG violation groups */}
+                          {issueGroups.map((g, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                background: "#fafafa",
+                                border: "1px solid #f1f5f9",
+                                borderLeft: `3px solid ${sevColor(g.severity)}`,
+                                marginBottom: 6,
+                              }}
                             >
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="9" y="9" width="13" height="13" rx="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                            Copy as checklist
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* ── Segmented progress bar ── */}
-                    <div
-                      style={{
-                        background: "#f8fafc",
-                        border: "1px solid #f1f5f9",
-                        borderRadius: 10,
-                        padding: "10px 14px",
-                        marginBottom: 18,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: 7,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: allDone ? "#16a34a" : "#334155",
-                          }}
-                        >
-                          {allDone
-                            ? "All steps completed!"
-                            : `${doneCount} / ${totalCount} completed`}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 15,
-                            fontWeight: 800,
-                            color: allDone ? "#16a34a" : "#0f172a",
-                          }}
-                        >
-                          {pct}%
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 3,
-                          height: 7,
-                          borderRadius: 999,
-                          overflow: "hidden",
-                          marginBottom: 7,
-                        }}
-                      >
-                        {phaseOrder
-                          .filter((p) => grouped[p].length > 0)
-                          .map((phase) => {
-                            const meta = phaseLabels[phase];
-                            const phaseDone = grouped[phase].filter((i) =>
-                              doneSteps.has(i.idx),
-                            ).length;
-                            const phaseTotal = grouped[phase].length;
-                            const phaseWidth = (phaseTotal / totalCount) * 100;
-                            const phaseFill =
-                              phaseTotal > 0
-                                ? (phaseDone / phaseTotal) * 100
-                                : 0;
-                            return (
                               <div
-                                key={phase}
-                                style={{
-                                  width: `${phaseWidth}%`,
-                                  background: "#e2e8f0",
-                                  borderRadius: 999,
-                                  overflow: "hidden",
-                                }}
-                                title={`${meta.title}: ${phaseDone}/${phaseTotal}`}
-                              >
-                                <div
-                                  style={{
-                                    height: "100%",
-                                    width: `${phaseFill}%`,
-                                    background: meta.color,
-                                    borderRadius: 999,
-                                    transition: "width 0.4s ease",
-                                  }}
-                                />
-                              </div>
-                            );
-                          })}
-                      </div>
-                      <div
-                        style={{ display: "flex", gap: 12, flexWrap: "wrap" }}
-                      >
-                        {phaseOrder
-                          .filter((p) => grouped[p].length > 0)
-                          .map((phase) => {
-                            const meta = phaseLabels[phase];
-                            const phaseDone = grouped[phase].filter((i) =>
-                              doneSteps.has(i.idx),
-                            ).length;
-                            return (
-                              <div
-                                key={phase}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: 4,
+                                  gap: 6,
+                                  flexWrap: "wrap",
+                                  marginBottom: g.problem ? 3 : 0,
                                 }}
                               >
                                 <span
                                   style={{
-                                    width: 7,
-                                    height: 7,
-                                    borderRadius: 2,
-                                    background: meta.color,
-                                    flexShrink: 0,
-                                  }}
-                                />
-                                <span
-                                  style={{ fontSize: 11, color: "#64748b" }}
-                                >
-                                  {meta.title}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 11,
+                                    fontSize: 11.5,
                                     fontWeight: 700,
-                                    color: meta.color,
+                                    color: "#0f172a",
                                   }}
                                 >
-                                  {phaseDone}/{grouped[phase].length}
+                                  {getFriendlyTitle(
+                                    g.wcagCriterion,
+                                    g.id,
+                                    g.problem,
+                                  )}
                                 </span>
+                                {g.severity && (
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      color: "#fff",
+                                      background: sevColor(g.severity),
+                                      borderRadius: 999,
+                                      padding: "1px 6px",
+                                      textTransform: "uppercase",
+                                    }}
+                                  >
+                                    {g.severity}
+                                  </span>
+                                )}
+                                {typeof g.count === "number" && (
+                                  <span
+                                    style={{ fontSize: 10, color: "#94a3b8" }}
+                                  >
+                                    {g.count} instance{g.count !== 1 ? "s" : ""}
+                                  </span>
+                                )}
                               </div>
-                            );
-                          })}
-                      </div>
-                    </div>
+                              {g.problem && (
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontSize: 11,
+                                    color: "#475569",
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  {g.problem}
+                                </p>
+                              )}
+                              {g.recommendation && (
+                                <p
+                                  style={{
+                                    margin: "3px 0 0",
+                                    fontSize: 10.5,
+                                    color: "#0ea5e9",
+                                    fontStyle: "italic",
+                                  }}
+                                >
+                                  → {g.recommendation}
+                                </p>
+                              )}
+                            </div>
+                          ))}
 
-                    {/* ── Phase groups ── */}
-                    {phaseOrder
-                      .filter((p) => grouped[p].length > 0)
-                      .map((phase) => {
-                        const meta = phaseLabels[phase];
-                        const phaseDone = grouped[phase].filter((i) =>
-                          doneSteps.has(i.idx),
-                        ).length;
-                        const phaseComplete =
-                          phaseDone === grouped[phase].length;
-                        return (
-                          <div key={phase} style={{ marginBottom: 16 }}>
-                            {/* Phase banner */}
+                          {/* AI insights */}
+                          {insights.map((s, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: "flex",
+                                gap: 6,
+                                padding: "7px 10px",
+                                background: "#f8fafc",
+                                border: "1px solid #e2e8f0",
+                                borderLeft: "3px solid #94a3b8",
+                                borderRadius: 8,
+                                marginBottom: 5,
+                              }}
+                            >
+                              <svg
+                                width="11"
+                                height="11"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#64748b"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ flexShrink: 0, marginTop: 2 }}
+                              >
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                              </svg>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: 11,
+                                  color: "#475569",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                {s}
+                              </p>
+                            </div>
+                          ))}
+
+                          {!hasData && (
                             <div
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 8,
-                                background: `${meta.color}0d`,
-                                border: `1px solid ${meta.border}`,
-                                borderLeft: `3px solid ${meta.color}`,
-                                borderRadius: "0 8px 8px 0",
-                                padding: "7px 12px",
-                                marginBottom: 8,
+                                gap: 6,
+                                fontSize: 11.5,
+                                color: "#15803d",
                               }}
                             >
-                              <span
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#16a34a"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                              No issues detected in this area.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    const info = auditInfoOpen
+                      ? AUDIT_INFO[auditInfoOpen]
+                      : null;
+
+                    return (
+                      <>
+                        {/* Info modal overlay */}
+                        {info && (
+                          <div
+                            onClick={() => setAuditInfoOpen(null)}
+                            style={{
+                              position: "fixed",
+                              inset: 0,
+                              background: "rgba(15,23,42,0.45)",
+                              zIndex: 1000,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: 24,
+                            }}
+                          >
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                background: "#fff",
+                                borderRadius: 18,
+                                padding: "28px 30px",
+                                maxWidth: 520,
+                                width: "100%",
+                                boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
+                                position: "relative",
+                              }}
+                            >
+                              {/* Close */}
+                              <button
+                                onClick={() => setAuditInfoOpen(null)}
                                 style={{
-                                  color: meta.color,
+                                  position: "absolute",
+                                  top: 14,
+                                  right: 14,
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  border: "none",
+                                  background: "#f1f5f9",
+                                  color: "#64748b",
+                                  fontSize: 14,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: 0,
+                                }}
+                              >
+                                ✕
+                              </button>
+
+                              {/* Header */}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  marginBottom: 20,
+                                }}
+                              >
+                                <span style={{ fontSize: 26 }}>
+                                  {info.icon}
+                                </span>
+                                <div>
+                                  <h3
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 16,
+                                      fontWeight: 800,
+                                      color: "#0f172a",
+                                    }}
+                                  >
+                                    {info.title}
+                                  </h3>
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      color: "#7c3aed",
+                                      background: "#f5f3ff",
+                                      border: "1px solid #ddd6fe",
+                                      borderRadius: 999,
+                                      padding: "1px 8px",
+                                    }}
+                                  >
+                                    Accessibility Audit
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Sections */}
+                              {[
+                                {
+                                  label: "What it checks",
+                                  text: info.what,
+                                  color: "#0ea5e9",
+                                  bg: "#f0f9ff",
+                                  border: "#bae6fd",
+                                },
+                                {
+                                  label: "Why it matters",
+                                  text: info.why,
+                                  color: "#d97706",
+                                  bg: "#fffbeb",
+                                  border: "#fde68a",
+                                },
+                                {
+                                  label: "How it works",
+                                  text: info.how,
+                                  color: "#7c3aed",
+                                  bg: "#f5f3ff",
+                                  border: "#ddd6fe",
+                                },
+                                {
+                                  label: "WCAG criteria",
+                                  text: info.wcag,
+                                  color: "#059669",
+                                  bg: "#f0fdf4",
+                                  border: "#bbf7d0",
+                                },
+                              ].map(({ label, text, color, bg, border }) => (
+                                <div
+                                  key={label}
+                                  style={{
+                                    background: bg,
+                                    border: `1px solid ${border}`,
+                                    borderRadius: 10,
+                                    padding: "11px 14px",
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      color,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.5px",
+                                      marginBottom: 4,
+                                    }}
+                                  >
+                                    {label}
+                                  </div>
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 12.5,
+                                      color: "#374151",
+                                      lineHeight: 1.6,
+                                    }}
+                                  >
+                                    {text}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 32 }}>
+                          {/* Section header */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              marginBottom: 16,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 9,
+                                background: "#f5f3ff",
+                                border: "1px solid #ddd6fe",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#7c3aed"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h2
+                                style={{
+                                  margin: 0,
+                                  fontSize: 17,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                Specialized Audits
+                                <InfoBtn infoKey="specialized" />
+                              </h2>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: 11.5,
+                                  color: "#94a3b8",
+                                }}
+                              >
+                                Targeted checks for forms, ARIA, motion,
+                                language, and cognitive load
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* 2×2 audit grid */}
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 14,
+                              marginBottom: 14,
+                            }}
+                          >
+                            <AuditCard
+                              icon='<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="15" x2="16" y2="15"/>'
+                              iconBg="#fef9c3"
+                              iconStroke="#ca8a04"
+                              title="Form Accessibility"
+                              subtitle="Labels, errors, validation, autocomplete"
+                              issueGroups={formGroups}
+                              insights={formInsights}
+                              extraChecks={[]}
+                              infoKey="form"
+                            />
+                            <AuditCard
+                              icon='<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>'
+                              iconBg="#ede9fe"
+                              iconStroke="#7c3aed"
+                              title="ARIA Usage"
+                              subtitle="Roles, accessible names, landmarks"
+                              issueGroups={ariaGroups}
+                              insights={ariaInsights}
+                              extraChecks={[]}
+                              infoKey="aria"
+                            />
+                            <AuditCard
+                              icon='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+                              iconBg="#fff7ed"
+                              iconStroke="#ea580c"
+                              title="Animation & Motion"
+                              subtitle="Flashing, autoplay, reduced-motion support"
+                              issueGroups={motionGroups}
+                              insights={motionInsights}
+                              extraChecks={[]}
+                            />
+                            <AuditCard
+                              icon='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+                              iconBg="#ecfdf5"
+                              iconStroke="#059669"
+                              title="Language Attributes"
+                              subtitle="html[lang], lang on passages, locale"
+                              issueGroups={langGroups}
+                              insights={langInsights}
+                              extraChecks={
+                                hasLangAttr !== null
+                                  ? [
+                                      {
+                                        label: "html[lang] attribute",
+                                        pass: hasLangAttr,
+                                        detail: hasLangAttr
+                                          ? "Present"
+                                          : "Missing — screen readers cannot determine page language",
+                                      },
+                                    ]
+                                  : []
+                              }
+                            />
+                          </div>
+
+                          {/* ── Cognitive Accessibility Score (full width) ── */}
+                          <div
+                            style={{
+                              background: "#fff",
+                              borderRadius: 14,
+                              padding: "20px 24px",
+                              border: "1px solid #e2e8f0",
+                              boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 20,
+                              }}
+                            >
+                              {/* Circular score */}
+                              <div
+                                style={{
                                   flexShrink: 0,
                                   display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  gap: 4,
                                 }}
                               >
-                                {phaseIcons[phase]}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  color: meta.color,
-                                  flex: 1,
-                                }}
-                              >
-                                {meta.title}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: "#94a3b8",
-                                  marginRight: 8,
-                                }}
-                              >
-                                {meta.sub}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  background: phaseComplete
-                                    ? meta.color
-                                    : "#fff",
-                                  color: phaseComplete ? "#fff" : meta.color,
-                                  border: `1.5px solid ${meta.color}`,
-                                  borderRadius: 999,
-                                  padding: "2px 10px",
-                                  transition: "all 0.2s",
-                                }}
-                              >
-                                {phaseComplete
-                                  ? "Done"
-                                  : `${phaseDone}/${grouped[phase].length}`}
-                              </span>
-                            </div>
+                                <svg width="80" height="80" viewBox="0 0 80 80">
+                                  <circle
+                                    cx="40"
+                                    cy="40"
+                                    r="32"
+                                    fill="none"
+                                    stroke="#f1f5f9"
+                                    strokeWidth="8"
+                                  />
+                                  <circle
+                                    cx="40"
+                                    cy="40"
+                                    r="32"
+                                    fill="none"
+                                    stroke={cogColor}
+                                    strokeWidth="8"
+                                    strokeDasharray={`${(2 * Math.PI * 32 * cogScore) / 100} ${2 * Math.PI * 32 * (1 - cogScore / 100)}`}
+                                    strokeDashoffset={2 * Math.PI * 32 * 0.25}
+                                    strokeLinecap="round"
+                                  />
+                                  <text
+                                    x="40"
+                                    y="37"
+                                    textAnchor="middle"
+                                    fontSize="16"
+                                    fontWeight="800"
+                                    fill={cogColor}
+                                  >
+                                    {cogScore}
+                                  </text>
+                                  <text
+                                    x="40"
+                                    y="50"
+                                    textAnchor="middle"
+                                    fontSize="8"
+                                    fill="#94a3b8"
+                                  >
+                                    /100
+                                  </text>
+                                </svg>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    color: "#94a3b8",
+                                  }}
+                                >
+                                  Cognitive Score
+                                </span>
+                              </div>
 
-                            {/* Step cards */}
-                            {grouped[phase].map(({ step, idx, criteria }) => {
-                              const done = doneSteps.has(idx);
-                              return (
+                              {/* Right content */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
                                 <div
-                                  key={idx}
-                                  onClick={() => toggleDoneStep(idx)}
                                   style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: 10,
-                                    padding: "9px 12px",
-                                    borderRadius: 8,
-                                    border: `1px solid ${done ? meta.border : "#f1f5f9"}`,
-                                    borderLeft: `3px solid ${done ? meta.color : "#e2e8f0"}`,
-                                    background: done
-                                      ? `${meta.color}08`
-                                      : "#fff",
-                                    marginBottom: 5,
-                                    cursor: "pointer",
-                                    transition: "all 0.18s ease",
+                                    gap: 8,
+                                    marginBottom: 10,
                                   }}
                                 >
-                                  {/* Checkbox circle */}
                                   <div
                                     style={{
-                                      width: 18,
-                                      height: 18,
-                                      borderRadius: "50%",
-                                      flexShrink: 0,
-                                      border: `2px solid ${done ? meta.color : "#cbd5e1"}`,
-                                      background: done ? meta.color : "#fff",
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: 7,
+                                      background: "#f0fdf4",
+                                      border: "1px solid #bbf7d0",
                                       display: "flex",
                                       alignItems: "center",
                                       justifyContent: "center",
-                                      transition: "all 0.18s ease",
                                     }}
                                   >
-                                    {done && (
+                                    <svg
+                                      width="13"
+                                      height="13"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="#16a34a"
+                                      strokeWidth="2.2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                                      <line
+                                        x1="12"
+                                        y1="17"
+                                        x2="12.01"
+                                        y2="17"
+                                      />
+                                      <circle cx="12" cy="12" r="10" />
+                                    </svg>
+                                  </div>
+                                  <div>
+                                    <div
+                                      style={{
+                                        fontSize: 13,
+                                        fontWeight: 700,
+                                        color: "#0f172a",
+                                      }}
+                                    >
+                                      Cognitive Accessibility
+                                    </div>
+                                    <div
+                                      style={{ fontSize: 11, color: "#94a3b8" }}
+                                    >
+                                      Readability, consistency, error
+                                      prevention, predictability
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Checks grid */}
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(3,1fr)",
+                                    gap: 6,
+                                    marginBottom:
+                                      cogInsights.length > 0 ? 14 : 0,
+                                  }}
+                                >
+                                  {COG_CHECKS.map((c, i) => (
+                                    <div
+                                      key={i}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        fontSize: 10.5,
+                                        color: c.pass ? "#15803d" : "#b91c1c",
+                                        background: c.pass
+                                          ? "#f0fdf4"
+                                          : "#fef2f2",
+                                        border: `1px solid ${c.pass ? "#bbf7d0" : "#fca5a5"}`,
+                                        borderRadius: 7,
+                                        padding: "5px 8px",
+                                      }}
+                                    >
+                                      {c.pass ? (
+                                        <svg
+                                          width="9"
+                                          height="9"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="#16a34a"
+                                          strokeWidth="3"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                      ) : (
+                                        <svg
+                                          width="9"
+                                          height="9"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="#dc2626"
+                                          strokeWidth="3"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <line x1="18" y1="6" x2="6" y2="18" />
+                                          <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                      )}
+                                      <span>{c.label}</span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* AI insights */}
+                                {cogInsights.length > 0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: 5,
+                                    }}
+                                  >
+                                    {cogInsights.map((s, i) => (
+                                      <div
+                                        key={i}
+                                        style={{
+                                          display: "flex",
+                                          gap: 6,
+                                          padding: "7px 10px",
+                                          background: "#fafafa",
+                                          border: "1px solid #e2e8f0",
+                                          borderLeft: "3px solid #7c3aed",
+                                          borderRadius: 8,
+                                        }}
+                                      >
+                                        <svg
+                                          width="11"
+                                          height="11"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="#7c3aed"
+                                          strokeWidth="2.5"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          style={{
+                                            flexShrink: 0,
+                                            marginTop: 2,
+                                          }}
+                                        >
+                                          <circle cx="12" cy="12" r="10" />
+                                          <line
+                                            x1="12"
+                                            y1="8"
+                                            x2="12"
+                                            y2="12"
+                                          />
+                                          <line
+                                            x1="12"
+                                            y1="16"
+                                            x2="12.01"
+                                            y2="16"
+                                          />
+                                        </svg>
+                                        <p
+                                          style={{
+                                            margin: 0,
+                                            fontSize: 11,
+                                            color: "#475569",
+                                            lineHeight: 1.5,
+                                          }}
+                                        >
+                                          {s}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {cogInsights.length === 0 &&
+                                  cogGroups.length === 0 && (
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        fontSize: 11.5,
+                                        color: "#15803d",
+                                      }}
+                                    >
                                       <svg
-                                        width="9"
-                                        height="9"
+                                        width="12"
+                                        height="12"
                                         viewBox="0 0 24 24"
                                         fill="none"
-                                        stroke="#fff"
-                                        strokeWidth="3.5"
+                                        stroke="#16a34a"
+                                        strokeWidth="2.5"
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                       >
                                         <polyline points="20 6 9 17 4 12" />
                                       </svg>
-                                    )}
-                                  </div>
+                                      No cognitive accessibility issues
+                                      detected.
+                                    </div>
+                                  )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+              </section>
 
-                                  <div style={{ flex: 1, minWidth: 0 }}>
+              <section id="next-steps" ref={sectionRefs.current[5]}>
+                <div
+                  className="next-steps"
+                  style={{
+                    background: "#fff",
+                    borderRadius: "18px",
+                    padding: "20px 24px",
+                    boxShadow: "var(--shadow)",
+                    marginTop: "32px",
+                    border: "1px solid var(--border-light)",
+                    borderTop: "3px solid #d97706",
+                  }}
+                >
+                  {(() => {
+                    if (nextSteps.length === 0) {
+                      return (
+                        <>
+                          <h2 className="next-steps-heading">Next Steps</h2>
+                          <p style={{ color: "#64748b", fontSize: 14 }}>
+                            No specific recommendations were generated.
+                          </p>
+                        </>
+                      );
+                    }
+
+                    // ── Effort tag detection ─────────────────────────────────
+                    const detectEffort = (text) => {
+                      const t = text.toLowerCase();
+                      if (
+                        /test|audit|review|screen reader|assistive|manual|verify|check/.test(
+                          t,
+                        )
+                      )
+                        return {
+                          label: "Testing",
+                          color: "#7c3aed",
+                          bg: "#f5f3ff",
+                        };
+                      if (
+                        /aria|semantic|landmark|structure|heading|role|hierarchy|implement|refactor/.test(
+                          t,
+                        )
+                      )
+                        return {
+                          label: "Structural",
+                          color: "#0ea5e9",
+                          bg: "#f0f9ff",
+                        };
+                      if (
+                        /alt text|alt=|label|contrast|lang|skip|button text|link text|descriptive/.test(
+                          t,
+                        )
+                      )
+                        return {
+                          label: "Quick win",
+                          color: "#16a34a",
+                          bg: "#f0fdf4",
+                        };
+                      return {
+                        label: "Moderate",
+                        color: "#d97706",
+                        bg: "#fffbeb",
+                      };
+                    };
+
+                    // ── Phase grouping ───────────────────────────────────────
+                    const phaseOrder = [
+                      "Quick win",
+                      "Moderate",
+                      "Structural",
+                      "Testing",
+                    ];
+                    const phaseLabels = {
+                      "Quick win": {
+                        title: "Quick Wins",
+                        sub: "Under 30 min each",
+                        color: "#16a34a",
+                        border: "#86efac",
+                      },
+                      Moderate: {
+                        title: "Moderate Fixes",
+                        sub: "Require code changes",
+                        color: "#d97706",
+                        border: "#fde68a",
+                      },
+                      Structural: {
+                        title: "Structural Changes",
+                        sub: "Architecture / markup",
+                        color: "#0ea5e9",
+                        border: "#bae6fd",
+                      },
+                      Testing: {
+                        title: "Testing & Validation",
+                        sub: "Manual & tool verification",
+                        color: "#7c3aed",
+                        border: "#ddd6fe",
+                      },
+                    };
+
+                    // ── WCAG criterion linking ───────────────────────────────
+                    const stepCriteria = (text) => {
+                      const t = text.toLowerCase();
+                      const matches = [];
+                      if (/alt text|alternative text|img/.test(t))
+                        matches.push("1.1.1");
+                      if (/label|form field|input/.test(t))
+                        matches.push("1.3.1");
+                      if (/contrast|color.*text|text.*color/.test(t))
+                        matches.push("1.4.3");
+                      if (/keyboard|tab |focus/.test(t)) matches.push("2.1.1");
+                      if (/skip|bypass/.test(t)) matches.push("2.4.1");
+                      if (
+                        /link text|descriptive.*link|link.*descriptive/.test(t)
+                      )
+                        matches.push("2.4.4");
+                      if (/focus.*visible|visible.*focus|focus ring/.test(t))
+                        matches.push("2.4.7");
+                      if (/error|validation/.test(t)) matches.push("3.3.1");
+                      if (/button.*name|accessible.*name|aria-label/.test(t))
+                        matches.push("4.1.2");
+                      if (/lang|language/.test(t)) matches.push("3.1.1");
+                      // Filter to only criteria that are actually in the groups list
+                      return matches.filter((c) =>
+                        groups.some(
+                          (g) => getCriterionKey(g.wcagCriterion) === c,
+                        ),
+                      );
+                    };
+
+                    // Annotate each step
+                    const annotated = nextSteps.map((step, idx) => ({
+                      step,
+                      idx,
+                      effort: detectEffort(step),
+                      criteria: stepCriteria(step),
+                    }));
+
+                    // Group by phase
+                    const grouped = {};
+                    phaseOrder.forEach((p) => {
+                      grouped[p] = [];
+                    });
+                    annotated.forEach((item) => {
+                      grouped[item.effort.label].push(item);
+                    });
+
+                    // Progress
+                    const totalCount = nextSteps.length;
+                    const doneCount = doneSteps.size;
+                    const pct =
+                      totalCount > 0
+                        ? Math.round((doneCount / totalCount) * 100)
+                        : 0;
+                    const allDone = doneCount === totalCount;
+
+                    // Copy as markdown checklist
+                    const copyChecklist = () => {
+                      const md = nextSteps
+                        .map(
+                          (s, i) => `- [${doneSteps.has(i) ? "x" : " "}] ${s}`,
+                        )
+                        .join("\n");
+                      navigator.clipboard?.writeText(
+                        `## Accessibility Next Steps\n\n${md}`,
+                      );
+                    };
+                    const handleCopyChecklist = () => {
+                      copyChecklist();
+                      setChecklistCopied(true);
+                      setTimeout(() => setChecklistCopied(false), 2000);
+                    };
+
+                    // Phase icons (SVG paths)
+                    const phaseIcons = {
+                      "Quick win": (
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                        </svg>
+                      ),
+                      Moderate: (
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                        </svg>
+                      ),
+                      Structural: (
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="2" y="3" width="6" height="4" rx="1" />
+                          <rect x="9" y="3" width="13" height="4" rx="1" />
+                          <rect x="2" y="10" width="6" height="4" rx="1" />
+                          <rect x="9" y="10" width="13" height="4" rx="1" />
+                          <rect x="2" y="17" width="6" height="4" rx="1" />
+                          <rect x="9" y="17" width="13" height="4" rx="1" />
+                        </svg>
+                      ),
+                      Testing: (
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 1-2-2H9zm0 0V9" />
+                        </svg>
+                      ),
+                    };
+
+                    const activePhasesCount = phaseOrder.filter(
+                      (p) => grouped[p].length > 0,
+                    ).length;
+
+                    return (
+                      <>
+                        {/* ── Header ── */}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            marginBottom: 14,
+                          }}
+                        >
+                          <div>
+                            <h2
+                              className="next-steps-heading"
+                              style={{ margin: "0 0 2px" }}
+                            >
+                              Next Steps
+                            </h2>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 12,
+                                color: "#94a3b8",
+                              }}
+                            >
+                              Remediation roadmap · {totalCount} actions across{" "}
+                              {activePhasesCount} phase
+                              {activePhasesCount > 1 ? "s" : ""}
+                            </p>
+                          </div>
+                          <button
+                            onClick={handleCopyChecklist}
+                            style={{
+                              background: checklistCopied
+                                ? "#f0fdf4"
+                                : "#f8fafc",
+                              border: `1px solid ${checklistCopied ? "#86efac" : "#e2e8f0"}`,
+                              color: checklistCopied ? "#16a34a" : "#475569",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              borderRadius: 8,
+                              padding: "7px 14px",
+                              cursor: "pointer",
+                              boxShadow: "none",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              flexShrink: 0,
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            {checklistCopied ? (
+                              <>
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <rect
+                                    x="9"
+                                    y="9"
+                                    width="13"
+                                    height="13"
+                                    rx="2"
+                                  />
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                </svg>
+                                Copy as checklist
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* ── Segmented progress bar ── */}
+                        <div
+                          style={{
+                            background: "#f8fafc",
+                            border: "1px solid #f1f5f9",
+                            borderRadius: 10,
+                            padding: "10px 14px",
+                            marginBottom: 18,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: 7,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: allDone ? "#16a34a" : "#334155",
+                              }}
+                            >
+                              {allDone
+                                ? "All steps completed!"
+                                : `${doneCount} / ${totalCount} completed`}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 15,
+                                fontWeight: 800,
+                                color: allDone ? "#16a34a" : "#0f172a",
+                              }}
+                            >
+                              {pct}%
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 3,
+                              height: 7,
+                              borderRadius: 999,
+                              overflow: "hidden",
+                              marginBottom: 7,
+                            }}
+                          >
+                            {phaseOrder
+                              .filter((p) => grouped[p].length > 0)
+                              .map((phase) => {
+                                const meta = phaseLabels[phase];
+                                const phaseDone = grouped[phase].filter((i) =>
+                                  doneSteps.has(i.idx),
+                                ).length;
+                                const phaseTotal = grouped[phase].length;
+                                const phaseWidth =
+                                  (phaseTotal / totalCount) * 100;
+                                const phaseFill =
+                                  phaseTotal > 0
+                                    ? (phaseDone / phaseTotal) * 100
+                                    : 0;
+                                return (
+                                  <div
+                                    key={phase}
+                                    style={{
+                                      width: `${phaseWidth}%`,
+                                      background: "#e2e8f0",
+                                      borderRadius: 999,
+                                      overflow: "hidden",
+                                    }}
+                                    title={`${meta.title}: ${phaseDone}/${phaseTotal}`}
+                                  >
                                     <div
                                       style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 5,
-                                        flexWrap: "wrap",
+                                        height: "100%",
+                                        width: `${phaseFill}%`,
+                                        background: meta.color,
+                                        borderRadius: 999,
+                                        transition: "width 0.4s ease",
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 12,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {phaseOrder
+                              .filter((p) => grouped[p].length > 0)
+                              .map((phase) => {
+                                const meta = phaseLabels[phase];
+                                const phaseDone = grouped[phase].filter((i) =>
+                                  doneSteps.has(i.idx),
+                                ).length;
+                                return (
+                                  <div
+                                    key={phase}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 7,
+                                        height: 7,
+                                        borderRadius: 2,
+                                        background: meta.color,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    <span
+                                      style={{ fontSize: 11, color: "#64748b" }}
+                                    >
+                                      {meta.title}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        color: meta.color,
                                       }}
                                     >
-                                      <span
+                                      {phaseDone}/{grouped[phase].length}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        {/* ── Phase groups ── */}
+                        {phaseOrder
+                          .filter((p) => grouped[p].length > 0)
+                          .map((phase) => {
+                            const meta = phaseLabels[phase];
+                            const phaseDone = grouped[phase].filter((i) =>
+                              doneSteps.has(i.idx),
+                            ).length;
+                            const phaseComplete =
+                              phaseDone === grouped[phase].length;
+                            return (
+                              <div key={phase} style={{ marginBottom: 16 }}>
+                                {/* Phase banner */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    background: `${meta.color}0d`,
+                                    border: `1px solid ${meta.border}`,
+                                    borderLeft: `3px solid ${meta.color}`,
+                                    borderRadius: "0 8px 8px 0",
+                                    padding: "7px 12px",
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      color: meta.color,
+                                      flexShrink: 0,
+                                      display: "flex",
+                                    }}
+                                  >
+                                    {phaseIcons[phase]}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      color: meta.color,
+                                      flex: 1,
+                                    }}
+                                  >
+                                    {meta.title}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      color: "#94a3b8",
+                                      marginRight: 8,
+                                    }}
+                                  >
+                                    {meta.sub}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      background: phaseComplete
+                                        ? meta.color
+                                        : "#fff",
+                                      color: phaseComplete
+                                        ? "#fff"
+                                        : meta.color,
+                                      border: `1.5px solid ${meta.color}`,
+                                      borderRadius: 999,
+                                      padding: "2px 10px",
+                                      transition: "all 0.2s",
+                                    }}
+                                  >
+                                    {phaseComplete
+                                      ? "Done"
+                                      : `${phaseDone}/${grouped[phase].length}`}
+                                  </span>
+                                </div>
+
+                                {/* Step cards */}
+                                {grouped[phase].map(
+                                  ({ step, idx, criteria }) => {
+                                    const done = doneSteps.has(idx);
+                                    return (
+                                      <div
+                                        key={idx}
+                                        onClick={() => toggleDoneStep(idx)}
                                         style={{
-                                          fontSize: 11,
-                                          fontWeight: 800,
-                                          color: done ? meta.color : "#94a3b8",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 10,
+                                          padding: "9px 12px",
+                                          borderRadius: 8,
+                                          border: `1px solid ${done ? meta.border : "#f1f5f9"}`,
+                                          borderLeft: `3px solid ${done ? meta.color : "#e2e8f0"}`,
+                                          background: done
+                                            ? `${meta.color}08`
+                                            : "#fff",
+                                          marginBottom: 5,
+                                          cursor: "pointer",
+                                          transition: "all 0.18s ease",
                                         }}
                                       >
-                                        #{idx + 1}
-                                      </span>
-                                      {criteria.map((c) => (
-                                        <span
-                                          key={c}
+                                        {/* Checkbox circle */}
+                                        <div
                                           style={{
-                                            fontSize: 10,
-                                            fontWeight: 600,
-                                            background: "#f0f9ff",
-                                            color: "#0284c7",
-                                            border: "1px solid #bae6fd",
-                                            borderRadius: 999,
-                                            padding: "0px 6px",
+                                            width: 18,
+                                            height: 18,
+                                            borderRadius: "50%",
+                                            flexShrink: 0,
+                                            border: `2px solid ${done ? meta.color : "#cbd5e1"}`,
+                                            background: done
+                                              ? meta.color
+                                              : "#fff",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            transition: "all 0.18s ease",
                                           }}
                                         >
-                                          {c}
-                                        </span>
-                                      ))}
-                                      <p
-                                        style={{
-                                          margin: 0,
-                                          fontSize: 13,
-                                          lineHeight: 1.5,
-                                          color: done ? "#94a3b8" : "#334155",
-                                          textDecoration: done
-                                            ? "line-through"
-                                            : "none",
-                                          textDecorationColor: meta.color,
-                                        }}
-                                      >
-                                        {step}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                  </>
-                );
-              })()}
-            </div>
-          </>
-        )}
-      </div>
+                                          {done && (
+                                            <svg
+                                              width="9"
+                                              height="9"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="#fff"
+                                              strokeWidth="3.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                          )}
+                                        </div>
 
-      <footer>
-        <h2>Accessa</h2>
-      </footer>
-    </>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: 5,
+                                              flexWrap: "wrap",
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                fontSize: 11,
+                                                fontWeight: 800,
+                                                color: done
+                                                  ? meta.color
+                                                  : "#94a3b8",
+                                              }}
+                                            >
+                                              #{idx + 1}
+                                            </span>
+                                            {criteria.map((c) => (
+                                              <span
+                                                key={c}
+                                                style={{
+                                                  fontSize: 10,
+                                                  fontWeight: 600,
+                                                  background: "#f0f9ff",
+                                                  color: "#0284c7",
+                                                  border: "1px solid #bae6fd",
+                                                  borderRadius: 999,
+                                                  padding: "0px 6px",
+                                                }}
+                                              >
+                                                {c}
+                                              </span>
+                                            ))}
+                                            <p
+                                              style={{
+                                                margin: 0,
+                                                fontSize: 13,
+                                                lineHeight: 1.5,
+                                                color: done
+                                                  ? "#94a3b8"
+                                                  : "#334155",
+                                                textDecoration: done
+                                                  ? "line-through"
+                                                  : "none",
+                                                textDecorationColor: meta.color,
+                                              }}
+                                            >
+                                              {step}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  },
+                                )}
+                              </div>
+                            );
+                          })}
+                      </>
+                    );
+                  })()}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+
+        <footer>
+          <h2>Accessa</h2>
+        </footer>
+      </div>
+    </div>
   );
+
+  // --- Section wrappers for scrollspy ---
+  // Place these wrappers around your main sections below:
+  // <section id="website-preview" ref={sectionRefs.current[0]}>...</section>
+  // <section id="accessibility-issues" ref={sectionRefs.current[1]}>...</section>
+  // <section id="hci-report" ref={sectionRefs.current[2]}>...</section>
+  // <section id="mobile-experience" ref={sectionRefs.current[3]}>...</section>
+  // <section id="specialized-audits" ref={sectionRefs.current[4]}>...</section>
+  // <section id="next-steps" ref={sectionRefs.current[5]}>...</section>
+  // Example: <section id="website-preview" ref={sectionRefs.current[0]}>Website preview content...</section>
+  // Wrap your actual content in these sections for scrollspy to work.
 }
 
 export default Complete;
