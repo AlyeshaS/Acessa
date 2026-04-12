@@ -25,72 +25,65 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
         borderRight: "1px solid #e2e8f0",
         display: "flex",
         flexDirection: "column",
-        padding: collapsed ? "80px 0 24px 0" : "80px 0 24px",
+
         zIndex: 100,
         boxShadow: "2px 0 12px rgba(0,0,0,0.05)",
         overflowY: "auto",
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
-      {/* Collapse/expand arrow button */}
-      <button
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-        onClick={() => setCollapsed((c) => !c)}
-        style={{
-          position: "absolute",
-          top: 18,
-          right: 8,
-          width: 24,
-          height: 24,
-          border: "none",
-          background: "transparent",
-          padding: 0,
-          cursor: "pointer",
-          zIndex: 101,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "right 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 18 18"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{
-            display: "block",
-            transform: collapsed ? "rotate(180deg)" : "none",
-            transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
-        >
-          <path
-            d="M12.5 15L6.5 9L12.5 3"
-            stroke="#64748b"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-
-      {/* Brand mark */}
+      {/* Brand mark and collapse/expand arrow button (single header) */}
       <div
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
           height: "64px",
           display: "flex",
           alignItems: "center",
-          paddingLeft: collapsed ? 0 : "20px",
+          flexDirection: "row",
+          paddingLeft: collapsed ? 0 : 20,
           borderBottom: "1px solid #f1f5f9",
           background: "#fff",
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
+        <button
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          onClick={() => setCollapsed((c) => !c)}
+          style={{
+            marginRight: collapsed ? 0 : 10,
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            cursor: "pointer",
+            zIndex: 101,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "margin 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 18 18"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{
+              display: "block",
+              transform: collapsed ? "rotate(180deg)" : "none",
+              transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+          >
+            <path
+              d="M12.5 15L6.5 9L12.5 3"
+              stroke="#64748b"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
         {!collapsed && (
           <span
             style={{
@@ -98,6 +91,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
               fontWeight: 800,
               color: "var(--slate)",
               letterSpacing: "-0.5px",
+              marginLeft: 2,
             }}
           >
             Sections
