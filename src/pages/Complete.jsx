@@ -3059,7 +3059,7 @@ Return the edited screenshot with minimal localized edits only.
                               A: {levelAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level A"
-                                description="The minimum WCAG conformance level. Addresses the most basic accessibility barriers that prevent some users from accessing content."
+                                description="Level A ensures the most basic accessibility requirements are met, allowing users to access content without major barriers.\n\nShort: Basic access"
                               />
                             </span>
 
@@ -3081,7 +3081,7 @@ Return the edited screenshot with minimal localized edits only.
                               AA: {levelAAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level AA"
-                                description="The most widely adopted WCAG level. Addresses the most common and impactful accessibility issues affecting users with disabilities."
+                                description="Level AA builds on Level A by addressing more common usability issues, making content accessible to a wider range of users and is the standard most organizations are expected to meet.\n\nShort: Standard accessibility"
                               />
                             </span>
 
@@ -3103,7 +3103,7 @@ Return the edited screenshot with minimal localized edits only.
                               AAA: {levelAAAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level AAA"
-                                description="The highest WCAG conformance level. Represents optimal accessibility but can be difficult to achieve across all content."
+                                description="Level AAA represents the highest level of accessibility, aiming to make content usable for as many people as possible, though it is not always practical to achieve fully.\n\nShort: Highest level, most inclusive"
                               />
                             </span>
                           </div>
