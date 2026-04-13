@@ -1,12 +1,130 @@
 import React, { useState } from "react";
 
 const sections = [
-  { id: "website-preview", label: "Website Preview", icon: "🗂️" },
-  { id: "accessibility-issues", label: "Accessibility Issues", icon: "♿" },
-  { id: "hci-report", label: "HCI Report", icon: "📊" },
-  { id: "mobile-experience", label: "Mobile Experience", icon: "📱" },
-  { id: "specialized-audits", label: "Specialized Audits", icon: "🔍" },
-  { id: "next-steps", label: "Next Steps", icon: "✅" },
+  {
+    id: "website-preview",
+    label: "Website Preview",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#0ea5e9"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="M3 8h18" />
+        <circle cx="7" cy="6" r=".5" />
+        <circle cx="11" cy="6" r=".5" />
+        <circle cx="15" cy="6" r=".5" />
+      </svg>
+    ),
+    color: "#0ea5e9",
+  },
+  {
+    id: "accessibility-issues",
+    label: "Accessibility Issues",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#dc2626"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="7" r="2.5" />
+        <path d="M12 9.5v7.5" />
+        <path d="M9 17h6" />
+        <path d="M7 12h10" />
+      </svg>
+    ),
+    color: "#dc2626",
+  },
+  {
+    id: "hci-report",
+    label: "HCI Report",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#059669"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="4" />
+        <path d="M7 7h10M7 12h10M7 17h6" />
+      </svg>
+    ),
+    color: "#059669",
+  },
+  {
+    id: "mobile-experience",
+    label: "Mobile Experience",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#0ea5e9"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="5" y="2" width="14" height="20" rx="2" />
+        <line x1="12" y1="18" x2="12.01" y2="18" />
+      </svg>
+    ),
+    color: "#0ea5e9",
+  },
+  {
+    id: "specialized-audits",
+    label: "Specialized Audits",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#7c3aed"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+    ),
+    color: "#7c3aed",
+  },
+  {
+    id: "next-steps",
+    label: "Next Steps",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#d97706"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    ),
+    color: "#d97706",
+  },
 ];
 
 function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
@@ -25,7 +143,6 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
         borderRight: "1px solid #e2e8f0",
         display: "flex",
         flexDirection: "column",
-
         zIndex: 100,
         boxShadow: "2px 0 12px rgba(0,0,0,0.05)",
         overflowY: "auto",
@@ -111,6 +228,28 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
       >
         {sections.map((section, idx) => {
           const isActive = activeSection === section.id;
+          // Utility to get a lighter version of a hex color
+          function lightenColor(hex, percent) {
+            hex = hex.replace(/^#/, "");
+            if (hex.length === 3) {
+              hex = hex
+                .split("")
+                .map((x) => x + x)
+                .join("");
+            }
+            const num = parseInt(hex, 16);
+            let r = (num >> 16) & 0xff;
+            let g = (num >> 8) & 0xff;
+            let b = num & 0xff;
+            r = Math.round(r + (255 - r) * percent);
+            g = Math.round(g + (255 - g) * percent);
+            b = Math.round(b + (255 - b) * percent);
+            return `rgb(${r}, ${g}, ${b})`;
+          }
+          // 95% lighter (very close to white, subtle tint)
+          const activeBg = isActive
+            ? lightenColor(section.color, 0.95)
+            : "transparent";
           return (
             <li key={section.id}>
               <button
@@ -126,11 +265,18 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                   cursor: "pointer",
                   textAlign: "left",
                   transition: "all 0.18s ease",
-                  background: isActive ? "#f0f9ff" : "transparent",
+                  background: activeBg,
                   borderLeft: isActive
-                    ? "3px solid #0ea5e9"
+                    ? `3px solid ${section.color}`
                     : "3px solid transparent",
                   justifyContent: collapsed ? "center" : "flex-start",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.background = "#f3f4f6";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive)
+                    e.currentTarget.style.background = "transparent";
                 }}
                 title={section.label}
               >
@@ -148,7 +294,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                     style={{
                       fontSize: 12.5,
                       fontWeight: isActive ? 700 : 500,
-                      color: isActive ? "#0284c7" : "#64748b",
+                      color: isActive ? section.color : "#64748b",
                       lineHeight: 1.3,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
@@ -159,7 +305,6 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                     {section.label}
                   </span>
                 )}
-
                 {/* Active indicator dot */}
                 {isActive && !collapsed && (
                   <div
@@ -168,7 +313,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      background: "#0ea5e9",
+                      background: section.color,
                       flexShrink: 0,
                     }}
                   />

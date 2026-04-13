@@ -32,34 +32,60 @@ function Complete() {
   // Nav collapse state (lifted from SectionNav)
   const [navCollapsed, setNavCollapsed] = useState(false);
 
-  // Scrollspy: update active section on scroll
+  // Scrollspy: update active section on scroll, but ignore scroll events briefly after nav click
+  const scrollLockRef = useRef(false);
   useEffect(() => {
+    const NAVBAR_HEIGHT = 64;
     const handleScroll = () => {
-      const offsets = sectionRefs.current.map((ref) => {
+      if (scrollLockRef.current) return;
+      let currentIdx = 0;
+      let minDelta = Infinity;
+      sectionRefs.current.forEach((ref, idx) => {
         const el = ref.current;
-        if (!el) return Infinity;
+        if (!el) return;
         const rect = el.getBoundingClientRect();
-        return rect.top >= 0 ? rect.top : Infinity;
+        const delta = Math.abs(rect.top - NAVBAR_HEIGHT);
+        if (rect.top - NAVBAR_HEIGHT <= 0 && delta < minDelta) {
+          minDelta = delta;
+          currentIdx = idx;
+        }
       });
-      const minIdx = offsets.findIndex((v) => v === Math.min(...offsets));
-      if (minIdx !== -1 && sectionIds[minIdx] !== activeSection) {
-        setActiveSection(sectionIds[minIdx]);
+      // Special case: if near bottom, always activate last section
+      const bottomThreshold = 120; // px from bottom
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - bottomThreshold
+      ) {
+        currentIdx = sectionIds.length - 1;
       }
+      setActiveSection(sectionIds[currentIdx]);
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [activeSection, sectionIds]);
+  }, [sectionIds]);
 
   // Scroll to section on nav click
   const handleNavClick = (id) => {
     const idx = sectionIds.indexOf(id);
     const ref = sectionRefs.current[idx];
     if (ref && ref.current) {
-      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      const NAVBAR_HEIGHT = 64;
+      const el = ref.current;
+      const rect = el.getBoundingClientRect();
+      const absoluteY = window.scrollY + rect.top;
+      scrollLockRef.current = true;
+      window.scrollTo({
+        top: absoluteY - NAVBAR_HEIGHT,
+        behavior: "smooth",
+      });
+      setActiveSection(sectionIds[idx]); // highlight immediately
+      setTimeout(() => {
+        scrollLockRef.current = false;
+      }, 500); // lock scrollspy for 500ms after nav click
     }
   };
-  // State for mobile iframe error
+  // Optionally, add scrollMarginTop to each section for native CSS offset (if supported)
   const [mobileIframeError, setMobileIframeError] = useState(false);
   const [colorBlindError, setColorBlindError] = useState(null);
   React.useEffect(() => {
@@ -1633,8 +1659,50 @@ Return the edited screenshot with minimal localized edits only.
             <>
               {/* Website Preview Section */}
               <section id="website-preview" ref={sectionRefs.current[0]}>
-                <div className="website-preview-panel">
-                  <h2 className="website-preview-title">Website Preview</h2>
+                <div
+                  className="website-preview-panel"
+                  style={{ borderTop: "3px solid #0ea5e9" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "15px",
+                      justifyContent: "center",
+                      paddingBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        background: "#f0f9ff",
+                        border: "1px solid #bae6fd",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#0ea5e9"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="4" width="18" height="16" rx="3" />
+                        <path d="M3 8h18" />
+                        <circle cx="7" cy="6" r=".5" />
+                        <circle cx="11" cy="6" r=".5" />
+                        <circle cx="15" cy="6" r=".5" />
+                      </svg>
+                    </div>
+                    <h2 className="website-preview-title">Website Preview</h2>
+                  </div>
                   <div
                     style={{
                       marginBottom: 12,
@@ -2516,428 +2584,23 @@ Return the edited screenshot with minimal localized edits only.
               </section>
 
               {/* NEW: Two-Column Results Layout */}
-              <section id="accessibility-issues" ref={sectionRefs.current[1]}>
+              <section
+                id="accessibility-issues"
+                ref={sectionRefs.current[1]}
+                style={{
+                  borderTop: "3px solid #dc2626",
+                  borderTopLeftRadius: 12,
+                  borderTopRightRadius: 12,
+                }}
+              >
                 <div
                   className="results-layout"
                   style={{
                     display: "flex",
                     gap: "24px",
-                    marginTop: "32px",
                     minHeight: "600px",
                   }}
                 >
-                  {/* LEFT PANEL - Website Preview */}
-                  <div
-                    className="preview-panel"
-                    style={{
-                      background: "#fff",
-                      borderRadius: "16px",
-                      padding: "20px 24px",
-                      boxShadow: "var(--color-accent)",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      border: "1px solid #e0e7ef",
-                      minHeight: "520px",
-                      marginRight: "auto",
-                      width: "480px",
-                    }}
-                  >
-                    {/* ── Issue Breakdown (inside left panel) ── */}
-                    {groups &&
-                      groups.length > 0 &&
-                      (() => {
-                        const totalIssues = groups.reduce(
-                          (s, g) => s + (g.count || 1),
-                          0,
-                        );
-                        const principleColors = {
-                          Perceivable: "#3b82f6",
-                          Operable: "#d97706",
-                          Understandable: "#189b97",
-                          Robust: "#7c3aed",
-                        };
-                        const principleCounts = {
-                          Perceivable: 0,
-                          Operable: 0,
-                          Understandable: 0,
-                          Robust: 0,
-                        };
-                        groups.forEach((g) => {
-                          const p = getPrincipleFromCriterion(g.wcagCriterion);
-                          if (p && p in principleCounts)
-                            principleCounts[p] += g.count || 1;
-                        });
-                        const pieData = Object.entries(principleCounts)
-                          .filter(([, v]) => v > 0)
-                          .map(([label, value]) => ({
-                            label,
-                            value,
-                            color: principleColors[label],
-                          }));
-                        const pieTotal = pieData.reduce(
-                          (s, d) => s + d.value,
-                          0,
-                        );
-                        const buildPieSlices = (data, total, cx, cy, r) => {
-                          let angle = -90;
-                          return data.map((d) => {
-                            const sweep = (d.value / total) * 360;
-                            const startRad = (angle * Math.PI) / 180;
-                            const endRad = ((angle + sweep) * Math.PI) / 180;
-                            const x1 = cx + r * Math.cos(startRad);
-                            const y1 = cy + r * Math.sin(startRad);
-                            const x2 = cx + r * Math.cos(endRad);
-                            const y2 = cy + r * Math.sin(endRad);
-                            const large = sweep > 180 ? 1 : 0;
-                            const path =
-                              sweep >= 359.99
-                                ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
-                                : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
-                            angle += sweep;
-                            return {
-                              ...d,
-                              path,
-                              pct: Math.round((d.value / total) * 100),
-                            };
-                          });
-                        };
-                        const slices =
-                          pieTotal > 0
-                            ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
-                            : [];
-                        const sevWeight = (s) => {
-                          const sl = (s || "").toLowerCase();
-                          if (sl === "high" || sl === "critical") return 3;
-                          if (sl === "medium" || sl === "warning") return 2;
-                          return 1;
-                        };
-                        const topCriteria = [...groups]
-                          .sort(
-                            (a, b) =>
-                              sevWeight(b.severity) - sevWeight(a.severity) ||
-                              (b.count || 1) - (a.count || 1),
-                          )
-                          .slice(0, 5);
-                        const sevBadgeStyle = (sev) => {
-                          const sl = (sev || "").toLowerCase();
-                          if (sl === "high" || sl === "critical")
-                            return {
-                              bg: "#fef2f2",
-                              color: "#dc2626",
-                              border: "#fca5a5",
-                            };
-                          if (sl === "medium" || sl === "warning")
-                            return {
-                              bg: "#fffbeb",
-                              color: "#d97706",
-                              border: "#fde68a",
-                            };
-                          return {
-                            bg: "#f0fdf4",
-                            color: "#16a34a",
-                            border: "#86efac",
-                          };
-                        };
-                        return (
-                          <div>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#94a3b8",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.6px",
-                                marginBottom: 14,
-                              }}
-                            >
-                              Issue Breakdown
-                            </div>
-                            {/* Pie + legend side by side */}
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 16,
-                                alignItems: "center",
-                                marginBottom: 16,
-                              }}
-                            >
-                              <svg
-                                width="120"
-                                height="120"
-                                viewBox="0 0 120 120"
-                                style={{ flexShrink: 0 }}
-                              >
-                                {slices.map((s) => (
-                                  <path
-                                    key={s.label}
-                                    d={s.path}
-                                    fill={s.color}
-                                    opacity={
-                                      hoveredSlice && hoveredSlice !== s.label
-                                        ? 0.4
-                                        : 1
-                                    }
-                                    style={{
-                                      cursor: "pointer",
-                                      transition: "opacity 0.15s ease",
-                                    }}
-                                    onMouseEnter={() =>
-                                      setHoveredSlice(s.label)
-                                    }
-                                    onMouseLeave={() => setHoveredSlice(null)}
-                                  />
-                                ))}
-                                {slices.map((s) => (
-                                  <path
-                                    key={s.label + "-sep"}
-                                    d={s.path}
-                                    fill="none"
-                                    stroke="#fff"
-                                    strokeWidth="2"
-                                  />
-                                ))}
-                                <circle cx="60" cy="60" r="28" fill="#fff" />
-                                <text
-                                  x="60"
-                                  y="57"
-                                  textAnchor="middle"
-                                  dominantBaseline="middle"
-                                  fontSize="15"
-                                  fontWeight="800"
-                                  fill="#0f172a"
-                                >
-                                  {hoveredSlice
-                                    ? principleCounts[hoveredSlice]
-                                    : totalIssues}
-                                </text>
-                                <text
-                                  x="60"
-                                  y="70"
-                                  textAnchor="middle"
-                                  fontSize="8"
-                                  fill="#94a3b8"
-                                >
-                                  {hoveredSlice
-                                    ? hoveredSlice.split(" ")[0]
-                                    : "total"}
-                                </text>
-                              </svg>
-                              <div style={{ flex: 1 }}>
-                                {pieData.map((s) => (
-                                  <div
-                                    key={s.label}
-                                    onMouseEnter={() =>
-                                      setHoveredSlice(s.label)
-                                    }
-                                    onMouseLeave={() => setHoveredSlice(null)}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 7,
-                                      marginBottom: 6,
-                                      cursor: "default",
-                                      opacity:
-                                        hoveredSlice && hoveredSlice !== s.label
-                                          ? 0.4
-                                          : 1,
-                                      transition: "opacity 0.15s ease",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        width: 9,
-                                        height: 9,
-                                        borderRadius: 2,
-                                        background: s.color,
-                                        flexShrink: 0,
-                                      }}
-                                    />
-                                    <span
-                                      style={{
-                                        fontSize: 11.5,
-                                        fontWeight: 600,
-                                        color: "#334155",
-                                        flex: 1,
-                                      }}
-                                    >
-                                      {s.label}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontSize: 11.5,
-                                        fontWeight: 700,
-                                        color: s.color,
-                                      }}
-                                    >
-                                      {Math.round((s.value / pieTotal) * 100)}%
-                                    </span>
-                                  </div>
-                                ))}
-                                {Object.entries(principleCounts)
-                                  .filter(([, v]) => v === 0)
-                                  .map(([label]) => (
-                                    <div
-                                      key={label}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 7,
-                                        marginBottom: 6,
-                                        opacity: 0.3,
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          width: 9,
-                                          height: 9,
-                                          borderRadius: 2,
-                                          background: "#e2e8f0",
-                                          flexShrink: 0,
-                                        }}
-                                      />
-                                      <span
-                                        style={{
-                                          fontSize: 11.5,
-                                          fontWeight: 600,
-                                          color: "#94a3b8",
-                                          flex: 1,
-                                        }}
-                                      >
-                                        {label}
-                                      </span>
-                                      <span
-                                        style={{
-                                          fontSize: 11.5,
-                                          fontWeight: 700,
-                                          color: "#cbd5e1",
-                                        }}
-                                      >
-                                        0%
-                                      </span>
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                            {/* Fix First */}
-                            <div
-                              style={{
-                                borderTop: "1px solid #f1f5f9",
-                                paddingTop: 12,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color: "#94a3b8",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.5px",
-                                  marginBottom: 8,
-                                }}
-                              >
-                                Fix First — Ranked by Priority
-                              </div>
-                              {topCriteria.map((g, i) => {
-                                const badge = sevBadgeStyle(g.severity);
-                                const criterionNum = getCriterionKey(
-                                  g.wcagCriterion,
-                                );
-                                return (
-                                  <div
-                                    key={i}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "flex-start",
-                                      gap: 8,
-                                      padding: "7px 0",
-                                      borderBottom:
-                                        i < topCriteria.length - 1
-                                          ? "1px solid #f1f5f9"
-                                          : "none",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        fontSize: 10,
-                                        fontWeight: 800,
-                                        color: "#cbd5e1",
-                                        minWidth: 16,
-                                        paddingTop: 1,
-                                      }}
-                                    >
-                                      #{i + 1}
-                                    </span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: 5,
-                                          flexWrap: "wrap",
-                                          marginBottom: 2,
-                                        }}
-                                      >
-                                        <span
-                                          style={{
-                                            fontSize: 11.5,
-                                            fontWeight: 700,
-                                            color: "#0f172a",
-                                          }}
-                                        >
-                                          {getFriendlyTitle(
-                                            g.wcagCriterion,
-                                            g.id,
-                                            g.problem,
-                                          )}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: 10,
-                                            fontWeight: 700,
-                                            background: badge.bg,
-                                            color: badge.color,
-                                            border: `1px solid ${badge.border}`,
-                                            borderRadius: 999,
-                                            padding: "1px 6px",
-                                          }}
-                                        >
-                                          {g.severity}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: 10.5,
-                                            color: "#94a3b8",
-                                          }}
-                                        >
-                                          {g.count} instance
-                                          {g.count !== 1 ? "s" : ""}
-                                        </span>
-                                      </div>
-                                      <p
-                                        style={{
-                                          margin: 0,
-                                          fontSize: 11,
-                                          color: "#64748b",
-                                          lineHeight: 1.4,
-                                          overflow: "hidden",
-                                          display: "-webkit-box",
-                                          WebkitLineClamp: 2,
-                                          WebkitBoxOrient: "vertical",
-                                        }}
-                                      >
-                                        {g.problem}
-                                      </p>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                  </div>
-
                   {/* RIGHT PANEL – Accessibility Issues */}
                   <div
                     style={{
@@ -2959,7 +2622,44 @@ Return the edited screenshot with minimal localized edits only.
                       }}
                     >
                       <h2 className="issues-panel-heading">
-                        Accessibility Issues
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 9,
+                              background: "#fff0f0",
+                              border: "1px solid #fca5a5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#dc2626"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <circle cx="12" cy="7" r="2.5" />
+                              <path d="M12 9.5v7.5" />
+                              <path d="M9 17h6" />
+                              <path d="M7 12h10" />
+                            </svg>
+                          </div>
+                          Accessibility Issues
+                        </span>
                       </h2>
                       <div
                         style={{
@@ -3110,6 +2810,241 @@ Return the edited screenshot with minimal localized edits only.
                         </div>
                       </div>
                     </div>
+                    {/* Issue Breakdown Pie Chart and Legend */}
+                    {(() => {
+                      // Pie chart data and slices
+                      const principleColors = {
+                        Perceivable: "#3b82f6",
+                        Operable: "#d97706",
+                        Understandable: "#189b97",
+                        Robust: "#7c3aed",
+                      };
+                      const principleCounts = {
+                        Perceivable: 0,
+                        Operable: 0,
+                        Understandable: 0,
+                        Robust: 0,
+                      };
+                      groups.forEach((g) => {
+                        const p = getPrincipleFromCriterion(g.wcagCriterion);
+                        if (p && principleCounts[p] !== undefined) {
+                          principleCounts[p] += g.count || 1;
+                        }
+                      });
+                      const pieData = Object.entries(principleCounts)
+                        .filter(([, v]) => v > 0)
+                        .map(([label, value]) => ({
+                          label,
+                          value,
+                          color: principleColors[label],
+                        }));
+                      const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
+                      const buildPieSlices = (data, total, cx, cy, r) => {
+                        let angle = -90;
+                        return data.map((d) => {
+                          const sweep = (d.value / total) * 360;
+                          const startRad = (angle * Math.PI) / 180;
+                          const endRad = ((angle + sweep) * Math.PI) / 180;
+                          const x1 = cx + r * Math.cos(startRad);
+                          const y1 = cy + r * Math.sin(startRad);
+                          const x2 = cx + r * Math.cos(endRad);
+                          const y2 = cy + r * Math.sin(endRad);
+                          const large = sweep > 180 ? 1 : 0;
+                          const path =
+                            sweep >= 359.99
+                              ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
+                              : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+                          angle += sweep;
+                          return {
+                            ...d,
+                            path,
+                            pct: Math.round((d.value / total) * 100),
+                          };
+                        });
+                      };
+                      const slices =
+                        pieTotal > 0
+                          ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
+                          : [];
+                      return (
+                        <>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#94a3b8",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.6px",
+
+                              padding: "20px 24px",
+                            }}
+                          >
+                            Issue Breakdown
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 16,
+                              alignItems: "center",
+                              padding: "20px 24px",
+                            }}
+                          >
+                            <svg
+                              width="120"
+                              height="120"
+                              viewBox="0 0 120 120"
+                              style={{ flexShrink: 0 }}
+                            >
+                              {slices.map((s) => (
+                                <path
+                                  key={s.label}
+                                  d={s.path}
+                                  fill={s.color}
+                                  opacity={
+                                    hoveredSlice && hoveredSlice !== s.label
+                                      ? 0.4
+                                      : 1
+                                  }
+                                  style={{
+                                    cursor: "pointer",
+                                    transition: "opacity 0.15s ease",
+                                  }}
+                                  onMouseEnter={() => setHoveredSlice(s.label)}
+                                  onMouseLeave={() => setHoveredSlice(null)}
+                                />
+                              ))}
+                              {slices.map((s) => (
+                                <path
+                                  key={s.label + "-sep"}
+                                  d={s.path}
+                                  fill="none"
+                                  stroke="#fff"
+                                  strokeWidth="2"
+                                />
+                              ))}
+                              <circle cx="60" cy="60" r="28" fill="#fff" />
+                              <text
+                                x="60"
+                                y="57"
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                fontSize="15"
+                                fontWeight="800"
+                                fill="#0f172a"
+                              >
+                                {hoveredSlice
+                                  ? principleCounts[hoveredSlice]
+                                  : pieTotal}
+                              </text>
+                              <text
+                                x="60"
+                                y="70"
+                                textAnchor="middle"
+                                fontSize="8"
+                                fill="#94a3b8"
+                              >
+                                {hoveredSlice
+                                  ? hoveredSlice.split(" ")[0]
+                                  : "total"}
+                              </text>
+                            </svg>
+                            <div style={{ flex: 1 }}>
+                              {pieData.map((s) => (
+                                <div
+                                  key={s.label}
+                                  onMouseEnter={() => setHoveredSlice(s.label)}
+                                  onMouseLeave={() => setHoveredSlice(null)}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 7,
+                                    marginBottom: 6,
+                                    cursor: "default",
+                                    opacity:
+                                      hoveredSlice && hoveredSlice !== s.label
+                                        ? 0.4
+                                        : 1,
+                                    transition: "opacity 0.15s ease",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 9,
+                                      height: 9,
+                                      borderRadius: 2,
+                                      background: s.color,
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: 11.5,
+                                      fontWeight: 600,
+                                      color: "#334155",
+                                      flex: 1,
+                                    }}
+                                  >
+                                    {s.label}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 11.5,
+                                      fontWeight: 700,
+                                      color: s.color,
+                                    }}
+                                  >
+                                    {Math.round((s.value / pieTotal) * 100)}%
+                                  </span>
+                                </div>
+                              ))}
+                              {Object.entries(principleCounts)
+                                .filter(([, v]) => v === 0)
+                                .map(([label]) => (
+                                  <div
+                                    key={label}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 7,
+                                      marginBottom: 6,
+                                      opacity: 0.3,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 9,
+                                        height: 9,
+                                        borderRadius: 2,
+                                        background: "#e2e8f0",
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 600,
+                                        color: "#94a3b8",
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 700,
+                                        color: "#cbd5e1",
+                                      }}
+                                    >
+                                      0%
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {(() => {
                       // Debugging output
@@ -3154,9 +3089,12 @@ Return the edited screenshot with minimal localized edits only.
               {/* HCI Report */}
               <section id="hci-report" ref={sectionRefs.current[2]}>
                 <div className="hci-section-wrap" style={{ display: "block" }}>
-                  {/* HCI Report Section */}
-                  <div className="hci-card">
-                    {/* Header row: title + reading time + export */}
+                  <div
+                    className="hci-card"
+                    style={{
+                      borderTop: "3px solid #059669",
+                    }}
+                  >
                     <div
                       style={{
                         alignItems: "flex-start",
@@ -3164,7 +3102,42 @@ Return the edited screenshot with minimal localized edits only.
                       }}
                     >
                       <h2 className="hci-card-heading" style={{ margin: 0 }}>
-                        HCI Report
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 9,
+                              background: "#f0fdf9",
+                              border: "1px solid #6ee7b7",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#059669"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="3" width="18" height="18" rx="4" />
+                              <path d="M7 7h10M7 12h10M7 17h6" />
+                            </svg>
+                          </div>
+                          HCI Report
+                        </span>
                       </h2>
                       <div
                         style={{
@@ -3867,8 +3840,9 @@ Return the edited screenshot with minimal localized edits only.
                           borderRadius: 18,
                           padding: "24px 28px",
                           boxShadow: "var(--shadow)",
-                          marginTop: 32,
                           border: "1px solid var(--border-light)",
+
+                          borderTop: "3px solid #0ea5e9",
                         }}
                       >
                         {/* Header */}
@@ -3882,36 +3856,50 @@ Return the edited screenshot with minimal localized edits only.
                             paddingBottom: 16,
                           }}
                         >
-                          <div
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: 10,
-                              background: "#f0f9ff",
-                              border: "1px solid #bae6fd",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#0ea5e9"
-                              strokeWidth="2.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="5" y="2" width="14" height="20" rx="2" />
-                              <line x1="12" y1="18" x2="12.01" y2="18" />
-                            </svg>
-                          </div>
                           <div style={{ flex: 1 }}>
                             <h2 style={{ margin: "0 0 2px", fontSize: 18 }}>
-                              Mobile Experience
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 10,
+                                    background: "#f0f9ff",
+                                    border: "1px solid #bae6fd",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#0ea5e9"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect
+                                      x="5"
+                                      y="2"
+                                      width="14"
+                                      height="20"
+                                      rx="2"
+                                    />
+                                    <line x1="12" y1="18" x2="12.01" y2="18" />
+                                  </svg>
+                                </div>
+                                Mobile Experience
+                              </span>
                             </h2>
                             <p
                               style={{
@@ -5069,44 +5057,31 @@ Return the edited screenshot with minimal localized edits only.
                               marginBottom: 14,
                             }}
                           >
-                            <div
+                            <span
                               style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 8,
-                                background: iconBg,
-                                display: "flex",
+                                display: "inline-flex",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
+                                gap: 8,
                               }}
                             >
                               <svg
-                                width="15"
-                                height="15"
+                                width="20"
+                                height="20"
                                 viewBox="0 0 24 24"
                                 fill="none"
-                                stroke={iconStroke}
+                                stroke="#7c3aed"
                                 strokeWidth="2.2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                dangerouslySetInnerHTML={{ __html: icon }}
-                              />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  color: "#0f172a",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                }}
+                                style={{ marginRight: 6 }}
                               >
-                                {title}
-                                {infoKey && <InfoBtn infoKey={infoKey} />}
-                              </div>
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M9 12l2 2 4-4" />
+                              </svg>
+                              {title}
+                              {infoKey && <InfoBtn infoKey={infoKey} />}
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 11, color: "#94a3b8" }}>
                                 {subtitle}
                               </div>
@@ -5531,7 +5506,17 @@ Return the edited screenshot with minimal localized edits only.
                           </div>
                         )}
 
-                        <div style={{ marginTop: 32 }}>
+                        <div
+                          style={{
+                            background: "#fff",
+                            borderRadius: 18,
+                            padding: "24px 28px",
+                            boxShadow: "var(--shadow)",
+
+                            border: "1px solid var(--border-light)",
+                            borderTop: "3px solid #7c3aed",
+                          }}
+                        >
                           {/* Section header */}
                           <div
                             style={{
@@ -5539,53 +5524,61 @@ Return the edited screenshot with minimal localized edits only.
                               alignItems: "center",
                               gap: 10,
                               marginBottom: 16,
+                              borderBottom: "1px solid #f1f5f9",
+                              paddingBottom: 16,
                             }}
                           >
-                            <div
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 9,
-                                background: "#f5f3ff",
-                                border: "1px solid #ddd6fe",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#7c3aed"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <circle cx="11" cy="11" r="8" />
-                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                              </svg>
-                            </div>
-                            <div>
+                            <div style={{ flex: 1 }}>
                               <h2
                                 style={{
-                                  margin: 0,
-                                  fontSize: 17,
+                                  margin: "0 0 4px",
+                                  fontSize: 18,
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: 6,
+                                  gap: 8,
                                 }}
                               >
+                                <div
+                                  style={{
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 9,
+                                    background: "#f5f3ff",
+                                    border: "1px solid #ddd6fe",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#7c3aed"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line
+                                      x1="21"
+                                      y1="21"
+                                      x2="16.65"
+                                      y2="16.65"
+                                    />
+                                  </svg>
+                                </div>
                                 Specialized Audits
                                 <InfoBtn infoKey="specialized" />
                               </h2>
                               <div
                                 style={{
-                                  marginBottom: 12,
                                   color: "#64748b",
                                   fontSize: 15,
                                   fontWeight: 500,
+                                  marginBottom: 4,
                                 }}
                               >
                                 Contains results from advanced or optional
@@ -5596,7 +5589,7 @@ Return the edited screenshot with minimal localized edits only.
                               <p
                                 style={{
                                   margin: 0,
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: "#94a3b8",
                                 }}
                               >
@@ -5979,7 +5972,7 @@ Return the edited screenshot with minimal localized edits only.
                     borderRadius: "18px",
                     padding: "20px 24px",
                     boxShadow: "var(--shadow)",
-                    marginTop: "32px",
+
                     border: "1px solid var(--border-light)",
                     borderTop: "3px solid #d97706",
                   }}
@@ -5988,7 +5981,50 @@ Return the edited screenshot with minimal localized edits only.
                     if (nextSteps.length === 0) {
                       return (
                         <>
-                          <h2 className="next-steps-heading">Next Steps</h2>
+                          <h2
+                            className="next-steps-heading"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 9,
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#d97706"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </span>
+                              Next Steps
+                            </span>
+                          </h2>
 
                           <p style={{ color: "#64748b", fontSize: 14 }}>
                             No specific recommendations were generated.
@@ -6227,8 +6263,39 @@ Return the edited screenshot with minimal localized edits only.
                           <div>
                             <h2
                               className="next-steps-heading"
-                              style={{ margin: "0 0 2px" }}
+                              style={{
+                                margin: "0 0 2px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
                             >
+                              <div
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 9,
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#d97706"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </div>
                               Next Steps
                             </h2>
                             <div
@@ -6668,17 +6735,6 @@ Return the edited screenshot with minimal localized edits only.
       </div>
     </div>
   );
-
-  // --- Section wrappers for scrollspy ---
-  // Place these wrappers around your main sections below:
-  // <section id="website-preview" ref={sectionRefs.current[0]}>...</section>
-  // <section id="accessibility-issues" ref={sectionRefs.current[1]}>...</section>
-  // <section id="hci-report" ref={sectionRefs.current[2]}>...</section>
-  // <section id="mobile-experience" ref={sectionRefs.current[3]}>...</section>
-  // <section id="specialized-audits" ref={sectionRefs.current[4]}>...</section>
-  // <section id="next-steps" ref={sectionRefs.current[5]}>...</section>
-  // Example: <section id="website-preview" ref={sectionRefs.current[0]}>Website preview content...</section>
-  // Wrap your actual content in these sections for scrollspy to work.
 }
 
 export default Complete;
