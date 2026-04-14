@@ -1169,11 +1169,11 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   // --- Collapsible section states ---
   const [collapsedSections, setCollapsedSections] = React.useState({
     websitePreview: false,
-    accessibilityIssues: false,
-    hciReport: false,
-    mobileExperience: false,
-    specializedAudits: false,
-    nextSteps: false,
+    accessibilityIssues: true,
+    hciReport: true,
+    mobileExperience: true,
+    specializedAudits: true,
+    nextSteps: true,
   });
 
   const toggleSection = (key) => {
@@ -1769,37 +1769,18 @@ Return the edited screenshot with minimal localized edits only.
                       </>
                     )}
                     {previewMode === "sidebyside" && (
-                      <div
-                        style={{
-                          marginBottom: 12,
-                          color: "#64748b",
-                          fontSize: 15,
-                          fontWeight: 500,
-                        }}
-                      >
-                        {previewMode === "highlighted" && (
-                          <>
-                            Shows a visual snapshot of the analyzed website.
-                            This section helps you see the page as it was
-                            scanned, including any overlays or highlights for
-                            accessibility issues.
-                          </>
-                        )}
-                        {previewMode === "sidebyside" && (
-                          <>
-                            The feedback and screenshot are sent to OpenAI,
-                            which generates an image showing what the issue
-                            would look like if fixed.
-                          </>
-                        )}
-                        {previewMode === "lense" && (
-                          <>
-                            Simulate how the website appears to people with
-                            different types of color vision, including color
-                            blindness.
-                          </>
-                        )}
-                      </div>
+                      <>
+                        The feedback and screenshot are sent to OpenAI, which
+                        generates an image showing what the issue would look
+                        like if fixed.
+                      </>
+                    )}
+                    {previewMode === "lense" && (
+                      <>
+                        Simulate how the website appears to people with
+                        different types of color vision, including color
+                        blindness.
+                      </>
                     )}
                   </div>
                   {!collapsedSections.websitePreview && (
@@ -2197,6 +2178,129 @@ Return the edited screenshot with minimal localized edits only.
                                 )
                               }
                             />
+                          </>
+                        ) : previewMode === "lense" &&
+                          violationScreenshots &&
+                          violationScreenshots.length > 0 ? (
+                          <>
+                            <div></div>
+                            {/* Screenshot (fills the image grid column) */}
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                position: "relative",
+                              }}
+                            >
+                              <ColorBlindSimulator
+                                imageSrc={
+                                  violationScreenshots[currentScreenshotIdx]
+                                    ?.screenshot
+                                }
+                                type={colorBlindFilter || "original"}
+                                style={{ maxWidth: "95%" }}
+                              />
+                            </div>
+
+                            {/* Lense panel (fills the panel grid column) */}
+                            <aside className="lense-panel">
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: "#7c8da0",
+                                  marginBottom: 8,
+                                  fontSize: 16,
+                                }}
+                              >
+                                Color Vision Filters
+                              </div>
+                              <button
+                                className={
+                                  "lense-filter-btn original" +
+                                  (!colorBlindFilter ? " active" : "")
+                                }
+                                onClick={() => setColorBlindFilter(null)}
+                                aria-pressed={!colorBlindFilter}
+                              >
+                                Original
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn protanopia" +
+                                  (colorBlindFilter === "protanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("protanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "protanopia"}
+                              >
+                                Protanopia (red-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn deuteranopia" +
+                                  (colorBlindFilter === "deuteranopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("deuteranopia")
+                                }
+                                aria-pressed={
+                                  colorBlindFilter === "deuteranopia"
+                                }
+                              >
+                                Deuteranopia (green-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn tritanopia" +
+                                  (colorBlindFilter === "tritanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("tritanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "tritanopia"}
+                              >
+                                Tritanopia (blue-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn monochrome" +
+                                  (colorBlindFilter === "monochrome"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("monochrome")
+                                }
+                                aria-pressed={colorBlindFilter === "monochrome"}
+                                style={{
+                                  background:
+                                    colorBlindFilter === "monochrome"
+                                      ? "#d1d5db"
+                                      : "#f3f4f6",
+                                  color: "#374151",
+                                  fontWeight:
+                                    colorBlindFilter === "monochrome"
+                                      ? 700
+                                      : 500,
+                                  border: "none",
+                                  boxShadow: "none",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Monochrome (grayscale)
+                              </button>
+                            </aside>
+                            <div></div>
                           </>
                         ) : previewMode === "sidebyside" &&
                           violationScreenshots &&

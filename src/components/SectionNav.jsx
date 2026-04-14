@@ -323,59 +323,6 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
           );
         })}
       </ul>
-
-      {/* Progress indicator at bottom */}
-      {!collapsed && (
-        <div
-          style={{
-            marginTop: "auto",
-            padding: "16px 20px 8px",
-            borderTop: "1px solid #f1f5f9",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10.5,
-              color: "#94a3b8",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              marginBottom: 6,
-            }}
-          >
-            Report Progress
-          </div>
-          <div
-            style={{
-              height: 4,
-              background: "#f1f5f9",
-              borderRadius: 999,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${((sections.findIndex((s) => s.id === activeSection) + 1) / sections.length) * 100}%`,
-                background: "linear-gradient(90deg, #0ea5e9, #6366f1)",
-                borderRadius: 999,
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
-          <div
-            style={{
-              fontSize: 10.5,
-              color: "#94a3b8",
-              fontWeight: 500,
-              marginTop: 4,
-            }}
-          >
-            {sections.findIndex((s) => s.id === activeSection) + 1} of{" "}
-            {sections.length}
-          </div>
-        </div>
-      )}
     </nav>
   );
 }

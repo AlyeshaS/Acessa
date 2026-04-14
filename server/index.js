@@ -16,6 +16,46 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 import { openaiImageEdit } from "./openaiImageEdit.js";
 
+app.post("/api/ai/image-edit", async (req, res) => {
+  const { screenshot, prompt } = req.body || {};
+  // Explicit log for color blindness filter AI call
+  console.log(
+    "[AI COLORBLIND] /api/ai/image-edit called with prompt:",
+    prompt && prompt.slice(0, 100),
+  );
+  if (!screenshot || typeof screenshot !== "string") {
+    return res
+      .status(400)
+      .json({ error: "Missing screenshot in request body" });
+  }
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({ error: "Missing prompt in request body" });
+  }
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Missing OpenAI API key" });
+    }
+    const result = await openaiImageEdit({
+      imageBase64: screenshot,
+      prompt,
+      apiKey,
+    });
+    // OpenAI returns an array of images (usually with a URL)
+    const imageUrl = result.data?.[0]?.url;
+    const imageBase64 = result.data?.[0]?.b64_json;
+    res.json({
+      editedImageUrl: imageUrl,
+      editedImageBase64: imageBase64
+        ? `data:image/png;base64,${imageBase64}`
+        : undefined,
+    });
+  } catch (err) {
+    console.error("[AI Image Edit] Error:", err);
+    res.status(500).json({ error: "Image edit failed", details: err.message });
+  }
+});
+
 /**
  * Visual AI Fix endpoint: Accepts a screenshot and feedback, sends to Gemini AI for WCAG fixes (contrast, color, font size), returns improved image and feedback.
  */
@@ -2587,11 +2627,30 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             return (text || aria || "Testing click target").slice(0, 60);
           });
 
-          // Capture the current viewport so the frontend can show where we clicked
+          // Perform hover + click so carousel dots, nav buttons, and SPA links
+          // trigger their DOM change before we take the screenshot.
+          try {
+            await handle.hover({ force: true }).catch(() => {});
+            await page.waitForTimeout(80);
+            await handle.click({ force: true });
+            // Wait for CSS transitions and JS-driven DOM updates to settle.
+            // 400ms covers most carousel transitions and SPA route changes.
+            await page.waitForTimeout(400);
+          } catch (clickErr) {
+            // Element may have become stale after SPA navigation — non-fatal.
+            console.warn(
+              "[WCAG] click on step element failed (non-fatal):",
+              clickErr.message,
+            );
+          }
+
+          // Take the screenshot AFTER the interaction so it shows the resulting
+          // page state (e.g. the carousel card that just slid in, the dropdown
+          // that opened, the SPA route that loaded).
           const stepScreenshotBuf = await page.screenshot({
             type: "jpeg",
             quality: 55,
-            fullPage: false, // viewport only, we also send scroll offsets
+            fullPage: false,
             captureBeyondViewport: false,
           });
 
@@ -2606,14 +2665,11 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             offsetY: Math.round(viewport.y || 0),
             viewportWidth: Math.round(viewport.width || 0),
             viewportHeight: Math.round(viewport.height || 0),
-            screenshot: `data:image/jpeg;base64,${stepScreenshotBuf.toString(
-              "base64",
-            )}`,
+            screenshot: `data:image/jpeg;base64,${stepScreenshotBuf.toString("base64")}`,
           };
 
           liveSteps.push(step);
           sendEvent("step", step);
-          await page.waitForTimeout(420);
         } catch (innerErr) {
           console.error("[WCAG] Error capturing interactive step:", innerErr);
         }

@@ -7,24 +7,67 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isDone, setIsDone] = useState(false);
   const steps = result?.steps || [];
-  const screenshot = result?.screenshot;
+
+  // The fallback screenshot is only used before any step-specific screenshot
+  // arrives. Once a step carries its own screenshot we track it in a ref so it
+  // persists as the "last known good frame" for steps that don't have one. This
+  // prevents the result-event's static overview from overwriting a live
+  // Playwright frame that was already showing a different part of the page.
+  const lastStepScreenshotRef = useRef(result?.screenshot || null);
+  const [displayScreenshot, setDisplayScreenshot] = useState(
+    result?.screenshot || null,
+  );
+
   const imgRef = useRef(null);
 
+  // Whenever a new step arrives, seed the lastStepScreenshot ref with its
+  // screenshot if it has one, so it is available for later steps that don't.
+  useEffect(() => {
+    const latest = steps[steps.length - 1];
+    if (latest?.screenshot) {
+      lastStepScreenshotRef.current = latest.screenshot;
+    }
+  }, [steps.length]);
+
+  // Advance through steps as they arrive
   useEffect(() => {
     if (steps.length === 0) return;
 
-    // Advance through steps as they arrive
     const interval = setInterval(() => {
       setCurrentIndex((prev) => {
-        if (prev >= steps.length - 1) {
-          return prev; // wait for more steps
-        }
+        if (prev >= steps.length - 1) return prev;
         return prev + 1;
       });
-    }, 800); // slower pace to see each check
+    }, 800);
 
     return () => clearInterval(interval);
   }, [steps.length]);
+
+  // Whenever currentIndex advances, update displayScreenshot to the most
+  // accurate frame available:
+  //   1. This step's own Playwright screenshot (most specific — taken at the
+  //      exact moment Playwright was on this element)
+  //   2. The last step that DID carry a screenshot (keeps the latest real frame)
+  //   3. The top-level result.screenshot fallback (static overview)
+  useEffect(() => {
+    const step = steps[currentIndex];
+    const best =
+      step?.screenshot || // 1. this step's own live frame
+      lastStepScreenshotRef.current || // 2. last real Playwright frame seen
+      result?.screenshot || // 3. static overview fallback
+      null;
+    if (best) setDisplayScreenshot(best);
+  }, [currentIndex, steps, result?.screenshot]);
+
+  // Also update if the top-level screenshot changes (e.g. result event fires)
+  // but ONLY if we haven't received any step-specific screenshots yet, so the
+  // overview doesn't clobber a live Playwright frame.
+  useEffect(() => {
+    if (!result?.screenshot) return;
+    if (!lastStepScreenshotRef.current) {
+      setDisplayScreenshot(result.screenshot);
+    }
+  }, [result?.screenshot]);
 
   // Detect when animation is complete
   useEffect(() => {
@@ -41,7 +84,6 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   }, [currentIndex, steps.length, onComplete]);
 
   const currentStep = steps[currentIndex];
-  const currentScreenshot = currentStep?.screenshot || screenshot;
   const offsetX = currentStep?.offsetX || 0;
   const offsetY = currentStep?.offsetY || 0;
   const [scale, setScale] = useState(1);
@@ -80,7 +122,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
         {/* Single screenshot with client-side overlays */}
         <img
           ref={imgRef}
-          src={currentScreenshot}
+          src={displayScreenshot}
           alt="Live Playwright browser view"
           className="analysis-screenshot"
           style={{
@@ -91,7 +133,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           onLoad={handleImgLoad}
         />
 
-        {/* Draw click circle overlay */}
+        {/* Draw click circle overlay — only on actual click steps, not state transitions */}
         {currentStep?.type === "click" && (
           <div
             style={{
