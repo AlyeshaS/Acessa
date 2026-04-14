@@ -309,7 +309,14 @@ async function fetchPageContent(url) {
     const text = await page.evaluate(() => document.body.innerText || "");
 
     const axeResults = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .withTags([
+        "wcag2a",
+        "wcag2aa",
+        "wcag21a",
+        "wcag21aa",
+        "wcag22a",
+        "wcag22aa",
+      ])
       .analyze();
 
     return {
@@ -1276,8 +1283,16 @@ CRITICAL: You MUST review the "Technical Audit Log" section below which contains
 SPECIAL INSTRUCTIONS FOR "UNDERSTANDABLE" (Principle 3):
 You must use the provided "Form & Language Data" below to evaluate Principle 3 specifically.
 - **3.1 Readable:** Check the extracted 'lang' attribute. If it is null or empty, fail WCAG 3.1.1 immediately. Analyze the 'Visible Text' for complex jargon (Level AAA 3.1.5).
-- **3.2 Predictable:** Use the 'navCount' to comment on navigation consistency. Look for "open in new tab" links in the HTML without warnings (Failure of 3.2.2 or 3.2.5).
-- **3.3 Input Assistance:** Look at the 'Form Fields List' provided below. If "hasLabel" is false and "hasAriaLabel" is false for any input, this is a likely failure of WCAG 3.3.2.
+- **3.2 Predictable:** Use the 'navCount' to comment on navigation consistency. Look for "open in new tab" links in the HTML without warnings (Failure of 3.2.2 or 3.2.5). Check for a consistent help mechanism across pages (3.2.6 WCAG 2.2).
+- **3.3 Input Assistance:** Look at the 'Form Fields List' provided below. If "hasLabel" is false and "hasAriaLabel" is false for any input, this is a likely failure of WCAG 3.3.2. Also check for redundant entry requirements (3.3.7 WCAG 2.2) and whether authentication steps require cognitive tests without alternatives (3.3.8 WCAG 2.2).
+
+SPECIAL INSTRUCTIONS FOR WCAG 2.2 CRITERIA (new in 2.2 — check these explicitly):
+- **2.4.11 Focus Not Obscured (AA):** Check whether focused elements can be completely hidden by sticky headers, floating elements, or overlapping content. If the HTML contains sticky/fixed positioned elements, flag this.
+- **2.4.12 Focus Not Obscured Enhanced (AAA):** No part of the focused element should be hidden by author-created content.
+- **2.5.7 Dragging Movements (AA):** If the page contains draggable elements (sliders, sortable lists, carousels with drag), check whether a single-pointer alternative exists.
+- **2.5.8 Target Size Minimum (AA):** Interactive targets should be at least 24×24 CSS pixels. Check for small buttons, icon-only links, and navigation dots in the HTML.
+- **3.3.7 Redundant Entry (A):** Information entered previously in a multi-step process should not need to be re-entered. Check for multi-step forms.
+- **3.3.8 Accessible Authentication (AA):** Authentication steps must not rely solely on a cognitive function test (e.g. solving a puzzle, memorising a code) without an alternative. Check for login/CAPTCHA patterns in the HTML.
 
 For each detected issue, include:
 - wcagCriterion: exact WCAG 2.2 ID + name (for example "1.4.3 Contrast (Minimum)")
@@ -1311,7 +1326,7 @@ Let:
 - lowCount = number of Low severity violations
 - totalPoints = (highCount*3) + (mediumCount*2) + (lowCount*1)
 - maxPoints = totalPossibleCriteria * 3
-  (Assume totalPossibleCriteria = 78 WCAG 2.2 criteria)
+  (Assume totalPossibleCriteria = 87 WCAG 2.2 criteria)
 - rawScore = 1 - (totalPoints / maxPoints)
 - score = Math.max(0, Math.min(100, Math.round(rawScore * 100)))
 
@@ -1431,7 +1446,7 @@ The JSON MUST match this schema exactly:
     "mediumCount": Number,
     "lowCount": Number,
     "totalViolations": Number,
-    "maxPossiblePoints": 234,
+    "maxPossiblePoints": 261,
     "deductedPoints": Number,
     "explanation": "string (e.g., '65 points deducted from 234 possible: 5 High (15pts) + 8 Medium (16pts) + 2 Low (2pts)')"
   },
@@ -1575,7 +1590,7 @@ The JSON MUST match this schema exactly (UPDATED):
     "mediumCount": Number,
     "lowCount": Number,
     "totalViolations": Number,
-    "maxPossiblePoints": 234,
+    "maxPossiblePoints": 261,
     "deductedPoints": Number,
     "explanation": "string"
   },
@@ -2627,21 +2642,40 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             return (text || aria || "Testing click target").slice(0, 60);
           });
 
-          // Perform hover + click so carousel dots, nav buttons, and SPA links
-          // trigger their DOM change before we take the screenshot.
+          // Interact: hover → mousedown (for carousel dots) → click.
+          // mousedown is dispatched first because many carousels listen for
+          // mousedown/pointerdown rather than click.
+          // transitionend is raced against a 600ms cap so we never screenshot mid-slide.
           try {
             await handle.hover({ force: true }).catch(() => {});
-            await page.waitForTimeout(80);
+            await page.waitForTimeout(60);
+            await handle.dispatchEvent("mousedown");
+            await page.waitForTimeout(30);
             await handle.click({ force: true });
-            // Wait for CSS transitions and JS-driven DOM updates to settle.
-            // 400ms covers most carousel transitions and SPA route changes.
-            await page.waitForTimeout(400);
+            await Promise.race([
+              page.evaluate(
+                () =>
+                  new Promise((resolve) => {
+                    const handler = () => {
+                      document.removeEventListener(
+                        "transitionend",
+                        handler,
+                        true,
+                      );
+                      resolve();
+                    };
+                    document.addEventListener("transitionend", handler, true);
+                    setTimeout(resolve, 550);
+                  }),
+              ),
+              page.waitForTimeout(600),
+            ]);
           } catch (clickErr) {
-            // Element may have become stale after SPA navigation — non-fatal.
             console.warn(
               "[WCAG] click on step element failed (non-fatal):",
               clickErr.message,
             );
+            await page.waitForTimeout(300);
           }
 
           // Take the screenshot AFTER the interaction so it shows the resulting
@@ -2680,7 +2714,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
     // Now run Axe after showing the scanning process
     const axeResults = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .withTags([
+        "wcag2a",
+        "wcag2aa",
+        "wcag21a",
+        "wcag21aa",
+        "wcag22a",
+        "wcag22aa",
+      ])
       .analyze();
 
     sendEvent("axe", { count: axeResults.violations.length, steps: liveSteps });
@@ -2727,9 +2768,11 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     sendEvent("progress", { message: "Discovering internal pages..." });
     const internalLinks = await discoverInternalLinks(page, url);
     const spaLinks = await discoverClientRoutes(page, url);
-    const linksToVisit = Array.from(
-      new Set([url, ...internalLinks, ...spaLinks]),
-    ).slice(0, 25);
+    // Exclude the original URL — it was already scanned above. Including it
+    // causes a duplicate axe run on the homepage instead of new sub-pages.
+    const linksToVisit = Array.from(new Set([...internalLinks, ...spaLinks]))
+      .filter((l) => l !== url)
+      .slice(0, 25);
     // Tag initial page violations with source URL
     const allViolations = axeResults.violations.map((v) => ({
       ...v,
@@ -2753,7 +2796,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         await page.waitForTimeout(500);
 
         const pageAxeResults = await new AxeBuilder({ page })
-          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+          .withTags([
+            "wcag2a",
+            "wcag2aa",
+            "wcag21a",
+            "wcag21aa",
+            "wcag22a",
+            "wcag22aa",
+          ])
           .analyze();
 
         if (pageAxeResults.violations && pageAxeResults.violations.length > 0) {
@@ -2941,11 +2991,13 @@ Return ONLY this JSON (no markdown, no extra text):
 
     const html = await page.content();
     // Build prompt and call AI (text-only) — this may take time, but preview already sent
+    // Use allViolations (full multi-page scan) so AI sees every issue found,
+    // not just the homepage axe run.
     const pageData = {
       html,
       text,
       understandableData,
-      axeViolations: axeResults.violations,
+      axeViolations: allViolations,
     };
     const prompt = buildPrompt(pageData);
 
@@ -2970,7 +3022,7 @@ Return ONLY this JSON (no markdown, no extra text):
       ).length;
       const totalViolations = axeViolationCount;
       const deductedPoints = highCount * 3 + mediumCount * 2 + lowCount * 1;
-      const score = Math.max(0, 234 - deductedPoints);
+      const score = Math.max(0, 261 - deductedPoints);
 
       aiResponse = {
         score: score,
@@ -2979,7 +3031,7 @@ Return ONLY this JSON (no markdown, no extra text):
           mediumCount: mediumCount,
           lowCount: lowCount,
           totalViolations: totalViolations,
-          maxPossiblePoints: 234,
+          maxPossiblePoints: 261,
           deductedPoints: deductedPoints,
           explanation: `${deductedPoints} points deducted from 234 possible: ${highCount} High + ${mediumCount} Medium + ${lowCount} Low violations`,
         },
@@ -3037,7 +3089,7 @@ Return ONLY this JSON (no markdown, no extra text):
     // Same filter as /api/wcag-check: only keep AI groups that correspond to
     // WCAG criteria already evidenced by the axe scan.
     const axeWcagIdsStream = new Set(
-      axeResults.violations.flatMap((v) => [
+      allViolations.flatMap((v) => [
         v.id,
         ...(v.tags || []).filter((t) => t.match(/^wcag/)),
       ]),
@@ -3063,28 +3115,15 @@ Return ONLY this JSON (no markdown, no extra text):
     const allGroups = [...axeGroups, ...aiGroups];
     if (aiResponse) aiResponse.groups = allGroups;
 
-    // Final result payload - include violation screenshots
-    // Deduplicate by problem category across the site (keep first occurrence)
-    const byCategory = [];
-    const seenCats = new Set();
-    for (const vs of violationScreenshots) {
-      const cat = vs.problemCategory || vs.violationType;
-      if (!seenCats.has(cat)) {
-        seenCats.add(cat);
-        byCategory.push(vs);
-      }
-    }
-
-    const safeHtml = "";
-    const stylesheets = [];
-
+    // byCategory dedup removed — image-hash dedup already handles true
+    // duplicates. Category dedup was collapsing distinct violations to ~5.
     const finalPayload = {
       url,
       aiAnalysis: aiResponse,
-      axe: axeResults.violations,
+      axe: allViolations,
       screenshot: `data:image/jpeg;base64,${previewB64}`,
       steps: liveSteps,
-      violationScreenshots: byCategory.map((vs) => ({
+      violationScreenshots: violationScreenshots.map((vs) => ({
         ...vs,
         viewport: vs.viewport || { width: 1280, height: 720 },
         screenshotOnly: !vs.markers || vs.markers.length === 0,

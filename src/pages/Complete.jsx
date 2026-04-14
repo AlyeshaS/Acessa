@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import SectionNav from "../components/SectionNav";
 import AnalysisPlayer from "../components/AnalysisPlayer";
-import PreviewArrow from "../components/PreviewArrow";
 import ColorBlindSimulator from "../components/ColorBlindSimulator";
 import ScreenshotWithHighlights from "../components/ScreenshotWithHighlights";
 import { aiModifyHtml } from "../api/wcagAPI";
@@ -1568,7 +1567,7 @@ Return the edited screenshot with minimal localized edits only.
                     ) : (
                       `Checking violations… ${Math.round(progress)}%${
                         violationsFound > 0
-                          ? ` • ${violationsFound} found so far`
+                          ? ` • ${violationsFound} violation${violationsFound !== 1 ? "s" : ""}`
                           : ""
                       }`
                     )}
@@ -1839,15 +1838,56 @@ Return the edited screenshot with minimal localized edits only.
                         violationScreenshots.length > 0 ? (
                           <>
                             {/* Left arrow */}
-                            <PreviewArrow
-                              direction="left"
+                            <button
                               disabled={currentScreenshotIdx === 0}
                               onClick={() =>
                                 setCurrentScreenshotIdx((i) =>
                                   Math.max(0, i - 1),
                                 )
                               }
-                            />
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "none",
+                                border: "none",
+                                boxShadow: "none",
+                                borderRadius: 0,
+                                padding: "0 8px",
+                                cursor:
+                                  currentScreenshotIdx === 0
+                                    ? "default"
+                                    : "pointer",
+                                color:
+                                  currentScreenshotIdx === 0
+                                    ? "#cbd5e1"
+                                    : "#475569",
+                                transition: "color 0.18s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (currentScreenshotIdx !== 0)
+                                  e.currentTarget.style.color = "#189b97";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color =
+                                  currentScreenshotIdx === 0
+                                    ? "#cbd5e1"
+                                    : "#475569";
+                              }}
+                            >
+                              <svg
+                                width="22"
+                                height="22"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="15 18 9 12 15 6" />
+                              </svg>
+                            </button>
 
                             {/* Screenshot + highlights + panel */}
                             {(() => {
@@ -2163,8 +2203,7 @@ Return the edited screenshot with minimal localized edits only.
                               );
                             })()}
 
-                            <PreviewArrow
-                              direction="right"
+                            <button
                               disabled={
                                 currentScreenshotIdx ===
                                 violationScreenshots.length - 1
@@ -2177,7 +2216,55 @@ Return the edited screenshot with minimal localized edits only.
                                   ),
                                 )
                               }
-                            />
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "none",
+                                border: "none",
+                                boxShadow: "none",
+                                borderRadius: 0,
+                                padding: "0 8px",
+                                cursor:
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "default"
+                                    : "pointer",
+                                color:
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "#cbd5e1"
+                                    : "#475569",
+                                transition: "color 0.18s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (
+                                  currentScreenshotIdx !==
+                                  violationScreenshots.length - 1
+                                )
+                                  e.currentTarget.style.color = "#189b97";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color =
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "#cbd5e1"
+                                    : "#475569";
+                              }}
+                            >
+                              <svg
+                                width="22"
+                                height="22"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                            </button>
                           </>
                         ) : previewMode === "lense" &&
                           violationScreenshots &&
