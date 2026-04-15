@@ -87,7 +87,7 @@ function Complete() {
   // Optionally, add scrollMarginTop to each section for native CSS offset (if supported)
   const [mobileIframeError, setMobileIframeError] = useState(false);
   const [colorBlindError, setColorBlindError] = useState(null);
-  React.useEffect(() => {
+  useEffect(() => {
     if (!document.head.querySelector("style[data-highlight-feedback]")) {
       const style = document.createElement("style");
       style.innerHTML = `
@@ -131,17 +131,17 @@ function Complete() {
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const [animationDone, setAnimationDone] = useState(false);
 
-  // NEW: "animation" state – we show AnalysisPlayer while this is true
+  // "animation" state – we show AnalysisPlayer while this is true
   const [animating, setAnimating] = useState(false);
   const [previewResult, setPreviewResult] = useState(null); // { screenshot, steps }
   const [imageLoaded, setImageLoaded] = useState(false);
   const [pendingResult, setPendingResult] = useState(null);
 
-  // NEW: Visual segments with images and comments (merged from Visual page)
+  // Visual segments with images and comments
   const [segments, setSegments] = useState([]);
   const [pendingSegments, setPendingSegments] = useState([]);
 
-  // NEW: Violation screenshots with interactive feedback
+  // Violation screenshots with interactive feedback
   const [violationScreenshots, setViolationScreenshots] = useState([]);
   const [selectedViolation, setSelectedViolation] = useState(null);
 
@@ -222,10 +222,6 @@ function Complete() {
   };
 
   useEffect(() => {
-    console.log("HTML length:", analysis?.html?.length);
-  }, [analysis]);
-
-  useEffect(() => {
     if (isDemo) return; // demo mode — skip all API calls
 
     if (!url) {
@@ -256,7 +252,7 @@ function Complete() {
 
         const evt = new EventSource(streamUrl);
 
-        // NEW: Listen for live step events as Axe finds real violations
+        // Listen for live step events as Axe finds real violations
         evt.addEventListener("step", (e) => {
           try {
             const step = JSON.parse(e.data || "{}");
@@ -287,9 +283,8 @@ function Complete() {
           }
         });
 
-        evt.addEventListener("ai", (e) => {
-          // ai status event
-        });
+        // "ai" status events are intentionally ignored here.
+        evt.addEventListener("ai", () => {});
 
         evt.addEventListener("progress", (e) => {
           try {
@@ -319,7 +314,7 @@ function Complete() {
         evt.addEventListener("result", (e) => {
           try {
             const payload = JSON.parse(e.data || "{}");
-            // defer applying final analysis until the animation completes
+            // Hold the final analysis until the animation completes
             setPendingResult(payload);
             // Store violation screenshots if provided
             if (
@@ -336,40 +331,37 @@ function Complete() {
                 })),
               );
             }
-            // Don't overwrite the live steps - they've already been streamed and are animating
-            // The payload.steps are redundant since we already received them as individual "step" events
+            // Steps were already received as individual "step" events, so we skip
+            // payload.steps to avoid overwriting the live animation in progress.
             if (payload.screenshot) {
-              // Update screenshot if it changed, but don't reset steps array
               setPreviewResult((prev) => ({
                 ...prev,
                 screenshot: payload.screenshot,
               }));
               setAnimating(true);
             }
-            // keep loading true; when AnalysisPlayer calls onComplete we'll
-            // apply pendingResult and stop animating.
+            // Loading remains true until AnalysisPlayer calls onComplete.
           } catch (err) {
             console.error("[Complete] result parse", err);
           }
         });
 
         evt.addEventListener("done", () => {
-          // keep loading true until animation completes and consumes pendingResult
+          // Loading stays true until the animation completes and consumes pendingResult.
           try {
             evt.close();
           } catch (err) {}
 
-          // NEW: After HTML analysis stream completes, start visual segment capture
-          // This runs in parallel and will populate segments for display after animation
+          // After HTML analysis stream completes, start visual segment capture.
+          // This runs in parallel and will populate segments for display after animation.
           try {
             const visualStreamUrl = `http://localhost:4000/api/wcag-visual-stream?url=${encodeURIComponent(
               url,
             )}`;
             const visualEvt = new EventSource(visualStreamUrl);
 
-            visualEvt.addEventListener("preview", (e) => {
-              // Visual preview already shown from HTML stream, skip
-            });
+            // "preview" events are skipped — visual preview already shown from HTML stream.
+            visualEvt.addEventListener("preview", () => {});
 
             visualEvt.addEventListener("segment", (e) => {
               try {
@@ -1005,8 +997,6 @@ function Complete() {
     });
   };
 
-  console.log("Violations:", analysis?.violations);
-
   const categories = [
     { key: "Perceivable", score: perceivableScore },
     { key: "Operable", score: operableScore },
@@ -1044,12 +1034,12 @@ function Complete() {
   };
 
   // AI-generated title cache: { [key]: string }
-  const [aiFriendlyTitles, setAiFriendlyTitles] = React.useState({});
-  const aiFriendlyTitlesPending = React.useRef(new Set());
+  const [aiFriendlyTitles, setAiFriendlyTitles] = useState({});
+  const aiFriendlyTitlesPending = useRef(new Set());
 
   // AI-generated mobile issue detail cache: { [key]: { whyItMatters, affectedUsers, fix } }
-  const [mobileIssueDetails, setMobileIssueDetails] = React.useState({});
-  const mobileIssueDetailsPending = React.useRef(new Set());
+  const [mobileIssueDetails, setMobileIssueDetails] = useState({});
+  const mobileIssueDetailsPending = useRef(new Set());
 
   const getFriendlyTitle = (criterion, id, description) => {
     if (!criterion && !id) return "Accessibility Issue";
@@ -1157,8 +1147,8 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   };
 
   // --- Next Steps done tracking + copy state ---
-  const [doneSteps, setDoneSteps] = React.useState(new Set());
-  const [checklistCopied, setChecklistCopied] = React.useState(false);
+  const [doneSteps, setDoneSteps] = useState(new Set());
+  const [checklistCopied, setChecklistCopied] = useState(false);
   const toggleDoneStep = (i) =>
     setDoneSteps((prev) => {
       const next = new Set(prev);
@@ -1166,7 +1156,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
       return next;
     });
   // --- Collapsible section states ---
-  const [collapsedSections, setCollapsedSections] = React.useState({
+  const [collapsedSections, setCollapsedSections] = useState({
     websitePreview: false,
     accessibilityIssues: true,
     hciReport: true,
@@ -1179,13 +1169,13 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
   // --- Pie chart slice hover state ---
-  const [hoveredSlice, setHoveredSlice] = React.useState(null);
+  const [hoveredSlice, setHoveredSlice] = useState(null);
   // --- Donut hover state for HCI keyword donut ---
-  const [donutHover, setDonutHover] = React.useState(null); // { label, percent, x, y }
+  const [donutHover, setDonutHover] = useState(null); // { label, percent, x, y }
   // --- HCI report expanded state ---
-  const [hciExpanded, setHciExpanded] = React.useState(false);
+  const [hciExpanded, setHciExpanded] = useState(false);
   // Website Preview toggle state
-  const [previewMode, setPreviewMode] = React.useState("highlighted");
+  const [previewMode, setPreviewMode] = useState("highlighted");
   // Side-by-side AI image state
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
@@ -1224,9 +1214,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
 
   // Handle color blindness filter button click
   const handleColorBlindClick = async (type) => {
-    // Debug: log analysis and url state
-    console.log("[Lens Button Click] analysis:", analysis, "url:", url);
-    // Log to terminal (non-blocking)
+    // Log filter usage server-side (non-blocking)
     try {
       await fetch("/api/log-colorblind-btn", {
         method: "POST",
@@ -1237,7 +1225,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
         }),
       });
     } catch (e) {}
-    // ...existing code...
+    // Toggle off if already active
     if (!analysis?.screenshot || !url) return;
     if (colorBlindFilter === type) {
       // Toggle off
@@ -1585,7 +1573,7 @@ Return the edited screenshot with minimal localized edits only.
                       setAnimating(true);
                     }}
                     onComplete={() => {
-                      // finish animating; if we have a pending result apply it
+                      // Finish animating; apply pending result if available
                       setAnimating(false);
                       setAnimationDone(true);
                       if (pendingResult) {
@@ -1598,9 +1586,6 @@ Return the edited screenshot with minimal localized edits only.
                         setPendingResult(null);
                       }
                       // Apply visual segments if available
-
-                      // before and after
-
                       if (pendingSegments.length > 0) {
                         setSegments(pendingSegments);
                       }
@@ -3289,42 +3274,11 @@ Return the edited screenshot with minimal localized edits only.
                         );
                       })()}
 
-                      {(() => {
-                        // Debugging output
-                        console.log("analysis:", analysis);
-                        console.log(
-                          "analysis.groupedByPrinciple:",
-                          analysis?.groups,
-                        );
-                        const fallback = (() => {
-                          const violations = analysis?.violations || [];
-                          const result = {
-                            Perceivable: [],
-                            Operable: [],
-                            Understandable: [],
-                            Robust: [],
-                          };
-                          violations.forEach((v) => {
-                            const p =
-                              v.principle ||
-                              v.pourPrinciple ||
-                              v.category ||
-                              v.wcagPrinciple;
-                            if (p && result[p]) {
-                              result[p].push(v);
-                            }
-                          });
-                          return result;
-                        })();
-                        console.log("fallback groupedByPrinciple:", fallback);
-                        return (
-                          <ViolationsFilterSection
-                            violations={analysis?.violations || []}
-                            groupedByPrinciple={groupedByPrinciple}
-                            siteUrl={analysis?.url || url || ""}
-                          />
-                        );
-                      })()}
+                      <ViolationsFilterSection
+                        violations={analysis?.violations || []}
+                        groupedByPrinciple={groupedByPrinciple}
+                        siteUrl={analysis?.url || url || ""}
+                      />
                     </div>
                   </div>
                 </div>
