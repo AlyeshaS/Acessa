@@ -1,5 +1,4 @@
 // UploadBar lets you enter a URL and start the accessibility check
-
 export default function UploadBar({
   value,
   onChange,
@@ -9,7 +8,7 @@ export default function UploadBar({
   // Main row with input and analyze button
   return (
     <div className="upload-row">
-      // URL input field
+      {/* URL input field */}
       <input
         type="url"
         className="url-pill"
@@ -18,7 +17,7 @@ export default function UploadBar({
         onChange={onChange}
         aria-label="URL to analyze"
       />
-      // Analyze button (disabled if input is empty)
+      {/* Analyze button (disabled if input is empty) */}
       <button
         type="button"
         className="btn-icon btn-analyze"
@@ -27,7 +26,7 @@ export default function UploadBar({
         aria-label="Analyze"
         title="Analyze"
       >
-        // Magnifying glass icon
+        {/* Magnifying glass icon */}
         <svg
           width="58"
           height="55"
@@ -38,8 +37,8 @@ export default function UploadBar({
           <g filter="url(#filter0_d_50_3)">
             <path
               d="M50.7501 46.75L41.347 37.3468M35.1076 17.25L24.9105 27.4472L18.7917 21.3284M26.9669 2.5C15.6814 2.5 6.5 11.4308 6.5 22.4113C6.5 33.3918 15.6814 42.325 26.9669 42.325C38.2498 42.325 47.4312 33.3918 47.4312 22.4113C47.4312 11.4308 38.2498 2.5 26.9669 2.5Z"
-              stroke="currentColor"
               stroke-width="5"
+              stroke="currentColor"
               stroke-linecap="round"
               stroke-linejoin="round"
               shape-rendering="crispEdges"

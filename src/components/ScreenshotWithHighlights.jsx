@@ -123,7 +123,7 @@ function ScreenshotWithHighlights({
   }, [markers]);
 
   return (
-    // Outer shell: fills the parent and clips highlights so they don't bleed out
+    /* Outer shell: fills the parent and clips highlights so they don't bleed out */
     <div
       style={{
         position: "relative",
@@ -136,8 +136,7 @@ function ScreenshotWithHighlights({
         justifyContent: "flex-start",
       }}
     >
-      // Inner wrapper: shrinks to the image size so overlays are always in the
-      right spot
+      {/* Inner wrapper: shrinks to the image size so overlays are always in the right spot */}
       <div
         style={{
           position: "relative",
@@ -228,7 +227,7 @@ function ScreenshotWithHighlights({
                   ...stateStyle,
                 }}
               >
-                // Tooltip: only shown while hovered
+                {/* Tooltip: only shown while hovered */}
                 {tooltipText && isHovered && (
                   <div
                     style={{
@@ -264,7 +263,7 @@ function ScreenshotWithHighlights({
           return [renderBox(m, m.issueId || i)];
         })}
       </div>{" "}
-      // End of inner wrapper
+      {/* End of inner wrapper */}
     </div>
   );
 }

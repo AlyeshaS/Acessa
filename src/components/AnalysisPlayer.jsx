@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 
-// Shows the live Playwright browser feed as it checks the page for accessibility issues.
-// Animates through each step, highlights clicks and regions, and displays a completion message at the end.
+/**
+ * Shows live Playwright browser feed as it checks the page
+ */
 function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isDone, setIsDone] = useState(false);
   const steps = result?.steps || [];
 
-  // Keep track of the best screenshot to show.
-  // If a step has a screenshot, use that. Otherwise, fall back to the main result screenshot.
+  // Track the best screenshot to display. We use a ref to remember the last
+  // step-specific frame so the static overview from the result event never
+  // overwrites a live Playwright frame that was already showing.
   const lastStepScreenshotRef = useRef(result?.screenshot || null);
   const [displayScreenshot, setDisplayScreenshot] = useState(
     result?.screenshot || null,
@@ -16,7 +18,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   const imgRef = useRef(null);
 
-  // Update the ref with the latest screenshot whenever new steps come in.
+  // When new steps arrive, keep the ref up to date with the latest frame.
   useEffect(() => {
     const latest = steps[steps.length - 1];
     if (latest?.screenshot) {
@@ -24,7 +26,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     }
   }, [steps.length]);
 
-  // Move through the steps one by one, like a slideshow.
+  // Advance through steps as they arrive.
   useEffect(() => {
     if (steps.length === 0) return;
     const interval = setInterval(() => {
@@ -36,7 +38,9 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     return () => clearInterval(interval);
   }, [steps.length]);
 
-  // Whenever the current step changes, update the screenshot to match.
+  // When currentIndex advances, update displayScreenshot with the most
+  // accurate frame: this step's own screenshot → last seen step screenshot →
+  // static overview fallback.
   useEffect(() => {
     const step = steps[currentIndex];
     const best =
@@ -47,7 +51,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     if (best) setDisplayScreenshot(best);
   }, [currentIndex, steps, result?.screenshot]);
 
-  // Only update from the main result screenshot if we haven't seen any step screenshots yet.
+  // Only update from the top-level result screenshot if no step screenshot has
+  // arrived yet — prevents the static overview overwriting a live frame.
   useEffect(() => {
     if (!result?.screenshot) return;
     if (!lastStepScreenshotRef.current) {
@@ -55,7 +60,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     }
   }, [result?.screenshot]);
 
-  // When we reach the last step, show the completion overlay after a short delay.
+  // Detect when animation is complete.
   useEffect(() => {
     if (steps.length === 0) return;
     const timeout = setTimeout(() => {
@@ -69,8 +74,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   const currentStep = steps[currentIndex];
 
-  // offsetX/Y are how far the page was scrolled when the screenshot was taken.
-  // We subtract them so overlays line up with the visible part of the page.
+  // offsetX/Y tell us how far the page was scrolled when the screenshot was
+  // taken. We subtract them so the overlay lands correctly on the visible frame.
   const offsetX = currentStep?.offsetX || 0;
   const offsetY = currentStep?.offsetY || 0;
 
@@ -91,8 +96,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   const scaled = (val) => Math.round((val || 0) * (scale || 1));
 
-  // Figure out where to put the orange click circle.
-  // Clamp it so it never gets cut off by the edge of the image.
+  // Compute circle position. Clamp to [0, rendered image width/height - size]
+  // so the circle is never clipped by the container edges.
   const getCircleStyle = (step) => {
     if (!step || typeof step.x !== "number" || typeof step.y !== "number") {
       return null;
@@ -129,11 +134,13 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     };
   };
 
-  // Show a circle for click steps. If we don't have coordinates, just center the circle.
+  // Decide what overlay to show. Always show a circle for click steps.
+  // Fall back to a centred circle if coordinates are missing or zero.
   const circleStyle =
     currentStep?.type === "click" ? getCircleStyle(currentStep) : null;
 
-  // If we don't know where to put the circle, center it so the user knows something is happening.
+  // Fallback centred circle when x/y are missing — ensures something always
+  // appears so the user knows Playwright is active.
   const fallbackCircleStyle =
     !circleStyle && !isDone && currentStep
       ? {
@@ -155,7 +162,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   return (
     <div className="analysis-player-single">
-      // Pulse keyframe — injected once inline so no external CSS needed
+      {/* Pulse keyframe — injected once inline so no external CSS needed */}
       <style>{`
         @keyframes wcag-click-pulse {
           0%   { transform: scale(0.6); opacity: 0; }
@@ -163,7 +170,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           100% { transform: scale(1); opacity: 1; }
         }
       `}</style>
-      // Live browser view
+
+      {/* Live browser view */}
       <div
         className="analysis-image-wrapper"
         style={{
@@ -177,7 +185,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           boxShadow: "0 4px 20px rgba(124,138,160,0.3)",
         }}
       >
-        // Single screenshot with client-side overlays
+        {/* Single screenshot with client-side overlays */}
         <img
           ref={imgRef}
           src={displayScreenshot}
@@ -190,11 +198,14 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           }}
           onLoad={handleImgLoad}
         />
-        // Click circle — precise position when coordinates are available
+
+        {/* Click circle — precise position when coordinates are available */}
         {circleStyle && <div style={circleStyle} />}
-        // Fallback centred circle when coordinates are missing
+
+        {/* Fallback centred circle when coordinates are missing */}
         {fallbackCircleStyle && <div style={fallbackCircleStyle} />}
-        // Draw highlight box overlay
+
+        {/* Draw highlight box overlay */}
         {currentStep?.type === "highlight" && (
           <div
             style={{
@@ -214,7 +225,8 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
             }}
           />
         )}
-        // Status overlay showing what's being checked
+
+        {/* Status overlay showing what's being checked */}
         {!isDone ? (
           <div
             className="analysis-status-overlay"
@@ -247,7 +259,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
             </div>
           </div>
         ) : (
-          // Completion overlay
+          /* Completion overlay */
           <div
             style={{
               position: "absolute",
@@ -274,7 +286,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
                 boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
               }}
             >
-              // Checkmark circle
+              {/* Checkmark circle */}
               <div
                 style={{
                   width: 48,
@@ -326,6 +338,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           </div>
         )}
       </div>
+
       <p
         style={{
           marginTop: "12px",

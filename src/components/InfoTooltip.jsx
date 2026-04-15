@@ -26,7 +26,7 @@ const InfoTooltip = ({ label, description }) => {
         (e.currentTarget.querySelector(".tooltip").style.display = "none")
       }
     >
-      // The little info icon with a circle
+      {/* The little info icon with a circle */}
       <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
         <circle
           cx="10"
@@ -48,7 +48,7 @@ const InfoTooltip = ({ label, description }) => {
           i
         </text>
       </svg>
-      // The popup itself
+      {/* The popup itself */}
       <div
         className="tooltip"
         role="tooltip"

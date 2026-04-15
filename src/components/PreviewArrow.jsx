@@ -1,6 +1,3 @@
-// Import React for building the arrow button component
-import React from "react";
-
 // This button lets users go to the previous or next screenshot
 function PreviewArrow({ direction, disabled, onClick }) {
   // Check if the arrow should point left

@@ -1,5 +1,3 @@
-import React, { useState } from "react";
-
 // List of all navigation sections, each with a label, icon, and color
 const sections = [
   {
@@ -151,7 +149,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
-      // Top bar with the app name and the collapse/expand arrow
+      {/* Top bar with the app name and the collapse/expand arrow */}
       <div
         style={{
           height: "64px",
@@ -306,7 +304,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                     {section.label}
                   </span>
                 )}
-                // Show a colored dot next to the active section
+                {/* Show a colored dot next to the active section */}
                 {isActive && !collapsed && (
                   <div
                     style={{
