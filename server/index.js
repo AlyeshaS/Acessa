@@ -16,12 +16,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 import { openaiImageEdit } from "./openaiImageEdit.js";
 
-app.post("/api/log-colorblind-btn", (req, res) => {
-  // Log the request body to the terminal
-  console.log("[LENS BUTTON] Colorblind filter pressed:", req.body);
-  res.status(204).end(); // No Content
-});
-
 app.post("/api/ai/image-edit", async (req, res) => {
   const { screenshot, prompt } = req.body || {};
   // Explicit log for color blindness filter AI call
@@ -304,37 +298,25 @@ async function fetchPageContent(url) {
 
     const html = await page.content();
 
-    // When taking a violation screenshot at a specific scrollY:
+    // Take a viewport screenshot
     const screenshotBuffer = await page.screenshot({
       type: "jpeg",
       quality: 85,
-      fullPage: false, // Only capture viewport
+      fullPage: false,
     });
-
-    // Store the scroll position with the screenshot
-    violationScreenshot.scrollY = currentScrollY;
-    violationScreenshot.viewport = { width: 1280, height: 720 };
-
-    // Adjust bounding boxes relative to this screenshot's scroll position
-    violationScreenshot.markers = violations
-      .map((v) => {
-        const bbox = v.nodes[0]?.boundingBox;
-        if (!bbox) return null;
-
-        return {
-          ...bbox,
-          // Convert page coordinates to screenshot coordinates
-          x: bbox.pageX - currentScrollX,
-          y: bbox.pageY - currentScrollY,
-          issueId: v.id,
-        };
-      })
-      .filter(Boolean);
+    const screenshot = `data:image/jpeg;base64,${screenshotBuffer.toString("base64")}`;
 
     const text = await page.evaluate(() => document.body.innerText || "");
 
     const axeResults = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .withTags([
+        "wcag2a",
+        "wcag2aa",
+        "wcag21a",
+        "wcag21aa",
+        "wcag22a",
+        "wcag22aa",
+      ])
       .analyze();
 
     return {
@@ -985,7 +967,140 @@ async function captureViolationScreenshots(page, axeViolations) {
 
         await page.waitForTimeout(150);
 
-        // ── Step 8: take viewport screenshot ─────────────────────────────
+        // ── Step 8: activate hover/focus state if relevant, then screenshot ─
+        //
+        // Axe detects violations in the default DOM state. For issues that only
+        // manifest visually during :hover or :focus (e.g. missing focus ring,
+        // low-contrast hover text, underline-only-on-hover links) we need to
+        // trigger that state before taking the screenshot so the user actually
+        // sees the problem.
+        //
+        // Strategy:
+        //   • FOCUS violations  → page.focus(selector) puts the element into
+        //     :focus/:focus-visible state; browsers render focus rings immediately.
+        //   • HOVER violations  → page.hover(selector) moves the real mouse
+        //     pointer over the element triggering :hover CSS.
+        //   • Both              → focus first (axe primary), then hover.
+        //   • Fallback          → if hover() fails (e.g. element not hoverable)
+        //     inject a temporary inline style that copies computed :hover styles
+        //     so the screenshot is still informative.
+        //   • After screenshot  → always restore default state (blur + mouse-off)
+        //     so subsequent captures are not affected.
+
+        const HOVER_VIOLATION_IDS = new Set([
+          "color-contrast",
+          "color-contrast-enhanced",
+          "focus-visible",
+          "focus-not-obscured",
+          "focus-not-obscured-enhanced",
+          "link-in-text-block",
+          "focus-order-semantics",
+        ]);
+
+        const FOCUS_VIOLATION_IDS = new Set([
+          "focus-visible",
+          "focus-not-obscured",
+          "focus-not-obscured-enhanced",
+          "focus-order-semantics",
+        ]);
+
+        const needsFocus = FOCUS_VIOLATION_IDS.has(violation.id);
+        const needsHover = HOVER_VIOLATION_IDS.has(violation.id);
+
+        // Primary selector for interaction (first visible marker)
+        const interactSelector = markersWithText[0]?.selector || target;
+
+        let hoverActivated = false;
+        let focusActivated = false;
+
+        if (needsFocus && interactSelector) {
+          try {
+            await page.focus(interactSelector);
+            focusActivated = true;
+            console.log(
+              `[WCAG] Focused element for ${violation.id}: ${interactSelector}`,
+            );
+            // Give browser time to render focus ring / transition
+            await page.waitForTimeout(250);
+          } catch (focusErr) {
+            console.warn(
+              `[WCAG] Could not focus ${interactSelector}:`,
+              focusErr.message,
+            );
+          }
+        }
+
+        if (needsHover && interactSelector) {
+          try {
+            await page.hover(interactSelector, { force: true });
+            hoverActivated = true;
+            console.log(
+              `[WCAG] Hovered element for ${violation.id}: ${interactSelector}`,
+            );
+            // Wait for CSS transitions to complete (most transitions are ≤200ms)
+            await page.waitForTimeout(300);
+          } catch (hoverErr) {
+            console.warn(
+              `[WCAG] page.hover failed for ${interactSelector}, trying CSS injection:`,
+              hoverErr.message,
+            );
+
+            // Fallback: inject a <style> that forces the computed :hover appearance
+            // by applying a data attribute we can target from CSS, or directly copy
+            // the transition end-state via JS.
+            try {
+              await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return;
+                // Mark element so we can style it
+                el.setAttribute("data-wcag-hover-sim", "1");
+
+                // Copy any inline :hover styles that exist on the element's
+                // stylesheet rules into a temporary <style> block.
+                const sheets = Array.from(document.styleSheets);
+                const hoverRules = [];
+                for (const sheet of sheets) {
+                  try {
+                    const rules = Array.from(sheet.cssRules || []);
+                    for (const rule of rules) {
+                      if (
+                        rule.selectorText &&
+                        rule.selectorText.includes(":hover") &&
+                        el.matches(rule.selectorText.replace(/:hover/g, ""))
+                      ) {
+                        // Re-target the rule to our data attribute
+                        const newSelector = rule.selectorText.replace(
+                          /:hover/g,
+                          "[data-wcag-hover-sim]",
+                        );
+                        hoverRules.push(
+                          `${newSelector} { ${rule.style.cssText} }`,
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    /* cross-origin sheet — skip */
+                  }
+                }
+                if (hoverRules.length > 0) {
+                  const style = document.createElement("style");
+                  style.id = "wcag-hover-sim-styles";
+                  style.textContent = hoverRules.join("\n");
+                  document.head.appendChild(style);
+                }
+              }, interactSelector);
+              await page.waitForTimeout(250);
+              hoverActivated = true; // CSS fallback applied
+            } catch (cssErr) {
+              console.warn(
+                `[WCAG] CSS hover fallback also failed:`,
+                cssErr.message,
+              );
+            }
+          }
+        }
+
+        // Take the screenshot in whatever state we achieved
         let screenshotBuf = await page.screenshot({
           type: "jpeg",
           quality: 50,
@@ -1000,22 +1115,58 @@ async function captureViolationScreenshots(page, axeViolations) {
         }
 
         console.log(
-          `[WCAG] Screenshot captured: ${screenshotBuf.length} bytes`,
+          `[WCAG] Screenshot captured: ${screenshotBuf.length} bytes (hover=${hoverActivated}, focus=${focusActivated})`,
         );
+
+        // ── Restore default state so the next iteration starts clean ─────
+        try {
+          if (focusActivated || hoverActivated) {
+            // Move mouse off the element to kill :hover
+            await page.mouse.move(0, 0);
+            // Blur removes :focus
+            await page.evaluate(() => {
+              if (
+                document.activeElement &&
+                document.activeElement !== document.body
+              ) {
+                document.activeElement.blur();
+              }
+              // Clean up any CSS injection from the fallback path
+              const simStyle = document.getElementById("wcag-hover-sim-styles");
+              if (simStyle) simStyle.remove();
+              document
+                .querySelectorAll("[data-wcag-hover-sim]")
+                .forEach((el) => {
+                  el.removeAttribute("data-wcag-hover-sim");
+                });
+            });
+            await page.waitForTimeout(100);
+          }
+        } catch (restoreErr) {
+          console.warn(
+            "[WCAG] Could not restore default state:",
+            restoreErr.message,
+          );
+        }
 
         screenshots.push({
           screenshot: `data:image/jpeg;base64,${screenshotBuf.toString("base64")}`,
           violations: [violation],
           bounds: bounds || { x: 0, y: 0, width: 0, height: 0 },
           markers: markersWithText,
-          // highlightBounds is used by the AI prompt to anchor feedback
           highlightBounds,
           violationType: violation.id,
           wcagCriterion:
             violation.tags?.find((t) => t.match(/^wcag\d/)) || violation.id,
           scrollY,
           viewport: { width: 1280, height: 720 },
-          screenshotOnly: false, // guaranteed: we only reach here when markers.length > 0
+          screenshotOnly: false,
+          // Record what interaction state was active during capture
+          captureState: focusActivated
+            ? "focus"
+            : hoverActivated
+              ? "hover"
+              : "default",
         });
       } catch (err) {
         console.error(
@@ -1092,8 +1243,15 @@ You are an Accessibility & HCI Evaluation Engine and a senior Human–Computer I
 
 Your job is to analyze the provided website content using ONLY the official WCAG 2.2 guidelines and AODA requirements.
 Do NOT invent or assume guidelines that do not exist.
-If you are unsure whether a specific success criterion applies, mark it as "uncertain" in your explanations instead of guessing.
-When marking an issue as “uncertain,” you must still assign a conservative severity level, include it in scoring, and explain the uncertainty briefly.
+
+CRITICAL ANTI-HALLUCINATION RULES — these override everything else:
+1. Every issue you report in "groups" MUST be directly evidenced by something in the HTML, visible text, form data, or the Technical Audit Log provided below. Do NOT infer, assume, or speculate about issues you cannot see evidence for.
+2. If the Technical Audit Log is empty or a category has no violations, do NOT invent violations for that category. Score it at 100 and state "No violations found."
+3. Do NOT add issues because they are "common" or "typical" for sites like this. Only report what the data shows.
+4. wcagCriterion values in "groups" MUST be real WCAG 2.2 criterion IDs (e.g. "1.4.3 Contrast (Minimum)"). Do not fabricate criterion names or numbers.
+5. If you are genuinely uncertain whether a criterion applies, omit it from "groups" entirely — do not include it as a guess.
+
+If you are unsure whether a specific success criterion applies, omit it rather than guessing.
 
 Treat AODA as requiring at least WCAG 2.0 Level AA conformance. WCAG 2.2 extends these requirements; you MUST include relevant WCAG 2.2 AA criteria when evaluating accessibility for AODA.
 If a WCAG 2.2 criterion extends or replaces a WCAG 2.0 AA requirement, you must evaluate against the WCAG 2.2 version and treat it as fulfilling the AODA requirement. WCAG 2.2 is always the authoritative baseline for scoring.
@@ -1125,8 +1283,16 @@ CRITICAL: You MUST review the "Technical Audit Log" section below which contains
 SPECIAL INSTRUCTIONS FOR "UNDERSTANDABLE" (Principle 3):
 You must use the provided "Form & Language Data" below to evaluate Principle 3 specifically.
 - **3.1 Readable:** Check the extracted 'lang' attribute. If it is null or empty, fail WCAG 3.1.1 immediately. Analyze the 'Visible Text' for complex jargon (Level AAA 3.1.5).
-- **3.2 Predictable:** Use the 'navCount' to comment on navigation consistency. Look for "open in new tab" links in the HTML without warnings (Failure of 3.2.2 or 3.2.5).
-- **3.3 Input Assistance:** Look at the 'Form Fields List' provided below. If "hasLabel" is false and "hasAriaLabel" is false for any input, this is a likely failure of WCAG 3.3.2.
+- **3.2 Predictable:** Use the 'navCount' to comment on navigation consistency. Look for "open in new tab" links in the HTML without warnings (Failure of 3.2.2 or 3.2.5). Check for a consistent help mechanism across pages (3.2.6 WCAG 2.2).
+- **3.3 Input Assistance:** Look at the 'Form Fields List' provided below. If "hasLabel" is false and "hasAriaLabel" is false for any input, this is a likely failure of WCAG 3.3.2. Also check for redundant entry requirements (3.3.7 WCAG 2.2) and whether authentication steps require cognitive tests without alternatives (3.3.8 WCAG 2.2).
+
+SPECIAL INSTRUCTIONS FOR WCAG 2.2 CRITERIA (new in 2.2 — check these explicitly):
+- **2.4.11 Focus Not Obscured (AA):** Check whether focused elements can be completely hidden by sticky headers, floating elements, or overlapping content. If the HTML contains sticky/fixed positioned elements, flag this.
+- **2.4.12 Focus Not Obscured Enhanced (AAA):** No part of the focused element should be hidden by author-created content.
+- **2.5.7 Dragging Movements (AA):** If the page contains draggable elements (sliders, sortable lists, carousels with drag), check whether a single-pointer alternative exists.
+- **2.5.8 Target Size Minimum (AA):** Interactive targets should be at least 24×24 CSS pixels. Check for small buttons, icon-only links, and navigation dots in the HTML.
+- **3.3.7 Redundant Entry (A):** Information entered previously in a multi-step process should not need to be re-entered. Check for multi-step forms.
+- **3.3.8 Accessible Authentication (AA):** Authentication steps must not rely solely on a cognitive function test (e.g. solving a puzzle, memorising a code) without an alternative. Check for login/CAPTCHA patterns in the HTML.
 
 For each detected issue, include:
 - wcagCriterion: exact WCAG 2.2 ID + name (for example "1.4.3 Contrast (Minimum)")
@@ -1160,7 +1326,7 @@ Let:
 - lowCount = number of Low severity violations
 - totalPoints = (highCount*3) + (mediumCount*2) + (lowCount*1)
 - maxPoints = totalPossibleCriteria * 3
-  (Assume totalPossibleCriteria = 78 WCAG 2.2 criteria)
+  (Assume totalPossibleCriteria = 87 WCAG 2.2 criteria)
 - rawScore = 1 - (totalPoints / maxPoints)
 - score = Math.max(0, Math.min(100, Math.round(rawScore * 100)))
 
@@ -1280,7 +1446,7 @@ The JSON MUST match this schema exactly:
     "mediumCount": Number,
     "lowCount": Number,
     "totalViolations": Number,
-    "maxPossiblePoints": 234,
+    "maxPossiblePoints": 261,
     "deductedPoints": Number,
     "explanation": "string (e.g., '65 points deducted from 234 possible: 5 High (15pts) + 8 Medium (16pts) + 2 Low (2pts)')"
   },
@@ -1424,7 +1590,7 @@ The JSON MUST match this schema exactly (UPDATED):
     "mediumCount": Number,
     "lowCount": Number,
     "totalViolations": Number,
-    "maxPossiblePoints": 234,
+    "maxPossiblePoints": 261,
     "deductedPoints": Number,
     "explanation": "string"
   },
@@ -1729,24 +1895,51 @@ app.post("/api/wcag-check", async (req, res) => {
       }
     }
 
-    // Only send one node per region to the AI
-    for (const { node } of uniqueNodes) {
-      const nodePrompt = `
-You are an accessibility expert. Here is a web accessibility violation node from axe-core:
-${JSON.stringify(node, null, 2)}
-Please provide:
-1. A user-friendly summary of the issue.
-2. A recommendation for fixing it.
-3. (Optional) The CSS selector of the affected element.
-Return a JSON object: { "summary": "...", "recommendation": "...", "selector": "..." }
-`;
+    // Only send one node per region to the AI.
+    // The prompt is strictly constrained: AI may only rephrase what axe reported,
+    // never add, infer, or invent issues not present in the node data.
+    for (const { node, violation } of uniqueNodes) {
+      const nodePrompt = `You are an accessibility writer for non-developers.
+
+You have been given a single accessibility violation detected by axe-core. Your ONLY job is to rewrite the raw axe output in plain English. Do NOT add issues, warnings, or recommendations that are not directly stated in the axe data below. Do NOT speculate. Do NOT reference anything outside the data provided.
+
+Axe violation data:
+- Rule ID: ${violation.id}
+- Impact: ${violation.impact}
+- Rule description: ${violation.help || ""}
+- Detail: ${violation.description || ""}
+- Failure reason: ${node.failureSummary || ""}
+- Affected element selector: ${(node.target || []).join(", ") || "unknown"}
+
+Rewrite ONLY the above into:
+1. A plain-English summary (1-2 sentences) describing what is wrong and who it affects.
+2. A plain-English recommendation (1-2 sentences) describing how to fix it — no code, no selectors.
+
+Return ONLY this JSON, nothing else:
+{ "summary": "...", "recommendation": "...", "selector": "${(node.target || [""])[0]}" }`;
       try {
         const aiNodeFeedback = await callAi(nodePrompt);
-        node.aiFeedback = aiNodeFeedback;
+        // Guard: fall back to axe's own text if AI returns empty content
+        node.aiFeedback = {
+          summary:
+            typeof aiNodeFeedback?.summary === "string" &&
+            aiNodeFeedback.summary.length > 0
+              ? aiNodeFeedback.summary
+              : violation.help || violation.description || "",
+          recommendation:
+            typeof aiNodeFeedback?.recommendation === "string" &&
+            aiNodeFeedback.recommendation.length > 0
+              ? aiNodeFeedback.recommendation
+              : "Refer to the axe-core rule documentation for " + violation.id,
+          selector: (node.target || [""])[0],
+        };
       } catch (err) {
         node.aiFeedback = {
-          summary: "AI feedback unavailable.",
-          recommendation: "",
+          summary:
+            violation.help ||
+            violation.description ||
+            "Accessibility issue detected.",
+          recommendation: "Refer to axe-core rule: " + violation.id,
           selector: node.target ? node.target[0] : "",
         };
       }
@@ -1793,9 +1986,34 @@ Return a JSON object: { "summary": "...", "recommendation": "...", "selector": "
       };
     });
 
-    const aiGroups = Array.isArray(aiResponse.groups) ? aiResponse.groups : [];
-    const allGroups = [...axeGroups, ...aiGroups];
+    // Filter AI groups: only keep entries that correspond to a WCAG criterion
+    // already evidenced by the axe scan. Prevents AI-invented violations entering
+    // the report alongside real axe findings.
+    const axeWcagIds = new Set(
+      axeViolations.flatMap((v) => [
+        v.id,
+        ...(v.tags || []).filter((t) => t.match(/^wcag/)),
+      ]),
+    );
+    const VALID_WCAG_PATTERN = /^\d+\.\d+(\.\d+)?\s+/;
+    const rawAiGroups = Array.isArray(aiResponse.groups)
+      ? aiResponse.groups
+      : [];
+    const aiGroups = rawAiGroups
+      .filter((g) => {
+        if (!g || !g.wcagCriterion) return false;
+        const crit = String(g.wcagCriterion);
+        return (
+          axeWcagIds.has(crit) ||
+          VALID_WCAG_PATTERN.test(crit) ||
+          axeViolations.some((v) =>
+            crit.toLowerCase().includes(v.id.toLowerCase()),
+          )
+        );
+      })
+      .map((g) => ({ ...g, type: "ai-analysis" }));
 
+    const allGroups = [...axeGroups, ...aiGroups];
     aiResponse.groups = allGroups;
 
     if (axeViolations.length > 0) {
@@ -2424,11 +2642,49 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             return (text || aria || "Testing click target").slice(0, 60);
           });
 
-          // Capture the current viewport so the frontend can show where we clicked
+          // Interact: hover → mousedown (for carousel dots) → click.
+          // mousedown is dispatched first because many carousels listen for
+          // mousedown/pointerdown rather than click.
+          // transitionend is raced against a 600ms cap so we never screenshot mid-slide.
+          try {
+            await handle.hover({ force: true }).catch(() => {});
+            await page.waitForTimeout(60);
+            await handle.dispatchEvent("mousedown");
+            await page.waitForTimeout(30);
+            await handle.click({ force: true });
+            await Promise.race([
+              page.evaluate(
+                () =>
+                  new Promise((resolve) => {
+                    const handler = () => {
+                      document.removeEventListener(
+                        "transitionend",
+                        handler,
+                        true,
+                      );
+                      resolve();
+                    };
+                    document.addEventListener("transitionend", handler, true);
+                    setTimeout(resolve, 550);
+                  }),
+              ),
+              page.waitForTimeout(600),
+            ]);
+          } catch (clickErr) {
+            console.warn(
+              "[WCAG] click on step element failed (non-fatal):",
+              clickErr.message,
+            );
+            await page.waitForTimeout(300);
+          }
+
+          // Take the screenshot AFTER the interaction so it shows the resulting
+          // page state (e.g. the carousel card that just slid in, the dropdown
+          // that opened, the SPA route that loaded).
           const stepScreenshotBuf = await page.screenshot({
             type: "jpeg",
             quality: 55,
-            fullPage: false, // viewport only, we also send scroll offsets
+            fullPage: false,
             captureBeyondViewport: false,
           });
 
@@ -2443,14 +2699,11 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             offsetY: Math.round(viewport.y || 0),
             viewportWidth: Math.round(viewport.width || 0),
             viewportHeight: Math.round(viewport.height || 0),
-            screenshot: `data:image/jpeg;base64,${stepScreenshotBuf.toString(
-              "base64",
-            )}`,
+            screenshot: `data:image/jpeg;base64,${stepScreenshotBuf.toString("base64")}`,
           };
 
           liveSteps.push(step);
           sendEvent("step", step);
-          await page.waitForTimeout(420);
         } catch (innerErr) {
           console.error("[WCAG] Error capturing interactive step:", innerErr);
         }
@@ -2461,7 +2714,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
     // Now run Axe after showing the scanning process
     const axeResults = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .withTags([
+        "wcag2a",
+        "wcag2aa",
+        "wcag21a",
+        "wcag21aa",
+        "wcag22a",
+        "wcag22aa",
+      ])
       .analyze();
 
     sendEvent("axe", { count: axeResults.violations.length, steps: liveSteps });
@@ -2508,9 +2768,11 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     sendEvent("progress", { message: "Discovering internal pages..." });
     const internalLinks = await discoverInternalLinks(page, url);
     const spaLinks = await discoverClientRoutes(page, url);
-    const linksToVisit = Array.from(
-      new Set([url, ...internalLinks, ...spaLinks]),
-    ).slice(0, 25);
+    // Exclude the original URL — it was already scanned above. Including it
+    // causes a duplicate axe run on the homepage instead of new sub-pages.
+    const linksToVisit = Array.from(new Set([...internalLinks, ...spaLinks]))
+      .filter((l) => l !== url)
+      .slice(0, 25);
     // Tag initial page violations with source URL
     const allViolations = axeResults.violations.map((v) => ({
       ...v,
@@ -2534,7 +2796,14 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         await page.waitForTimeout(500);
 
         const pageAxeResults = await new AxeBuilder({ page })
-          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+          .withTags([
+            "wcag2a",
+            "wcag2aa",
+            "wcag21a",
+            "wcag21aa",
+            "wcag22a",
+            "wcag22aa",
+          ])
           .analyze();
 
         if (pageAxeResults.violations && pageAxeResults.violations.length > 0) {
@@ -2641,9 +2910,9 @@ app.get("/api/wcag-check-stream", async (req, res) => {
     // Track mentioned problems to avoid repetition across screenshots
     const mentionedProblems = [];
 
-    // For each unique screenshot, ask AI for non-developer visual feedback
-    // IMPORTANT: the prompt now tells the AI the exact pixel region that is
-    // highlighted so its feedback always matches what the user sees circled.
+    // For each unique screenshot, ask AI to humanise the axe-core output.
+    // The AI's only job is to translate raw axe data into plain English that
+    // a non-developer can understand — it does NOT analyse the image.
     const totalToAnalyze = Math.min(violationScreenshots.length, 20);
     for (let i = 0; i < totalToAnalyze; i++) {
       const vs = violationScreenshots[i];
@@ -2654,64 +2923,56 @@ app.get("/api/wcag-check-stream", async (req, res) => {
         total: totalToAnalyze,
         percentage: Math.round(((i + 1) / totalToAnalyze) * 100),
       });
+
       try {
-        const dataUrl = vs.screenshot || "";
-        const base64 =
-          typeof dataUrl === "string" && dataUrl.includes(",")
-            ? dataUrl.split(",")[1]
-            : dataUrl;
         const violations = vs.violations || [];
-        const wcagIds = violations
-          .map((v) => vs.wcagCriterion || v?.id || "")
-          .filter(Boolean)
-          .join(", ");
 
-        // Build a human-readable description of exactly what is highlighted
-        const hb = vs.highlightBounds;
-        const regionDesc = hb
-          ? `The highlighted (red-outlined) area is located at approximately x=${hb.x}, y=${hb.y}, width=${hb.width}px, height=${hb.height}px in the screenshot. `
-          : "";
-
-        // Describe how many distinct elements are marked
-        const markerCount = (vs.markers || []).length;
-        const markerDesc =
-          markerCount > 1
-            ? `There are ${markerCount} highlighted elements in this area. `
-            : markerCount === 1
-              ? "There is 1 highlighted element in this area. "
-              : "";
-
-        // List the axe violation types so the AI knows what was detected
-        const violationSummaries = violations
-          .map((v) => `• ${v.help || v.id}: ${v.description || ""}`)
-          .join("\n");
+        // Collect the raw axe fields we want humanised
+        const axeDetails = violations.map((v) => ({
+          id: v.id,
+          impact: v.impact,
+          help: v.help || "",
+          description: v.description || "",
+          // failureSummary is the most specific text axe produces per node
+          failureSummary: v.nodes?.[0]?.failureSummary || "",
+        }));
 
         const avoidClause =
           mentionedProblems.length > 0
-            ? `\n\nIMPORTANT: You have already mentioned these problems in previous screenshots: ${mentionedProblems.join(
+            ? `\n\nIMPORTANT: You have already covered these problem types in earlier items: ${mentionedProblems.join(
                 ", ",
-              )}. Focus on a DIFFERENT accessibility issue visible in THIS highlighted region. Do not repeat the same concern.`
+              )}. If this issue is similar, still explain it but approach it from a slightly different angle so the report does not feel repetitive.`
             : "";
 
-        const prompt = `You are an accessibility coach writing for non-designers. A screenshot of a web page has been taken, and one specific area has been highlighted with a red outline to mark an accessibility problem.
+        const prompt = `You are an accessibility coach writing for non-developers and non-designers.
 
-${regionDesc}${markerDesc}
+An automated accessibility scanner (axe-core) found the following issue(s) on a web page. Your ONLY job is to rewrite the raw scanner output in plain, friendly English — do NOT invent new problems, do NOT add anything the scanner did not report.
 
-The automated accessibility scan detected the following issue(s) in this highlighted region:
-${violationSummaries}
+Raw axe-core findings:
+${axeDetails
+  .map(
+    (d) =>
+      `• Rule: ${d.id} (${d.impact} impact)\n  What axe says: ${d.help}.\n  Detail: ${d.description}${d.failureSummary ? `\n  Failure note: ${d.failureSummary}` : ""}`,
+  )
+  .join("\n\n")}
+${avoidClause}
 
-Your task: Describe ONLY the accessibility issue visible in the highlighted area. Do NOT comment on anything outside that area. Use plain language – no code, no CSS selectors.${avoidClause}
+Rewrite these findings so that:
+- A non-technical person immediately understands what is wrong and why it matters to real users.
+- The recommendation is a plain-English action (no code, no CSS selectors, no WCAG numbers).
+- The summary is 1-2 sentences maximum.
+- The recommendation is 1-2 sentences maximum.
 
-Return ONLY this JSON:
+Return ONLY this JSON (no markdown, no extra text):
 {
-  "summary": "1–2 sentences describing the user-facing problem visible in the highlighted area",
-  "recommendation": "1–2 sentences with a concrete, non-technical fix",
-  "problemCategory": "short keyword/phrase for the type of problem (e.g., 'contrast', 'missing label', 'small tap target')"
-}
+  "summary": "plain-English description of the problem and who it affects",
+  "recommendation": "concrete, jargon-free action to fix it",
+  "problemCategory": "short label for the type of problem (e.g. 'missing button label', 'low contrast', 'unlabelled form field')"
+}`;
 
-Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
+        // Text-only call — no image needed, AI is only translating axe output
+        const ai = await callAi(prompt);
 
-        const ai = await callAiWithInlineData(prompt, base64, "image/jpeg");
         if (ai && (ai.summary || ai.recommendation)) {
           vs.aiFeedback = {
             summary: typeof ai.summary === "string" ? ai.summary : "",
@@ -2730,11 +2991,13 @@ Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
 
     const html = await page.content();
     // Build prompt and call AI (text-only) — this may take time, but preview already sent
+    // Use allViolations (full multi-page scan) so AI sees every issue found,
+    // not just the homepage axe run.
     const pageData = {
       html,
       text,
       understandableData,
-      axeViolations: axeResults.violations,
+      axeViolations: allViolations,
     };
     const prompt = buildPrompt(pageData);
 
@@ -2759,7 +3022,7 @@ Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
       ).length;
       const totalViolations = axeViolationCount;
       const deductedPoints = highCount * 3 + mediumCount * 2 + lowCount * 1;
-      const score = Math.max(0, 234 - deductedPoints);
+      const score = Math.max(0, 261 - deductedPoints);
 
       aiResponse = {
         score: score,
@@ -2768,7 +3031,7 @@ Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
           mediumCount: mediumCount,
           lowCount: lowCount,
           totalViolations: totalViolations,
-          maxPossiblePoints: 234,
+          maxPossiblePoints: 261,
           deductedPoints: deductedPoints,
           explanation: `${deductedPoints} points deducted from 234 possible: ${highCount} High + ${mediumCount} Medium + ${lowCount} Low violations`,
         },
@@ -2823,32 +3086,44 @@ Align with WCAG criteria: ${wcagIds} but do not include numbers in the prose.`;
       };
     });
 
-    const aiGroups = Array.isArray(aiResponse?.groups) ? aiResponse.groups : [];
+    // Same filter as /api/wcag-check: only keep AI groups that correspond to
+    // WCAG criteria already evidenced by the axe scan.
+    const axeWcagIdsStream = new Set(
+      allViolations.flatMap((v) => [
+        v.id,
+        ...(v.tags || []).filter((t) => t.match(/^wcag/)),
+      ]),
+    );
+    const VALID_WCAG_PATTERN_STREAM = /^\d+\.\d+(\.\d+)?\s+/;
+    const rawAiGroupsStream = Array.isArray(aiResponse?.groups)
+      ? aiResponse.groups
+      : [];
+    const aiGroups = rawAiGroupsStream
+      .filter((g) => {
+        if (!g || !g.wcagCriterion) return false;
+        const crit = String(g.wcagCriterion);
+        return (
+          axeWcagIdsStream.has(crit) ||
+          VALID_WCAG_PATTERN_STREAM.test(crit) ||
+          axeResults.violations.some((v) =>
+            crit.toLowerCase().includes(v.id.toLowerCase()),
+          )
+        );
+      })
+      .map((g) => ({ ...g, type: "ai-analysis" }));
+
     const allGroups = [...axeGroups, ...aiGroups];
     if (aiResponse) aiResponse.groups = allGroups;
 
-    // Final result payload - include violation screenshots
-    // Deduplicate by problem category across the site (keep first occurrence)
-    const byCategory = [];
-    const seenCats = new Set();
-    for (const vs of violationScreenshots) {
-      const cat = vs.problemCategory || vs.violationType;
-      if (!seenCats.has(cat)) {
-        seenCats.add(cat);
-        byCategory.push(vs);
-      }
-    }
-
-    const safeHtml = "";
-    const stylesheets = [];
-
+    // byCategory dedup removed — image-hash dedup already handles true
+    // duplicates. Category dedup was collapsing distinct violations to ~5.
     const finalPayload = {
       url,
       aiAnalysis: aiResponse,
-      axe: axeResults.violations,
+      axe: allViolations,
       screenshot: `data:image/jpeg;base64,${previewB64}`,
       steps: liveSteps,
-      violationScreenshots: byCategory.map((vs) => ({
+      violationScreenshots: violationScreenshots.map((vs) => ({
         ...vs,
         viewport: vs.viewport || { width: 1280, height: 720 },
         screenshotOnly: !vs.markers || vs.markers.length === 0,

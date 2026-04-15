@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import SectionNav from "../components/SectionNav";
 import AnalysisPlayer from "../components/AnalysisPlayer";
-import PreviewArrow from "../components/PreviewArrow";
 import ColorBlindSimulator from "../components/ColorBlindSimulator";
 import ScreenshotWithHighlights from "../components/ScreenshotWithHighlights";
 import { aiModifyHtml } from "../api/wcagAPI";
@@ -32,37 +31,63 @@ function Complete() {
   // Nav collapse state (lifted from SectionNav)
   const [navCollapsed, setNavCollapsed] = useState(false);
 
-  // Scrollspy: update active section on scroll
+  // Scrollspy: update active section on scroll, but ignore scroll events briefly after nav click
+  const scrollLockRef = useRef(false);
   useEffect(() => {
+    const NAVBAR_HEIGHT = 64;
     const handleScroll = () => {
-      const offsets = sectionRefs.current.map((ref) => {
+      if (scrollLockRef.current) return;
+      let currentIdx = 0;
+      let minDelta = Infinity;
+      sectionRefs.current.forEach((ref, idx) => {
         const el = ref.current;
-        if (!el) return Infinity;
+        if (!el) return;
         const rect = el.getBoundingClientRect();
-        return rect.top >= 0 ? rect.top : Infinity;
+        const delta = Math.abs(rect.top - NAVBAR_HEIGHT);
+        if (rect.top - NAVBAR_HEIGHT <= 0 && delta < minDelta) {
+          minDelta = delta;
+          currentIdx = idx;
+        }
       });
-      const minIdx = offsets.findIndex((v) => v === Math.min(...offsets));
-      if (minIdx !== -1 && sectionIds[minIdx] !== activeSection) {
-        setActiveSection(sectionIds[minIdx]);
+      // Special case: if near bottom, always activate last section
+      const bottomThreshold = 120; // px from bottom
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - bottomThreshold
+      ) {
+        currentIdx = sectionIds.length - 1;
       }
+      setActiveSection(sectionIds[currentIdx]);
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [activeSection, sectionIds]);
+  }, [sectionIds]);
 
   // Scroll to section on nav click
   const handleNavClick = (id) => {
     const idx = sectionIds.indexOf(id);
     const ref = sectionRefs.current[idx];
     if (ref && ref.current) {
-      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      const NAVBAR_HEIGHT = 64;
+      const el = ref.current;
+      const rect = el.getBoundingClientRect();
+      const absoluteY = window.scrollY + rect.top;
+      scrollLockRef.current = true;
+      window.scrollTo({
+        top: absoluteY - NAVBAR_HEIGHT,
+        behavior: "smooth",
+      });
+      setActiveSection(sectionIds[idx]); // highlight immediately
+      setTimeout(() => {
+        scrollLockRef.current = false;
+      }, 500); // lock scrollspy for 500ms after nav click
     }
   };
-  // State for mobile iframe error
+  // Optionally, add scrollMarginTop to each section for native CSS offset (if supported)
   const [mobileIframeError, setMobileIframeError] = useState(false);
   const [colorBlindError, setColorBlindError] = useState(null);
-  React.useEffect(() => {
+  useEffect(() => {
     if (!document.head.querySelector("style[data-highlight-feedback]")) {
       const style = document.createElement("style");
       style.innerHTML = `
@@ -106,17 +131,17 @@ function Complete() {
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const [animationDone, setAnimationDone] = useState(false);
 
-  // NEW: "animation" state – we show AnalysisPlayer while this is true
+  // "animation" state – we show AnalysisPlayer while this is true
   const [animating, setAnimating] = useState(false);
   const [previewResult, setPreviewResult] = useState(null); // { screenshot, steps }
   const [imageLoaded, setImageLoaded] = useState(false);
   const [pendingResult, setPendingResult] = useState(null);
 
-  // NEW: Visual segments with images and comments (merged from Visual page)
+  // Visual segments with images and comments
   const [segments, setSegments] = useState([]);
   const [pendingSegments, setPendingSegments] = useState([]);
 
-  // NEW: Violation screenshots with interactive feedback
+  // Violation screenshots with interactive feedback
   const [violationScreenshots, setViolationScreenshots] = useState([]);
   const [selectedViolation, setSelectedViolation] = useState(null);
 
@@ -197,10 +222,6 @@ function Complete() {
   };
 
   useEffect(() => {
-    console.log("HTML length:", analysis?.html?.length);
-  }, [analysis]);
-
-  useEffect(() => {
     if (isDemo) return; // demo mode — skip all API calls
 
     if (!url) {
@@ -231,7 +252,7 @@ function Complete() {
 
         const evt = new EventSource(streamUrl);
 
-        // NEW: Listen for live step events as Axe finds real violations
+        // Listen for live step events as Axe finds real violations
         evt.addEventListener("step", (e) => {
           try {
             const step = JSON.parse(e.data || "{}");
@@ -262,9 +283,8 @@ function Complete() {
           }
         });
 
-        evt.addEventListener("ai", (e) => {
-          // ai status event
-        });
+        // "ai" status events are intentionally ignored here.
+        evt.addEventListener("ai", () => {});
 
         evt.addEventListener("progress", (e) => {
           try {
@@ -294,7 +314,7 @@ function Complete() {
         evt.addEventListener("result", (e) => {
           try {
             const payload = JSON.parse(e.data || "{}");
-            // defer applying final analysis until the animation completes
+            // Hold the final analysis until the animation completes
             setPendingResult(payload);
             // Store violation screenshots if provided
             if (
@@ -311,40 +331,37 @@ function Complete() {
                 })),
               );
             }
-            // Don't overwrite the live steps - they've already been streamed and are animating
-            // The payload.steps are redundant since we already received them as individual "step" events
+            // Steps were already received as individual "step" events, so we skip
+            // payload.steps to avoid overwriting the live animation in progress.
             if (payload.screenshot) {
-              // Update screenshot if it changed, but don't reset steps array
               setPreviewResult((prev) => ({
                 ...prev,
                 screenshot: payload.screenshot,
               }));
               setAnimating(true);
             }
-            // keep loading true; when AnalysisPlayer calls onComplete we'll
-            // apply pendingResult and stop animating.
+            // Loading remains true until AnalysisPlayer calls onComplete.
           } catch (err) {
             console.error("[Complete] result parse", err);
           }
         });
 
         evt.addEventListener("done", () => {
-          // keep loading true until animation completes and consumes pendingResult
+          // Loading stays true until the animation completes and consumes pendingResult.
           try {
             evt.close();
           } catch (err) {}
 
-          // NEW: After HTML analysis stream completes, start visual segment capture
-          // This runs in parallel and will populate segments for display after animation
+          // After HTML analysis stream completes, start visual segment capture.
+          // This runs in parallel and will populate segments for display after animation.
           try {
             const visualStreamUrl = `http://localhost:4000/api/wcag-visual-stream?url=${encodeURIComponent(
               url,
             )}`;
             const visualEvt = new EventSource(visualStreamUrl);
 
-            visualEvt.addEventListener("preview", (e) => {
-              // Visual preview already shown from HTML stream, skip
-            });
+            // "preview" events are skipped — visual preview already shown from HTML stream.
+            visualEvt.addEventListener("preview", () => {});
 
             visualEvt.addEventListener("segment", (e) => {
               try {
@@ -980,8 +997,6 @@ function Complete() {
     });
   };
 
-  console.log("Violations:", analysis?.violations);
-
   const categories = [
     { key: "Perceivable", score: perceivableScore },
     { key: "Operable", score: operableScore },
@@ -1019,12 +1034,12 @@ function Complete() {
   };
 
   // AI-generated title cache: { [key]: string }
-  const [aiFriendlyTitles, setAiFriendlyTitles] = React.useState({});
-  const aiFriendlyTitlesPending = React.useRef(new Set());
+  const [aiFriendlyTitles, setAiFriendlyTitles] = useState({});
+  const aiFriendlyTitlesPending = useRef(new Set());
 
   // AI-generated mobile issue detail cache: { [key]: { whyItMatters, affectedUsers, fix } }
-  const [mobileIssueDetails, setMobileIssueDetails] = React.useState({});
-  const mobileIssueDetailsPending = React.useRef(new Set());
+  const [mobileIssueDetails, setMobileIssueDetails] = useState({});
+  const mobileIssueDetailsPending = useRef(new Set());
 
   const getFriendlyTitle = (criterion, id, description) => {
     if (!criterion && !id) return "Accessibility Issue";
@@ -1132,22 +1147,35 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   };
 
   // --- Next Steps done tracking + copy state ---
-  const [doneSteps, setDoneSteps] = React.useState(new Set());
-  const [checklistCopied, setChecklistCopied] = React.useState(false);
+  const [doneSteps, setDoneSteps] = useState(new Set());
+  const [checklistCopied, setChecklistCopied] = useState(false);
   const toggleDoneStep = (i) =>
     setDoneSteps((prev) => {
       const next = new Set(prev);
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
     });
-  // --- HCI report expand/collapse ---
-  const [hciExpanded, setHciExpanded] = React.useState(false);
+  // --- Collapsible section states ---
+  const [collapsedSections, setCollapsedSections] = useState({
+    websitePreview: false,
+    accessibilityIssues: true,
+    hciReport: true,
+    mobileExperience: true,
+    specializedAudits: true,
+    nextSteps: true,
+  });
+
+  const toggleSection = (key) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
   // --- Pie chart slice hover state ---
-  const [hoveredSlice, setHoveredSlice] = React.useState(null);
+  const [hoveredSlice, setHoveredSlice] = useState(null);
   // --- Donut hover state for HCI keyword donut ---
-  const [donutHover, setDonutHover] = React.useState(null); // { label, percent, x, y }
+  const [donutHover, setDonutHover] = useState(null); // { label, percent, x, y }
+  // --- HCI report expanded state ---
+  const [hciExpanded, setHciExpanded] = useState(false);
   // Website Preview toggle state
-  const [previewMode, setPreviewMode] = React.useState("highlighted");
+  const [previewMode, setPreviewMode] = useState("highlighted");
   // Side-by-side AI image state
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
@@ -1186,9 +1214,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
 
   // Handle color blindness filter button click
   const handleColorBlindClick = async (type) => {
-    // Debug: log analysis and url state
-    console.log("[Lens Button Click] analysis:", analysis, "url:", url);
-    // Log to terminal (non-blocking)
+    // Log filter usage server-side (non-blocking)
     try {
       await fetch("/api/log-colorblind-btn", {
         method: "POST",
@@ -1199,7 +1225,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
         }),
       });
     } catch (e) {}
-    // ...existing code...
+    // Toggle off if already active
     if (!analysis?.screenshot || !url) return;
     if (colorBlindFilter === type) {
       // Toggle off
@@ -1529,7 +1555,7 @@ Return the edited screenshot with minimal localized edits only.
                     ) : (
                       `Checking violations… ${Math.round(progress)}%${
                         violationsFound > 0
-                          ? ` • ${violationsFound} found so far`
+                          ? ` • ${violationsFound} violation${violationsFound !== 1 ? "s" : ""}`
                           : ""
                       }`
                     )}
@@ -1547,7 +1573,7 @@ Return the edited screenshot with minimal localized edits only.
                       setAnimating(true);
                     }}
                     onComplete={() => {
-                      // finish animating; if we have a pending result apply it
+                      // Finish animating; apply pending result if available
                       setAnimating(false);
                       setAnimationDone(true);
                       if (pendingResult) {
@@ -1560,9 +1586,6 @@ Return the edited screenshot with minimal localized edits only.
                         setPendingResult(null);
                       }
                       // Apply visual segments if available
-
-                      // before and after
-
                       if (pendingSegments.length > 0) {
                         setSegments(pendingSegments);
                       }
@@ -1631,895 +1654,1386 @@ Return the edited screenshot with minimal localized edits only.
 
           {!loading && !error && !animating && analysis && (
             <>
-              {/* Website Preview Section */}
+              {/* Website Preview Section (Collapsible) */}
               <section id="website-preview" ref={sectionRefs.current[0]}>
-                <div className="website-preview-panel">
-                  <h2 className="website-preview-title">Website Preview</h2>
-
-                  <div className="website-preview-toggle-group">
-                    <button
-                      className={
-                        "website-preview-toggle-btn" +
-                        (previewMode === "highlighted" ? " active" : "")
-                      }
-                      onClick={() => setPreviewMode("highlighted")}
-                      type="button"
-                    >
-                      Highlighted
-                    </button>
-                    <button
-                      className={
-                        "website-preview-toggle-btn" +
-                        (previewMode === "sidebyside" ? " active" : "")
-                      }
-                      onClick={() => setPreviewMode("sidebyside")}
-                      type="button"
-                    >
-                      Side to side
-                    </button>
-                    <button
-                      className={
-                        "website-preview-toggle-btn" +
-                        (previewMode === "lense" ? " active" : "")
-                      }
-                      onClick={() => setPreviewMode("lense")}
-                      type="button"
-                    >
-                      Lense
-                    </button>
-                  </div>
-
+                <div
+                  className="website-preview-panel"
+                  style={{ borderTop: "3px solid #0ea5e9" }}
+                >
                   <div
-                    className="website-preview-screenshot-wrapper"
                     style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        previewMode === "sidebyside"
-                          ? "1fr 1fr"
-                          : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
-                      alignItems: "stretch",
-                      height: "100%",
-                      width: "100%",
-                      background: "#fff",
-                      borderRadius: 12,
-                      overflow: "clip",
+                      display: "flex",
+                      gap: "15px",
+                      justifyContent: "center",
+                      paddingBottom: 10,
+                      alignItems: "center",
                     }}
                   >
-                    {previewMode === "highlighted" &&
-                    violationScreenshots &&
-                    violationScreenshots.length > 0 ? (
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        background: "#f0f9ff",
+                        border: "1px solid #bae6fd",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#0ea5e9"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="4" width="18" height="16" rx="3" />
+                        <path d="M3 8h18" />
+                        <circle cx="7" cy="6" r=".5" />
+                        <circle cx="11" cy="6" r=".5" />
+                        <circle cx="15" cy="6" r=".5" />
+                      </svg>
+                    </div>
+                    <h2 className="website-preview-title" style={{ margin: 0 }}>
+                      Website Preview
+                    </h2>
+                    <button
+                      aria-label={
+                        collapsedSections.websitePreview
+                          ? "Expand Website Preview"
+                          : "Collapse Website Preview"
+                      }
+                      onClick={() => toggleSection("websitePreview")}
+                      style={{
+                        marginLeft: 12,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 18,
+                        color: "#64748b",
+                        transition: "transform 0.2s",
+                        transform: collapsedSections.websitePreview
+                          ? "rotate(-90deg)"
+                          : "none",
+                      }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      color: "#64748b",
+                      fontSize: 15,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {previewMode === "highlighted" && (
                       <>
-                        {/* Left arrow */}
-                        <PreviewArrow
-                          direction="left"
-                          disabled={currentScreenshotIdx === 0}
-                          onClick={() =>
-                            setCurrentScreenshotIdx((i) => Math.max(0, i - 1))
+                        Shows a visual snapshot of the analyzed website. This
+                        section helps you see the page as it was scanned,
+                        including any overlays or highlights for accessibility
+                        issues.
+                      </>
+                    )}
+                    {previewMode === "sidebyside" && (
+                      <>
+                        The feedback and screenshot are sent to OpenAI, which
+                        generates an image showing what the issue would look
+                        like if fixed.
+                      </>
+                    )}
+                    {previewMode === "lense" && (
+                      <>
+                        Simulate how the website appears to people with
+                        different types of color vision, including color
+                        blindness.
+                      </>
+                    )}
+                  </div>
+                  {!collapsedSections.websitePreview && (
+                    <>
+                      <div className="website-preview-toggle-group">
+                        <button
+                          className={
+                            "website-preview-toggle-btn" +
+                            (previewMode === "highlighted" ? " active" : "")
                           }
-                        />
+                          onClick={() => setPreviewMode("highlighted")}
+                          type="button"
+                        >
+                          Highlighted
+                        </button>
+                        <button
+                          className={
+                            "website-preview-toggle-btn" +
+                            (previewMode === "sidebyside" ? " active" : "")
+                          }
+                          onClick={() => setPreviewMode("sidebyside")}
+                          type="button"
+                        >
+                          Side to side
+                        </button>
+                        <button
+                          className={
+                            "website-preview-toggle-btn" +
+                            (previewMode === "lense" ? " active" : "")
+                          }
+                          onClick={() => setPreviewMode("lense")}
+                          type="button"
+                        >
+                          Lense
+                        </button>
+                      </div>
 
-                        {/* Screenshot + highlights + panel */}
-                        {(() => {
-                          const currentVS =
-                            violationScreenshots[currentScreenshotIdx];
-                          // Deduplicate markers by bounding box and issueId
-                          const rawMarkers = currentVS?.markers || [];
-                          const seen = new Set();
-                          const markers = rawMarkers.filter((m) => {
-                            // Use bounding box and issueId as deduplication key
-                            const bbs = (m.boundingBoxes || [])
-                              .map(
-                                (b) => `${b.x},${b.y},${b.width},${b.height}`,
-                              )
-                              .join("|");
-                            const key = `${m.issueId || ""}|${bbs}`;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
-                          });
-                          const violations = currentVS?.violations || [];
-                          // Map selected marker by issueId for robust mapping
-                          const selectedMarker =
-                            markers[selectedMarkerIdx] || markers[0];
-                          // Find the violation with the same issueId as the selected marker
-                          const selectedViolationData =
-                            violations.find(
-                              (v) => v.issueId === selectedMarker?.issueId,
-                            ) ||
-                            violations[selectedMarkerIdx] ||
-                            violations[0];
-                          const selectedIssueId =
-                            selectedMarker?.issueId ||
-                            selectedViolationData?.issueId ||
-                            "";
-                          const markerCount = Math.max(
-                            markers.length,
-                            violations.length,
-                            1,
-                          );
-
-                          return (
-                            <>
-                              <div
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  position: "relative",
-                                }}
+                      <div
+                        className="website-preview-screenshot-wrapper"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            previewMode === "sidebyside"
+                              ? "1fr 1fr"
+                              : "56px minmax(0, 3fr) minmax(0, 1.2fr) 56px",
+                          alignItems: "stretch",
+                          height: "100%",
+                          width: "100%",
+                          background: "#fff",
+                          borderRadius: 12,
+                          overflow: "clip",
+                        }}
+                      >
+                        {previewMode === "highlighted" &&
+                        violationScreenshots &&
+                        violationScreenshots.length > 0 ? (
+                          <>
+                            {/* Left arrow */}
+                            <button
+                              disabled={currentScreenshotIdx === 0}
+                              onClick={() =>
+                                setCurrentScreenshotIdx((i) =>
+                                  Math.max(0, i - 1),
+                                )
+                              }
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "none",
+                                border: "none",
+                                boxShadow: "none",
+                                borderRadius: 0,
+                                padding: "0 8px",
+                                cursor:
+                                  currentScreenshotIdx === 0
+                                    ? "default"
+                                    : "pointer",
+                                color:
+                                  currentScreenshotIdx === 0
+                                    ? "#cbd5e1"
+                                    : "#475569",
+                                transition: "color 0.18s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (currentScreenshotIdx !== 0)
+                                  e.currentTarget.style.color = "#189b97";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color =
+                                  currentScreenshotIdx === 0
+                                    ? "#cbd5e1"
+                                    : "#475569";
+                              }}
+                            >
+                              <svg
+                                width="22"
+                                height="22"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                               >
-                                <ScreenshotWithHighlights
-                                  screenshot={currentVS?.screenshot}
-                                  markers={markers}
-                                  selectedMarkerIdx={selectedMarkerIdx}
-                                  onMarkerClick={(idx) =>
-                                    setSelectedMarkerIdx(idx)
-                                  }
-                                />
-                                {/* Marker selector dots — shown when there are multiple markers */}
-                                {markerCount > 1 && (
+                                <polyline points="15 18 9 12 15 6" />
+                              </svg>
+                            </button>
+
+                            {/* Screenshot + highlights + panel */}
+                            {(() => {
+                              const currentVS =
+                                violationScreenshots[currentScreenshotIdx];
+                              // Deduplicate markers by bounding box and issueId
+                              const rawMarkers = currentVS?.markers || [];
+                              const seen = new Set();
+                              const markers = rawMarkers.filter((m) => {
+                                // Use bounding box and issueId as deduplication key
+                                const bbs = (m.boundingBoxes || [])
+                                  .map(
+                                    (b) =>
+                                      `${b.x},${b.y},${b.width},${b.height}`,
+                                  )
+                                  .join("|");
+                                const key = `${m.issueId || ""}|${bbs}`;
+                                if (seen.has(key)) return false;
+                                seen.add(key);
+                                return true;
+                              });
+                              const violations = currentVS?.violations || [];
+                              // Map selected marker by issueId for robust mapping
+                              const selectedMarker =
+                                markers[selectedMarkerIdx] || markers[0];
+                              // Find the violation with the same issueId as the selected marker
+                              const selectedViolationData =
+                                violations.find(
+                                  (v) => v.issueId === selectedMarker?.issueId,
+                                ) ||
+                                violations[selectedMarkerIdx] ||
+                                violations[0];
+                              const selectedIssueId =
+                                selectedMarker?.issueId ||
+                                selectedViolationData?.issueId ||
+                                "";
+                              const markerCount = Math.max(
+                                markers.length,
+                                violations.length,
+                                1,
+                              );
+
+                              return (
+                                <>
                                   <div
                                     style={{
-                                      position: "absolute",
-                                      bottom: 8,
-                                      left: "50%",
-                                      transform: "translateX(-50%)",
-                                      display: "flex",
-                                      gap: 6,
-                                      zIndex: 10,
+                                      width: "100%",
+                                      height: "100%",
+                                      position: "relative",
                                     }}
                                   >
-                                    {Array.from({ length: markerCount }).map(
-                                      (_, i) => (
-                                        <button
-                                          key={i}
-                                          onClick={() =>
-                                            setSelectedMarkerIdx(i)
-                                          }
-                                          title={`Issue ${i + 1}`}
-                                          style={{
-                                            width:
-                                              i === selectedMarkerIdx ? 20 : 8,
-                                            height: 8,
-                                            borderRadius: 999,
-                                            border: "none",
-                                            background:
-                                              i === selectedMarkerIdx
-                                                ? "#ff4d4f"
-                                                : "rgba(255,77,79,0.35)",
-                                            cursor: "pointer",
-                                            padding: 0,
-                                            transition: "all 0.2s ease",
-                                          }}
-                                        />
-                                      ),
+                                    <ScreenshotWithHighlights
+                                      screenshot={currentVS?.screenshot}
+                                      markers={markers}
+                                      selectedMarkerIdx={selectedMarkerIdx}
+                                      onMarkerClick={(idx) =>
+                                        setSelectedMarkerIdx(idx)
+                                      }
+                                    />
+                                    {/* Marker selector dots — shown when there are multiple markers */}
+                                    {markerCount > 1 && (
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          bottom: 8,
+                                          left: "50%",
+                                          transform: "translateX(-50%)",
+                                          display: "flex",
+                                          gap: 6,
+                                          zIndex: 10,
+                                        }}
+                                      >
+                                        {Array.from({
+                                          length: markerCount,
+                                        }).map((_, i) => (
+                                          <button
+                                            key={i}
+                                            onClick={() =>
+                                              setSelectedMarkerIdx(i)
+                                            }
+                                            title={`Issue ${i + 1}`}
+                                            style={{
+                                              width:
+                                                i === selectedMarkerIdx
+                                                  ? 20
+                                                  : 8,
+                                              height: 8,
+                                              borderRadius: 999,
+                                              border: "none",
+                                              background:
+                                                i === selectedMarkerIdx
+                                                  ? "#ff4d4f"
+                                                  : "rgba(255,77,79,0.35)",
+                                              cursor: "pointer",
+                                              padding: 0,
+                                              transition: "all 0.2s ease",
+                                            }}
+                                          />
+                                        ))}
+                                      </div>
                                     )}
                                   </div>
-                                )}
-                              </div>
 
-                              {/* Feedback panel */}
-                              <aside
-                                data-issueid={selectedIssueId}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  background: "#f8fafc",
-                                  borderRadius: 10,
-                                  border: "1px solid #e5e7eb",
-                                  padding: 18,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  justifyContent: "flex-start",
-                                  boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                                  overflowY: "auto",
-                                  cursor: "pointer",
-                                  transition: "box-shadow 0.2s, border 0.2s",
-                                }}
-                                onClick={() => {
-                                  if (!selectedIssueId) return;
-                                  const highlight = document.querySelector(
-                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                                  );
-                                  if (highlight) {
-                                    highlight.classList.add(
-                                      "pulse-highlight-once",
-                                    );
-                                    setTimeout(() => {
-                                      highlight.classList.remove(
-                                        "pulse-highlight-once",
-                                      );
-                                    }, 1200);
-                                    if (
-                                      typeof highlight.scrollIntoView ===
-                                      "function"
-                                    ) {
-                                      highlight.scrollIntoView({
-                                        behavior: "smooth",
-                                        block: "center",
-                                      });
-                                    }
-                                  }
-                                }}
-                                onMouseEnter={() => {
-                                  if (!selectedIssueId) return;
-                                  const highlight = document.querySelector(
-                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                                  );
-                                  if (highlight)
-                                    highlight.classList.add("highlight-hover");
-                                }}
-                                onMouseLeave={() => {
-                                  if (!selectedIssueId) return;
-                                  const highlight = document.querySelector(
-                                    `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
-                                  );
-                                  if (highlight)
-                                    highlight.classList.remove(
-                                      "highlight-hover",
-                                    );
-                                }}
-                              >
-                                {/* Issue counter when there are multiple markers */}
-                                {markerCount > 1 && (
-                                  <div
+                                  {/* Feedback panel */}
+                                  <aside
+                                    data-issueid={selectedIssueId}
                                     style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      background: "#f8fafc",
+                                      borderRadius: 10,
+                                      border: "1px solid #e5e7eb",
+                                      padding: 18,
                                       display: "flex",
-                                      alignItems: "center",
-                                      gap: 6,
-                                      marginBottom: 10,
+                                      flexDirection: "column",
+                                      justifyContent: "flex-start",
+                                      boxShadow:
+                                        "0 2px 8px rgba(124,138,160,0.08)",
+                                      overflowY: "auto",
+                                      cursor: "pointer",
+                                      transition:
+                                        "box-shadow 0.2s, border 0.2s",
+                                    }}
+                                    onClick={() => {
+                                      if (!selectedIssueId) return;
+                                      const highlight = document.querySelector(
+                                        `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                      );
+                                      if (highlight) {
+                                        highlight.classList.add(
+                                          "pulse-highlight-once",
+                                        );
+                                        setTimeout(() => {
+                                          highlight.classList.remove(
+                                            "pulse-highlight-once",
+                                          );
+                                        }, 1200);
+                                        if (
+                                          typeof highlight.scrollIntoView ===
+                                          "function"
+                                        ) {
+                                          highlight.scrollIntoView({
+                                            behavior: "smooth",
+                                            block: "center",
+                                          });
+                                        }
+                                      }
+                                    }}
+                                    onMouseEnter={() => {
+                                      if (!selectedIssueId) return;
+                                      const highlight = document.querySelector(
+                                        `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                      );
+                                      if (highlight)
+                                        highlight.classList.add(
+                                          "highlight-hover",
+                                        );
+                                    }}
+                                    onMouseLeave={() => {
+                                      if (!selectedIssueId) return;
+                                      const highlight = document.querySelector(
+                                        `[data-issueid="${CSS.escape(selectedIssueId)}"]`,
+                                      );
+                                      if (highlight)
+                                        highlight.classList.remove(
+                                          "highlight-hover",
+                                        );
                                     }}
                                   >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedMarkerIdx((i) =>
-                                          Math.max(0, i - 1),
-                                        );
-                                      }}
-                                      disabled={selectedMarkerIdx === 0}
+                                    {/* Issue counter when there are multiple markers */}
+                                    {markerCount > 1 && (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 6,
+                                          marginBottom: 10,
+                                        }}
+                                      >
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedMarkerIdx((i) =>
+                                              Math.max(0, i - 1),
+                                            );
+                                          }}
+                                          disabled={selectedMarkerIdx === 0}
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: "50%",
+                                            border: "1px solid #e2e8f0",
+                                            background:
+                                              selectedMarkerIdx === 0
+                                                ? "#f1f5f9"
+                                                : "#fff",
+                                            cursor:
+                                              selectedMarkerIdx === 0
+                                                ? "default"
+                                                : "pointer",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            padding: 0,
+                                            color: "#94a3b8",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          ‹
+                                        </button>
+                                        <span
+                                          style={{
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            color: "#94a3b8",
+                                          }}
+                                        >
+                                          Issue {selectedMarkerIdx + 1} of{" "}
+                                          {markerCount}
+                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedMarkerIdx((i) =>
+                                              Math.min(markerCount - 1, i + 1),
+                                            );
+                                          }}
+                                          disabled={
+                                            selectedMarkerIdx ===
+                                            markerCount - 1
+                                          }
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: "50%",
+                                            border: "1px solid #e2e8f0",
+                                            background:
+                                              selectedMarkerIdx ===
+                                              markerCount - 1
+                                                ? "#f1f5f9"
+                                                : "#fff",
+                                            cursor:
+                                              selectedMarkerIdx ===
+                                              markerCount - 1
+                                                ? "default"
+                                                : "pointer",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            padding: 0,
+                                            color: "#94a3b8",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          ›
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    <div
                                       style={{
-                                        width: 22,
-                                        height: 22,
-                                        borderRadius: "50%",
-                                        border: "1px solid #e2e8f0",
-                                        background:
-                                          selectedMarkerIdx === 0
-                                            ? "#f1f5f9"
-                                            : "#fff",
-                                        cursor:
-                                          selectedMarkerIdx === 0
-                                            ? "default"
-                                            : "pointer",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        padding: 0,
-                                        color: "#94a3b8",
-                                        fontSize: 12,
-                                      }}
-                                    >
-                                      ‹
-                                    </button>
-                                    <span
-                                      style={{
-                                        fontSize: 11,
                                         fontWeight: 700,
-                                        color: "#94a3b8",
+                                        color: "#7c8da0",
+                                        marginBottom: 8,
                                       }}
                                     >
-                                      Issue {selectedMarkerIdx + 1} of{" "}
-                                      {markerCount}
-                                    </span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedMarkerIdx((i) =>
-                                          Math.min(markerCount - 1, i + 1),
-                                        );
-                                      }}
-                                      disabled={
-                                        selectedMarkerIdx === markerCount - 1
-                                      }
+                                      {selectedViolationData?.impact?.toUpperCase() ||
+                                        "ISSUE"}
+                                    </div>
+
+                                    <h3
                                       style={{
-                                        width: 22,
-                                        height: 22,
-                                        borderRadius: "50%",
-                                        border: "1px solid #e2e8f0",
-                                        background:
-                                          selectedMarkerIdx === markerCount - 1
-                                            ? "#f1f5f9"
-                                            : "#fff",
-                                        cursor:
-                                          selectedMarkerIdx === markerCount - 1
-                                            ? "default"
-                                            : "pointer",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        padding: 0,
-                                        color: "#94a3b8",
-                                        fontSize: 12,
+                                        fontSize: 18,
+                                        fontWeight: 700,
+                                        margin: 0,
+                                        color: "#475569",
                                       }}
                                     >
-                                      ›
-                                    </button>
-                                  </div>
-                                )}
+                                      {getFriendlyTitle(
+                                        selectedViolationData?.wcagCriterion,
+                                        selectedViolationData?.id,
+                                        selectedViolationData?.help ||
+                                          selectedViolationData?.description,
+                                      )}
+                                    </h3>
 
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    color: "#7c8da0",
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  {selectedViolationData?.impact?.toUpperCase() ||
-                                    "ISSUE"}
-                                </div>
+                                    <p
+                                      style={{
+                                        color: "#475569",
+                                        marginTop: 10,
+                                        fontSize: 15,
+                                      }}
+                                    >
+                                      {currentVS?.aiFeedback?.summary ||
+                                        selectedViolationData?.help ||
+                                        selectedViolationData?.description ||
+                                        "This area shows a visual concern that may affect user understanding or ease of use."}
+                                    </p>
 
-                                <h3
-                                  style={{
-                                    fontSize: 18,
-                                    fontWeight: 700,
-                                    margin: 0,
-                                    color: "#475569",
-                                  }}
-                                >
-                                  {getFriendlyTitle(
-                                    selectedViolationData?.wcagCriterion,
-                                    selectedViolationData?.id,
-                                    selectedViolationData?.help ||
-                                      selectedViolationData?.description,
-                                  )}
-                                </h3>
+                                    {currentVS?.aiFeedback?.recommendation && (
+                                      <p
+                                        style={{
+                                          marginTop: 8,
+                                          color: "#7c8da0",
+                                        }}
+                                      >
+                                        <strong>Suggested fix:</strong>{" "}
+                                        {currentVS.aiFeedback.recommendation}
+                                      </p>
+                                    )}
+                                  </aside>
+                                </>
+                              );
+                            })()}
 
-                                <p
-                                  style={{
-                                    color: "#475569",
-                                    marginTop: 10,
-                                    fontSize: 15,
-                                  }}
-                                >
-                                  {currentVS?.aiFeedback?.summary ||
-                                    selectedViolationData?.help ||
-                                    selectedViolationData?.description ||
-                                    "This area shows a visual concern that may affect user understanding or ease of use."}
-                                </p>
-
-                                {currentVS?.aiFeedback?.recommendation && (
-                                  <p style={{ marginTop: 8, color: "#7c8da0" }}>
-                                    <strong>Suggested fix:</strong>{" "}
-                                    {currentVS.aiFeedback.recommendation}
-                                  </p>
-                                )}
-                              </aside>
-                            </>
-                          );
-                        })()}
-
-                        <PreviewArrow
-                          direction="right"
-                          disabled={
-                            currentScreenshotIdx ===
-                            violationScreenshots.length - 1
-                          }
-                          onClick={() =>
-                            setCurrentScreenshotIdx((i) =>
-                              Math.min(violationScreenshots.length - 1, i + 1),
-                            )
-                          }
-                        />
-                      </>
-                    ) : previewMode === "lense" &&
-                      violationScreenshots &&
-                      violationScreenshots.length > 0 ? (
-                      <>
-                        <div></div>
-                        {/* Screenshot (fills the image grid column) */}
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                          }}
-                        >
-                          <ColorBlindSimulator
-                            imageSrc={
-                              violationScreenshots[currentScreenshotIdx]
-                                ?.screenshot
-                            }
-                            type={colorBlindFilter || "original"}
-                            style={{ maxWidth: "95%" }}
-                          />
-                        </div>
-
-                        {/* Lense panel (fills the panel grid column) */}
-                        <aside className="lense-panel">
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              color: "#7c8da0",
-                              marginBottom: 8,
-                              fontSize: 16,
-                            }}
-                          >
-                            Color Vision Filters
-                          </div>
-                          <button
-                            className={
-                              "lense-filter-btn original" +
-                              (!colorBlindFilter ? " active" : "")
-                            }
-                            onClick={() => setColorBlindFilter(null)}
-                            aria-pressed={!colorBlindFilter}
-                          >
-                            Original
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn protanopia" +
-                              (colorBlindFilter === "protanopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => setColorBlindFilter("protanopia")}
-                            aria-pressed={colorBlindFilter === "protanopia"}
-                          >
-                            Protanopia (red-blind)
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn deuteranopia" +
-                              (colorBlindFilter === "deuteranopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => setColorBlindFilter("deuteranopia")}
-                            aria-pressed={colorBlindFilter === "deuteranopia"}
-                          >
-                            Deuteranopia (green-blind)
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn tritanopia" +
-                              (colorBlindFilter === "tritanopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => setColorBlindFilter("tritanopia")}
-                            aria-pressed={colorBlindFilter === "tritanopia"}
-                          >
-                            Tritanopia (blue-blind)
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn monochrome" +
-                              (colorBlindFilter === "monochrome"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => setColorBlindFilter("monochrome")}
-                            aria-pressed={colorBlindFilter === "monochrome"}
-                            style={{
-                              background:
-                                colorBlindFilter === "monochrome"
-                                  ? "#d1d5db"
-                                  : "#f3f4f6",
-                              color: "#374151",
-                              fontWeight:
-                                colorBlindFilter === "monochrome" ? 700 : 500,
-                              border: "none",
-                              boxShadow: "none",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Monochrome (grayscale)
-                          </button>
-                        </aside>
-                        <div></div>
-                      </>
-                    ) : previewMode === "sidebyside" &&
-                      violationScreenshots &&
-                      violationScreenshots.length > 0 ? (
-                      <>
-                        {/* Side by side: left original, right AI-modified */}
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRight: "1px solid #e5e7eb",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#fff",
-                          }}
-                        >
-                          <img
-                            src={
-                              violationScreenshots[currentScreenshotIdx]
-                                ?.screenshot
-                            }
-                            alt="Original screenshot"
-                            style={{
-                              width: "auto",
-                              height: "auto",
-                              maxWidth: "95%",
-                              maxHeight: "400px",
-                              objectFit: "contain",
-                              borderRadius: "8px",
-                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                              border: "1px solid #e5e7eb",
-                            }}
-                          />
-                        </div>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#fff",
-                          }}
-                        >
-                          {sideBySideLoading ? (
-                            <div
+                            <button
+                              disabled={
+                                currentScreenshotIdx ===
+                                violationScreenshots.length - 1
+                              }
+                              onClick={() =>
+                                setCurrentScreenshotIdx((i) =>
+                                  Math.min(
+                                    violationScreenshots.length - 1,
+                                    i + 1,
+                                  ),
+                                )
+                              }
                               style={{
-                                color: "#7c8da0",
-                                fontWeight: 600,
-                                fontSize: 16,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "none",
+                                border: "none",
+                                boxShadow: "none",
+                                borderRadius: 0,
+                                padding: "0 8px",
+                                cursor:
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "default"
+                                    : "pointer",
+                                color:
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "#cbd5e1"
+                                    : "#475569",
+                                transition: "color 0.18s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (
+                                  currentScreenshotIdx !==
+                                  violationScreenshots.length - 1
+                                )
+                                  e.currentTarget.style.color = "#189b97";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color =
+                                  currentScreenshotIdx ===
+                                  violationScreenshots.length - 1
+                                    ? "#cbd5e1"
+                                    : "#475569";
                               }}
                             >
-                              Generating AI-modified screenshot…
-                            </div>
-                          ) : sideBySideAIImage ? (
-                            <img
-                              src={sideBySideAIImage}
-                              alt="AI-modified screenshot"
-                              style={{
-                                width: "auto",
-                                height: "auto",
-                                maxWidth: "95%",
-                                maxHeight: "400px",
-                                objectFit: "contain",
-                                borderRadius: "8px",
-                                boxShadow: "0 2px 8px rgba(124,138,160,0.10)", // match original
-                                border: "1px solid #e5e7eb",
-                              }}
-                            />
-                          ) : (
+                              <svg
+                                width="22"
+                                height="22"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                            </button>
+                          </>
+                        ) : previewMode === "lense" &&
+                          violationScreenshots &&
+                          violationScreenshots.length > 0 ? (
+                          <>
+                            <div></div>
+                            {/* Screenshot (fills the image grid column) */}
                             <div
                               style={{
-                                color: "#7c8da0",
-                                fontWeight: 600,
-                                fontSize: 16,
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                position: "relative",
                               }}
                             >
-                              AI-modified screenshot not available.
+                              <ColorBlindSimulator
+                                imageSrc={
+                                  violationScreenshots[currentScreenshotIdx]
+                                    ?.screenshot
+                                }
+                                type={colorBlindFilter || "original"}
+                                style={{ maxWidth: "95%" }}
+                              />
                             </div>
-                          )}
-                        </div>
-                      </>
-                    ) : previewMode === "lense" && analysis?.screenshot ? (
-                      <>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#fff",
-                          }}
-                        >
-                          <img
-                            src={analysis.screenshot}
-                            alt="Original screenshot"
-                            style={{
-                              width: "auto",
-                              height: "auto",
-                              maxWidth: "95%",
-                              maxHeight: "400px",
-                              objectFit: "contain",
-                              borderRadius: "8px",
-                              boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                              border: "1px solid #e5e7eb",
-                            }}
-                          />
-                        </div>
-                        <aside
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            background: "#f8fafc",
-                            borderRadius: 10,
-                            border: "1px solid #e5e7eb",
-                            padding: 18,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "flex-start",
-                            alignItems: "flex-start",
-                            boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                            overflowY: "auto",
-                            marginLeft: 16,
-                            gap: 12,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              color: "#7c8da0",
-                              marginBottom: 8,
-                              fontSize: 16,
-                            }}
-                          >
-                            Color Vision Filters
-                          </div>
-                          {/* Removed duplicate non-interactive filter buttons. Only interactive, AI-calling buttons remain below. */}
-                        </aside>
-                      </>
-                    ) : analysis?.screenshot && previewMode === "lense" ? (
-                      <>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#fff",
-                          }}
-                        >
-                          {colorBlindFilter ? (
-                            colorBlindLoading ? (
+
+                            {/* Lense panel (fills the panel grid column) */}
+                            <aside className="lense-panel">
                               <div
                                 style={{
+                                  fontWeight: 700,
                                   color: "#7c8da0",
-                                  fontWeight: 600,
+                                  marginBottom: 8,
                                   fontSize: 16,
                                 }}
                               >
-                                Generating {colorBlindFilter} simulation…
+                                Color Vision Filters
                               </div>
-                            ) : colorBlindImage ? (
-                              <img
-                                src={colorBlindImage}
-                                alt={`Screenshot simulated for ${colorBlindFilter}`}
+                              <button
+                                className={
+                                  "lense-filter-btn original" +
+                                  (!colorBlindFilter ? " active" : "")
+                                }
+                                onClick={() => setColorBlindFilter(null)}
+                                aria-pressed={!colorBlindFilter}
+                              >
+                                Original
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn protanopia" +
+                                  (colorBlindFilter === "protanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("protanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "protanopia"}
+                              >
+                                Protanopia (red-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn deuteranopia" +
+                                  (colorBlindFilter === "deuteranopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("deuteranopia")
+                                }
+                                aria-pressed={
+                                  colorBlindFilter === "deuteranopia"
+                                }
+                              >
+                                Deuteranopia (green-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn tritanopia" +
+                                  (colorBlindFilter === "tritanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("tritanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "tritanopia"}
+                              >
+                                Tritanopia (blue-blind)
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn monochrome" +
+                                  (colorBlindFilter === "monochrome"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  setColorBlindFilter("monochrome")
+                                }
+                                aria-pressed={colorBlindFilter === "monochrome"}
                                 style={{
-                                  width: "100%",
+                                  background:
+                                    colorBlindFilter === "monochrome"
+                                      ? "#d1d5db"
+                                      : "#f3f4f6",
+                                  color: "#374151",
+                                  fontWeight:
+                                    colorBlindFilter === "monochrome"
+                                      ? 700
+                                      : 500,
+                                  border: "none",
+                                  boxShadow: "none",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Monochrome (grayscale)
+                              </button>
+                            </aside>
+                            <div></div>
+                          </>
+                        ) : previewMode === "sidebyside" &&
+                          violationScreenshots &&
+                          violationScreenshots.length > 0 ? (
+                          <>
+                            {/* Side by side: left original, right AI-modified */}
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRight: "1px solid #e5e7eb",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#fff",
+                              }}
+                            >
+                              <img
+                                src={
+                                  violationScreenshots[currentScreenshotIdx]
+                                    ?.screenshot
+                                }
+                                alt="Original screenshot"
+                                style={{
+                                  width: "auto",
                                   height: "auto",
+                                  maxWidth: "95%",
+                                  maxHeight: "400px",
+                                  objectFit: "contain",
                                   borderRadius: "8px",
                                   boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
                                   border: "1px solid #e5e7eb",
-                                  display: "block",
                                 }}
                               />
-                            ) : (
+                            </div>
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#fff",
+                              }}
+                            >
+                              {sideBySideLoading ? (
+                                <div
+                                  style={{
+                                    color: "#7c8da0",
+                                    fontWeight: 600,
+                                    fontSize: 16,
+                                  }}
+                                >
+                                  Generating AI-modified screenshot…
+                                </div>
+                              ) : sideBySideAIImage ? (
+                                <img
+                                  src={sideBySideAIImage}
+                                  alt="AI-modified screenshot"
+                                  style={{
+                                    width: "auto",
+                                    height: "auto",
+                                    maxWidth: "95%",
+                                    maxHeight: "400px",
+                                    objectFit: "contain",
+                                    borderRadius: "8px",
+                                    boxShadow:
+                                      "0 2px 8px rgba(124,138,160,0.10)", // match original
+                                    border: "1px solid #e5e7eb",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    color: "#7c8da0",
+                                    fontWeight: 600,
+                                    fontSize: 16,
+                                  }}
+                                >
+                                  AI-modified screenshot not available.
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        ) : previewMode === "lense" && analysis?.screenshot ? (
+                          <>
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#fff",
+                              }}
+                            >
+                              <img
+                                src={analysis.screenshot}
+                                alt="Original screenshot"
+                                style={{
+                                  width: "auto",
+                                  height: "auto",
+                                  maxWidth: "95%",
+                                  maxHeight: "400px",
+                                  objectFit: "contain",
+                                  borderRadius: "8px",
+                                  boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
+                                  border: "1px solid #e5e7eb",
+                                }}
+                              />
+                            </div>
+                            <aside
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                background: "#f8fafc",
+                                borderRadius: 10,
+                                border: "1px solid #e5e7eb",
+                                padding: 18,
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "flex-start",
+                                alignItems: "flex-start",
+                                boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                                overflowY: "auto",
+                                marginLeft: 16,
+                                gap: 12,
+                              }}
+                            >
                               <div
                                 style={{
+                                  fontWeight: 700,
                                   color: "#7c8da0",
-                                  fontWeight: 600,
+                                  marginBottom: 8,
                                   fontSize: 16,
                                 }}
                               >
-                                Failed to generate simulation.
+                                Color Vision Filters
                               </div>
-                            )
-                          ) : (
-                            <img
-                              src={analysis.screenshot}
-                              alt="Original screenshot"
+                              {/* Removed duplicate non-interactive filter buttons. Only interactive, AI-calling buttons remain below. */}
+                            </aside>
+                          </>
+                        ) : analysis?.screenshot && previewMode === "lense" ? (
+                          <>
+                            <div
                               style={{
                                 width: "100%",
-                                height: "auto",
-                                borderRadius: "8px",
-                                boxShadow: "0 2px 8px rgba(124,138,160,0.10)",
-                                border: "1px solid #e5e7eb",
-                                display: "block",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#fff",
                               }}
-                            />
-                          )}
-                        </div>
-                        <aside
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            background: "#f8fafc",
-                            borderRadius: 10,
-                            border: "1px solid #e5e7eb",
-                            padding: 18,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "flex-start",
-                            alignItems: "flex-start",
-                            boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
-                            overflowY: "auto",
-                            marginLeft: 16,
-                            gap: 12,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              color: "#7c8da0",
-                              marginBottom: 8,
-                              fontSize: 16,
-                            }}
-                          >
-                            Color Vision Filters
+                            >
+                              {colorBlindFilter ? (
+                                colorBlindLoading ? (
+                                  <div
+                                    style={{
+                                      color: "#7c8da0",
+                                      fontWeight: 600,
+                                      fontSize: 16,
+                                    }}
+                                  >
+                                    Generating {colorBlindFilter} simulation…
+                                  </div>
+                                ) : colorBlindImage ? (
+                                  <img
+                                    src={colorBlindImage}
+                                    alt={`Screenshot simulated for ${colorBlindFilter}`}
+                                    style={{
+                                      width: "100%",
+                                      height: "auto",
+                                      borderRadius: "8px",
+                                      boxShadow:
+                                        "0 2px 8px rgba(124,138,160,0.10)",
+                                      border: "1px solid #e5e7eb",
+                                      display: "block",
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      color: "#7c8da0",
+                                      fontWeight: 600,
+                                      fontSize: 16,
+                                    }}
+                                  >
+                                    Failed to generate simulation.
+                                  </div>
+                                )
+                              ) : (
+                                <img
+                                  src={analysis.screenshot}
+                                  alt="Original screenshot"
+                                  style={{
+                                    width: "100%",
+                                    height: "auto",
+                                    borderRadius: "8px",
+                                    boxShadow:
+                                      "0 2px 8px rgba(124,138,160,0.10)",
+                                    border: "1px solid #e5e7eb",
+                                    display: "block",
+                                  }}
+                                />
+                              )}
+                            </div>
+                            <aside
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                background: "#f8fafc",
+                                borderRadius: 10,
+                                border: "1px solid #e5e7eb",
+                                padding: 18,
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "flex-start",
+                                alignItems: "flex-start",
+                                boxShadow: "0 2px 8px rgba(124,138,160,0.08)",
+                                overflowY: "auto",
+                                marginLeft: 16,
+                                gap: 12,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: "#7c8da0",
+                                  marginBottom: 8,
+                                  fontSize: 16,
+                                }}
+                              >
+                                Color Vision Filters
+                              </div>
+                              <button
+                                className={
+                                  "lense-filter-btn protanopia" +
+                                  (colorBlindFilter === "protanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  handleColorBlindClick("protanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "protanopia"}
+                                disabled={colorBlindLoading}
+                                style={{
+                                  opacity:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "protanopia"
+                                      ? 0.7
+                                      : 1,
+                                  cursor:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "protanopia"
+                                      ? "wait"
+                                      : "pointer",
+                                }}
+                              >
+                                {colorBlindLoading &&
+                                colorBlindFilter === "protanopia"
+                                  ? "Loading…"
+                                  : "Protanopia (red-blind)"}
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn deuteranopia" +
+                                  (colorBlindFilter === "deuteranopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  handleColorBlindClick("deuteranopia")
+                                }
+                                aria-pressed={
+                                  colorBlindFilter === "deuteranopia"
+                                }
+                                disabled={colorBlindLoading}
+                                style={{
+                                  opacity:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "deuteranopia"
+                                      ? 0.7
+                                      : 1,
+                                  cursor:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "deuteranopia"
+                                      ? "wait"
+                                      : "pointer",
+                                }}
+                              >
+                                {colorBlindLoading &&
+                                colorBlindFilter === "deuteranopia"
+                                  ? "Loading…"
+                                  : "Deuteranopia (green-blind)"}
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn tritanopia" +
+                                  (colorBlindFilter === "tritanopia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  handleColorBlindClick("tritanopia")
+                                }
+                                aria-pressed={colorBlindFilter === "tritanopia"}
+                                disabled={colorBlindLoading}
+                                style={{
+                                  opacity:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "tritanopia"
+                                      ? 0.7
+                                      : 1,
+                                  cursor:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "tritanopia"
+                                      ? "wait"
+                                      : "pointer",
+                                }}
+                              >
+                                {colorBlindLoading &&
+                                colorBlindFilter === "tritanopia"
+                                  ? "Loading…"
+                                  : "Tritanopia (blue-blind)"}
+                              </button>
+                              <button
+                                className={
+                                  "lense-filter-btn achromatopsia" +
+                                  (colorBlindFilter === "achromatopsia"
+                                    ? " active"
+                                    : "")
+                                }
+                                onClick={() =>
+                                  handleColorBlindClick("achromatopsia")
+                                }
+                                aria-pressed={
+                                  colorBlindFilter === "achromatopsia"
+                                }
+                                disabled={colorBlindLoading}
+                                style={{
+                                  opacity:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "achromatopsia"
+                                      ? 0.7
+                                      : 1,
+                                  cursor:
+                                    colorBlindLoading &&
+                                    colorBlindFilter === "achromatopsia"
+                                      ? "wait"
+                                      : "pointer",
+                                }}
+                              >
+                                {colorBlindLoading &&
+                                colorBlindFilter === "achromatopsia"
+                                  ? "Loading…"
+                                  : "Achromatopsia (grayscale)"}
+                              </button>
+                            </aside>
+                          </>
+                        ) : analysis?.screenshot ? (
+                          <img
+                            src={analysis.screenshot}
+                            alt="Website full preview"
+                            className="website-preview-screenshot"
+                          />
+                        ) : (
+                          <div className="website-preview-screenshot-placeholder">
+                            No screenshot available.
                           </div>
-                          <button
-                            className={
-                              "lense-filter-btn protanopia" +
-                              (colorBlindFilter === "protanopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => handleColorBlindClick("protanopia")}
-                            aria-pressed={colorBlindFilter === "protanopia"}
-                            disabled={colorBlindLoading}
-                            style={{
-                              opacity:
-                                colorBlindLoading &&
-                                colorBlindFilter === "protanopia"
-                                  ? 0.7
-                                  : 1,
-                              cursor:
-                                colorBlindLoading &&
-                                colorBlindFilter === "protanopia"
-                                  ? "wait"
-                                  : "pointer",
-                            }}
-                          >
-                            {colorBlindLoading &&
-                            colorBlindFilter === "protanopia"
-                              ? "Loading…"
-                              : "Protanopia (red-blind)"}
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn deuteranopia" +
-                              (colorBlindFilter === "deuteranopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() =>
-                              handleColorBlindClick("deuteranopia")
-                            }
-                            aria-pressed={colorBlindFilter === "deuteranopia"}
-                            disabled={colorBlindLoading}
-                            style={{
-                              opacity:
-                                colorBlindLoading &&
-                                colorBlindFilter === "deuteranopia"
-                                  ? 0.7
-                                  : 1,
-                              cursor:
-                                colorBlindLoading &&
-                                colorBlindFilter === "deuteranopia"
-                                  ? "wait"
-                                  : "pointer",
-                            }}
-                          >
-                            {colorBlindLoading &&
-                            colorBlindFilter === "deuteranopia"
-                              ? "Loading…"
-                              : "Deuteranopia (green-blind)"}
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn tritanopia" +
-                              (colorBlindFilter === "tritanopia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() => handleColorBlindClick("tritanopia")}
-                            aria-pressed={colorBlindFilter === "tritanopia"}
-                            disabled={colorBlindLoading}
-                            style={{
-                              opacity:
-                                colorBlindLoading &&
-                                colorBlindFilter === "tritanopia"
-                                  ? 0.7
-                                  : 1,
-                              cursor:
-                                colorBlindLoading &&
-                                colorBlindFilter === "tritanopia"
-                                  ? "wait"
-                                  : "pointer",
-                            }}
-                          >
-                            {colorBlindLoading &&
-                            colorBlindFilter === "tritanopia"
-                              ? "Loading…"
-                              : "Tritanopia (blue-blind)"}
-                          </button>
-                          <button
-                            className={
-                              "lense-filter-btn achromatopsia" +
-                              (colorBlindFilter === "achromatopsia"
-                                ? " active"
-                                : "")
-                            }
-                            onClick={() =>
-                              handleColorBlindClick("achromatopsia")
-                            }
-                            aria-pressed={colorBlindFilter === "achromatopsia"}
-                            disabled={colorBlindLoading}
-                            style={{
-                              opacity:
-                                colorBlindLoading &&
-                                colorBlindFilter === "achromatopsia"
-                                  ? 0.7
-                                  : 1,
-                              cursor:
-                                colorBlindLoading &&
-                                colorBlindFilter === "achromatopsia"
-                                  ? "wait"
-                                  : "pointer",
-                            }}
-                          >
-                            {colorBlindLoading &&
-                            colorBlindFilter === "achromatopsia"
-                              ? "Loading…"
-                              : "Achromatopsia (grayscale)"}
-                          </button>
-                        </aside>
-                      </>
-                    ) : analysis?.screenshot ? (
-                      <img
-                        src={analysis.screenshot}
-                        alt="Website full preview"
-                        className="website-preview-screenshot"
-                      />
-                    ) : (
-                      <div className="website-preview-screenshot-placeholder">
-                        No screenshot available.
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               </section>
 
               {/* NEW: Two-Column Results Layout */}
-              <section id="accessibility-issues" ref={sectionRefs.current[1]}>
+              <section
+                id="accessibility-issues"
+                ref={sectionRefs.current[1]}
+                style={{
+                  borderTop: "3px solid #dc2626",
+                  borderTopLeftRadius: 12,
+                  borderTopRightRadius: 12,
+                  borderBottomLeftRadius: collapsedSections.accessibilityIssues
+                    ? 12
+                    : 0,
+                  borderBottomRightRadius: collapsedSections.accessibilityIssues
+                    ? 12
+                    : 0,
+                  overflow: "hidden",
+                }}
+              >
                 <div
                   className="results-layout"
                   style={{
                     display: "flex",
                     gap: "24px",
-                    marginTop: "32px",
-                    minHeight: "600px",
+                    minHeight: collapsedSections.accessibilityIssues
+                      ? "auto"
+                      : "600px",
                   }}
                 >
-                  {/* LEFT PANEL - Website Preview */}
+                  {/* RIGHT PANEL – Accessibility Issues */}
                   <div
-                    className="preview-panel"
                     style={{
-                      background: "#fff",
-                      borderRadius: "16px",
-                      padding: "20px 24px",
-                      boxShadow: "var(--color-accent)",
-                      overflow: "hidden",
+                      width: "100%",
+                      background: "#ffffff",
+                      borderRadius: "14px",
                       display: "flex",
                       flexDirection: "column",
-                      border: "1px solid #e0e7ef",
-                      minHeight: "520px",
-                      marginRight: "auto",
-                      width: "480px",
+                      overflow: "hidden",
+                      boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
                     }}
                   >
-                    {/* ── Issue Breakdown (inside left panel) ── */}
-                    {groups &&
-                      groups.length > 0 &&
-                      (() => {
-                        const totalIssues = groups.reduce(
-                          (s, g) => s + (g.count || 1),
-                          0,
-                        );
+                    {/* ================= SUMMARY HEADER ================= */}
+                    <div
+                      style={{
+                        padding: "20px 24px",
+                        background: "#ffffff",
+                        borderBottom: collapsedSections.accessibilityIssues
+                          ? "none"
+                          : "1px solid #e5e7eb",
+                      }}
+                    >
+                      <h2 className="issues-panel-heading">
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 9,
+                              background: "#fff0f0",
+                              border: "1px solid #fca5a5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#dc2626"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <circle cx="12" cy="7" r="2.5" />
+                              <path d="M12 9.5v7.5" />
+                              <path d="M9 17h6" />
+                              <path d="M7 12h10" />
+                            </svg>
+                          </div>
+                          Accessibility Issues
+                        </span>
+                        <button
+                          aria-label={
+                            collapsedSections.accessibilityIssues
+                              ? "Expand Accessibility Issues"
+                              : "Collapse Accessibility Issues"
+                          }
+                          onClick={() => toggleSection("accessibilityIssues")}
+                          style={{
+                            marginLeft: 12,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#64748b",
+                            transition: "transform 0.2s",
+                            transform: collapsedSections.accessibilityIssues
+                              ? "rotate(-90deg)"
+                              : "none",
+                          }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
+                      </h2>
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          color: "#64748b",
+                          fontSize: 15,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Lists all detected accessibility violations based on
+                        WCAG 2.2. Each issue is categorized, described, and
+                        visually highlighted on the screenshot. You’ll find
+                        actionable recommendations and can filter or explore
+                        issues by severity or type.
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: collapsedSections.accessibilityIssues
+                          ? "none"
+                          : "block",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: collapsedSections.accessibilityIssues
+                            ? "none"
+                            : "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "16px",
+                          padding: "20px 24px",
+                        }}
+                      >
+                        {/* Total Issues */}
+                        <div
+                          style={{
+                            background: "#f1f5f9",
+                            padding: "12px 16px",
+                            borderRadius: "12px",
+                            minWidth: "120px",
+                            boxShadow: "var(--color-accent)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#64748b",
+                            }}
+                          >
+                            TOTAL ISSUES
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 28,
+                              fontWeight: 900,
+                              lineHeight: 1,
+                              color:
+                                Object.values(groupedByPrinciple || {}).flat()
+                                  .length === 0
+                                  ? "#16a34a"
+                                  : "#b3261e",
+                            }}
+                          >
+                            {
+                              Object.values(groupedByPrinciple || {}).flat()
+                                .length
+                            }
+                          </div>
+                        </div>
+
+                        {/* Conformance Levels */}
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#64748b",
+                              marginBottom: 6,
+                            }}
+                          >
+                            CONFORMANCE LEVELS
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "8px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {/* Level A */}
+                            <span
+                              style={{
+                                background: "#f1f5f9",
+                                border: "1px solid #475569",
+                                color: "#475569",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              A: {levelAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level A"
+                                description="Level A ensures the most basic accessibility requirements are met, allowing users to access content without major barriers.\n\nShort: Basic access"
+                              />
+                            </span>
+
+                            {/* Level AA */}
+                            <span
+                              style={{
+                                background: "#fff7ed",
+                                border: "1px solid #b45309",
+                                color: "#b45309",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              AA: {levelAAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level AA"
+                                description="Level AA builds on Level A by addressing more common usability issues, making content accessible to a wider range of users and is the standard most organizations are expected to meet.\n\nShort: Standard accessibility"
+                              />
+                            </span>
+
+                            {/* Level AAA */}
+                            <span
+                              style={{
+                                background: "#ecfeff",
+                                border: "1px solid #0ea5a4",
+                                color: "#0ea5a4",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                fontSize: 13,
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              AAA: {levelAAAScore ?? "-"}%
+                              <InfoTooltip
+                                label="Level AAA"
+                                description="Level AAA represents the highest level of accessibility, aiming to make content usable for as many people as possible, though it is not always practical to achieve fully.\n\nShort: Highest level, most inclusive"
+                              />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Issue Breakdown Pie Chart and Legend */}
+                      {(() => {
+                        // Pie chart data and slices
                         const principleColors = {
                           Perceivable: "#3b82f6",
                           Operable: "#d97706",
@@ -2534,8 +3048,9 @@ Return the edited screenshot with minimal localized edits only.
                         };
                         groups.forEach((g) => {
                           const p = getPrincipleFromCriterion(g.wcagCriterion);
-                          if (p && p in principleCounts)
+                          if (p && principleCounts[p] !== undefined) {
                             principleCounts[p] += g.count || 1;
+                          }
                         });
                         const pieData = Object.entries(principleCounts)
                           .filter(([, v]) => v > 0)
@@ -2575,41 +3090,8 @@ Return the edited screenshot with minimal localized edits only.
                           pieTotal > 0
                             ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
                             : [];
-                        const sevWeight = (s) => {
-                          const sl = (s || "").toLowerCase();
-                          if (sl === "high" || sl === "critical") return 3;
-                          if (sl === "medium" || sl === "warning") return 2;
-                          return 1;
-                        };
-                        const topCriteria = [...groups]
-                          .sort(
-                            (a, b) =>
-                              sevWeight(b.severity) - sevWeight(a.severity) ||
-                              (b.count || 1) - (a.count || 1),
-                          )
-                          .slice(0, 5);
-                        const sevBadgeStyle = (sev) => {
-                          const sl = (sev || "").toLowerCase();
-                          if (sl === "high" || sl === "critical")
-                            return {
-                              bg: "#fef2f2",
-                              color: "#dc2626",
-                              border: "#fca5a5",
-                            };
-                          if (sl === "medium" || sl === "warning")
-                            return {
-                              bg: "#fffbeb",
-                              color: "#d97706",
-                              border: "#fde68a",
-                            };
-                          return {
-                            bg: "#f0fdf4",
-                            color: "#16a34a",
-                            border: "#86efac",
-                          };
-                        };
                         return (
-                          <div>
+                          <>
                             <div
                               style={{
                                 fontSize: 11,
@@ -2617,18 +3099,18 @@ Return the edited screenshot with minimal localized edits only.
                                 color: "#94a3b8",
                                 textTransform: "uppercase",
                                 letterSpacing: "0.6px",
-                                marginBottom: 14,
+
+                                padding: "20px 24px",
                               }}
                             >
                               Issue Breakdown
                             </div>
-                            {/* Pie + legend side by side */}
                             <div
                               style={{
                                 display: "flex",
                                 gap: 16,
                                 alignItems: "center",
-                                marginBottom: 16,
+                                padding: "20px 24px",
                               }}
                             >
                               <svg
@@ -2678,7 +3160,7 @@ Return the edited screenshot with minimal localized edits only.
                                 >
                                   {hoveredSlice
                                     ? principleCounts[hoveredSlice]
-                                    : totalIssues}
+                                    : pieTotal}
                                 </text>
                                 <text
                                   x="60"
@@ -2788,321 +3270,16 @@ Return the edited screenshot with minimal localized edits only.
                                   ))}
                               </div>
                             </div>
-                            {/* Fix First */}
-                            <div
-                              style={{
-                                borderTop: "1px solid #f1f5f9",
-                                paddingTop: 12,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color: "#94a3b8",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.5px",
-                                  marginBottom: 8,
-                                }}
-                              >
-                                Fix First — Ranked by Priority
-                              </div>
-                              {topCriteria.map((g, i) => {
-                                const badge = sevBadgeStyle(g.severity);
-                                const criterionNum = getCriterionKey(
-                                  g.wcagCriterion,
-                                );
-                                return (
-                                  <div
-                                    key={i}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "flex-start",
-                                      gap: 8,
-                                      padding: "7px 0",
-                                      borderBottom:
-                                        i < topCriteria.length - 1
-                                          ? "1px solid #f1f5f9"
-                                          : "none",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        fontSize: 10,
-                                        fontWeight: 800,
-                                        color: "#cbd5e1",
-                                        minWidth: 16,
-                                        paddingTop: 1,
-                                      }}
-                                    >
-                                      #{i + 1}
-                                    </span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: 5,
-                                          flexWrap: "wrap",
-                                          marginBottom: 2,
-                                        }}
-                                      >
-                                        <span
-                                          style={{
-                                            fontSize: 11.5,
-                                            fontWeight: 700,
-                                            color: "#0f172a",
-                                          }}
-                                        >
-                                          {getFriendlyTitle(
-                                            g.wcagCriterion,
-                                            g.id,
-                                            g.problem,
-                                          )}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: 10,
-                                            fontWeight: 700,
-                                            background: badge.bg,
-                                            color: badge.color,
-                                            border: `1px solid ${badge.border}`,
-                                            borderRadius: 999,
-                                            padding: "1px 6px",
-                                          }}
-                                        >
-                                          {g.severity}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: 10.5,
-                                            color: "#94a3b8",
-                                          }}
-                                        >
-                                          {g.count} instance
-                                          {g.count !== 1 ? "s" : ""}
-                                        </span>
-                                      </div>
-                                      <p
-                                        style={{
-                                          margin: 0,
-                                          fontSize: 11,
-                                          color: "#64748b",
-                                          lineHeight: 1.4,
-                                          overflow: "hidden",
-                                          display: "-webkit-box",
-                                          WebkitLineClamp: 2,
-                                          WebkitBoxOrient: "vertical",
-                                        }}
-                                      >
-                                        {g.problem}
-                                      </p>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          </>
                         );
                       })()}
-                  </div>
 
-                  {/* RIGHT PANEL – Accessibility Issues */}
-                  <div
-                    style={{
-                      width: "100%",
-                      background: "#ffffff",
-                      borderRadius: "14px",
-                      display: "flex",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                      boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    {/* ================= SUMMARY HEADER ================= */}
-                    <div
-                      style={{
-                        padding: "20px 24px",
-                        background: "#ffffff",
-                        borderBottom: "1px solid #e5e7eb",
-                      }}
-                    >
-                      <h2 className="issues-panel-heading">
-                        Accessibility Issues
-                      </h2>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: "16px",
-                        }}
-                      >
-                        {/* Total Issues */}
-                        <div
-                          style={{
-                            background: "#f1f5f9",
-                            padding: "12px 16px",
-                            borderRadius: "12px",
-                            minWidth: "120px",
-                            boxShadow: "var(--color-accent)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#64748b",
-                            }}
-                          >
-                            TOTAL ISSUES
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 28,
-                              fontWeight: 900,
-                              lineHeight: 1,
-                              color:
-                                Object.values(groupedByPrinciple || {}).flat()
-                                  .length === 0
-                                  ? "#16a34a"
-                                  : "#b3261e",
-                            }}
-                          >
-                            {
-                              Object.values(groupedByPrinciple || {}).flat()
-                                .length
-                            }
-                          </div>
-                        </div>
-
-                        {/* Conformance Levels */}
-                        <div style={{ flex: 1 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#64748b",
-                              marginBottom: 6,
-                            }}
-                          >
-                            CONFORMANCE LEVELS
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "8px",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            {/* Level A */}
-                            <span
-                              style={{
-                                background: "#f1f5f9",
-                                border: "1px solid #475569",
-                                color: "#475569",
-                                padding: "6px 12px",
-                                borderRadius: "999px",
-                                fontSize: 13,
-                                fontWeight: 700,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                              }}
-                            >
-                              A: {levelAScore ?? "-"}%
-                              <InfoTooltip
-                                label="Level A"
-                                description="The minimum WCAG conformance level. Addresses the most basic accessibility barriers that prevent some users from accessing content."
-                              />
-                            </span>
-
-                            {/* Level AA */}
-                            <span
-                              style={{
-                                background: "#fff7ed",
-                                border: "1px solid #b45309",
-                                color: "#b45309",
-                                padding: "6px 12px",
-                                borderRadius: "999px",
-                                fontSize: 13,
-                                fontWeight: 700,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                              }}
-                            >
-                              AA: {levelAAScore ?? "-"}%
-                              <InfoTooltip
-                                label="Level AA"
-                                description="The most widely adopted WCAG level. Addresses the most common and impactful accessibility issues affecting users with disabilities."
-                              />
-                            </span>
-
-                            {/* Level AAA */}
-                            <span
-                              style={{
-                                background: "#ecfeff",
-                                border: "1px solid #0ea5a4",
-                                color: "#0ea5a4",
-                                padding: "6px 12px",
-                                borderRadius: "999px",
-                                fontSize: 13,
-                                fontWeight: 700,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                              }}
-                            >
-                              AAA: {levelAAAScore ?? "-"}%
-                              <InfoTooltip
-                                label="Level AAA"
-                                description="The highest WCAG conformance level. Represents optimal accessibility but can be difficult to achieve across all content."
-                              />
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                      <ViolationsFilterSection
+                        violations={analysis?.violations || []}
+                        groupedByPrinciple={groupedByPrinciple}
+                        siteUrl={analysis?.url || url || ""}
+                      />
                     </div>
-
-                    {(() => {
-                      // Debugging output
-                      console.log("analysis:", analysis);
-                      console.log(
-                        "analysis.groupedByPrinciple:",
-                        analysis?.groups,
-                      );
-                      const fallback = (() => {
-                        const violations = analysis?.violations || [];
-                        const result = {
-                          Perceivable: [],
-                          Operable: [],
-                          Understandable: [],
-                          Robust: [],
-                        };
-                        violations.forEach((v) => {
-                          const p =
-                            v.principle ||
-                            v.pourPrinciple ||
-                            v.category ||
-                            v.wcagPrinciple;
-                          if (p && result[p]) {
-                            result[p].push(v);
-                          }
-                        });
-                        return result;
-                      })();
-                      console.log("fallback groupedByPrinciple:", fallback);
-                      return (
-                        <ViolationsFilterSection
-                          violations={analysis?.violations || []}
-                          groupedByPrinciple={groupedByPrinciple}
-                          siteUrl={analysis?.url || url || ""}
-                        />
-                      );
-                    })()}
                   </div>
                 </div>
               </section>
@@ -3110,20 +3287,101 @@ Return the edited screenshot with minimal localized edits only.
               {/* HCI Report */}
               <section id="hci-report" ref={sectionRefs.current[2]}>
                 <div className="hci-section-wrap" style={{ display: "block" }}>
-                  {/* HCI Report Section */}
-                  <div className="hci-card">
-                    {/* Header row: title + reading time + export */}
+                  <div
+                    className="hci-card"
+                    style={{
+                      borderTop: "3px solid #059669",
+                    }}
+                  >
                     <div
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "flex-start",
                         marginBottom: 16,
                       }}
                     >
                       <h2 className="hci-card-heading" style={{ margin: 0 }}>
-                        HCI Report
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 9,
+                              background: "#f0fdf9",
+                              border: "1px solid #6ee7b7",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#059669"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="3" width="18" height="18" rx="4" />
+                              <path d="M7 7h10M7 12h10M7 17h6" />
+                            </svg>
+                          </div>
+                          HCI Report
+                        </span>
+                        <button
+                          aria-label={
+                            collapsedSections.hciReport
+                              ? "Expand HCI Report"
+                              : "Collapse HCI Report"
+                          }
+                          onClick={() => toggleSection("hciReport")}
+                          style={{
+                            marginLeft: 12,
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#64748b",
+                            transition: "transform 0.2s",
+                            transform: collapsedSections.hciReport
+                              ? "rotate(-90deg)"
+                              : "none",
+                          }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
                       </h2>
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          color: "#64748b",
+                          fontSize: 15,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Provides a Human-Computer Interaction (HCI) analysis of
+                        the website. This section summarizes usability findings,
+                        user experience insights, and best practices for
+                        improving accessibility and interaction.
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -3150,418 +3408,431 @@ Return the edited screenshot with minimal localized edits only.
                       </div>
                     </div>
 
-                    {hciParagraphs.length > 0 ? (
-                      (() => {
-                        // ── Theme detection ──────────────────────────────────────
-                        const detectTheme = (text) => {
-                          const t = text.toLowerCase();
-                          if (
-                            /mobile|responsive|touch|small screen|screen size/.test(
-                              t,
-                            )
-                          )
-                            return {
-                              label: "Mobile",
-                              color: "#0ea5e9",
-                              bg: "#f0f9ff",
-                            };
-                          if (
-                            /cognitive|mental load|burden|frustrat|comprehend|discoverability|learnability/.test(
-                              t,
-                            )
-                          )
-                            return {
-                              label: "Cognitive Load",
-                              color: "#8b5cf6",
-                              bg: "#f5f3ff",
-                            };
-                          if (
-                            /interact|click|hover|link|button|navigat|pattern|feedback/.test(
-                              t,
-                            )
-                          )
-                            return {
-                              label: "Interaction",
-                              color: "#f59e0b",
-                              bg: "#fffbeb",
-                            };
-                          if (
-                            /visual|design|layout|color|font|typograph|aesthetic|clean|modern|hierarchy/.test(
-                              t,
-                            )
-                          )
-                            return {
-                              label: "Visual Design",
-                              color: "#189b97",
-                              bg: "#f0fdfa",
-                            };
-                          if (
-                            /overall|conclusion|recommend|priorit|essential|key|addressing|strengthen|strengthens/.test(
-                              t,
-                            )
-                          )
-                            return {
-                              label: "Conclusion",
-                              color: "#16a34a",
-                              bg: "#f0fdf4",
-                            };
-                          return {
-                            label: "Analysis",
-                            color: "#64748b",
-                            bg: "#f8fafc",
-                          };
-                        };
-
-                        // ── Paragraph-level sentiment ────────────────────────────
-                        const detectSentiment = (text) => {
-                          const neg = (
-                            text.match(
-                              /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|doesn.t|inadequate|insufficient|concern/gi,
-                            ) || []
-                          ).length;
-                          const pos = (
-                            text.match(
-                              /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|responsive|legib|effective|appropriate|strength/gi,
-                            ) || []
-                          ).length;
-                          if (neg > pos + 1)
-                            return {
-                              label: "Issues identified",
-                              color: "#ef4444",
-                              bg: "#fef2f2",
-                            };
-                          if (pos > neg)
-                            return {
-                              label: "Strengths noted",
-                              color: "#16a34a",
-                              bg: "#f0fdf4",
-                            };
-                          return {
-                            label: "Mixed",
-                            color: "#f59e0b",
-                            bg: "#fffbeb",
-                          };
-                        };
-
-                        // ── Sentence-level sentiment (for inline highlighting) ───
-                        const sentenceSentiment = (s) => {
-                          const neg = (
-                            s.match(
-                              /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|inadequate|insufficient/gi,
-                            ) || []
-                          ).length;
-                          const pos = (
-                            s.match(
-                              /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|effective|appropriate|strength/gi,
-                            ) || []
-                          ).length;
-                          if (neg > pos)
-                            return {
-                              bg: "#fff5f5",
-                              borderBottom: "1px solid #fca5a5",
-                            };
-                          if (pos > neg)
-                            return {
-                              bg: "#f0fdf4",
-                              borderBottom: "1px solid #86efac",
-                            };
-                          return { bg: "transparent", borderBottom: "none" };
-                        };
-
-                        // ── Glossary: wrap known terms with underline + title ────
-                        const applyGlossary = (text) => {
-                          const sortedTerms = Object.keys(HCI_GLOSSARY).sort(
-                            (a, b) => b.length - a.length,
-                          );
-                          const escaped = sortedTerms.map((t) =>
-                            t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-                          );
-                          const re = new RegExp(
-                            `\\b(${escaped.join("|")})\\b`,
-                            "gi",
-                          );
-                          return text.replace(re, (match) => {
-                            const def =
-                              HCI_GLOSSARY[
-                                Object.keys(HCI_GLOSSARY).find(
-                                  (k) =>
-                                    k.toLowerCase() === match.toLowerCase(),
+                    {!collapsedSections.hciReport && (
+                      <>
+                        {hciParagraphs.length > 0 ? (
+                          (() => {
+                            // ── Theme detection ──────────────────────────────────────
+                            const detectTheme = (text) => {
+                              const t = text.toLowerCase();
+                              if (
+                                /mobile|responsive|touch|small screen|screen size/.test(
+                                  t,
                                 )
-                              ] || "";
-                            return `<span title="${def.replace(/"/g, "&quot;")}" style="border-bottom:1.5px dotted #94a3b8;cursor:help;">${match}</span>`;
-                          });
-                        };
+                              )
+                                return {
+                                  label: "Mobile",
+                                  color: "#0ea5e9",
+                                  bg: "#f0f9ff",
+                                };
+                              if (
+                                /cognitive|mental load|burden|frustrat|comprehend|discoverability|learnability/.test(
+                                  t,
+                                )
+                              )
+                                return {
+                                  label: "Cognitive Load",
+                                  color: "#8b5cf6",
+                                  bg: "#f5f3ff",
+                                };
+                              if (
+                                /interact|click|hover|link|button|navigat|pattern|feedback/.test(
+                                  t,
+                                )
+                              )
+                                return {
+                                  label: "Interaction",
+                                  color: "#f59e0b",
+                                  bg: "#fffbeb",
+                                };
+                              if (
+                                /visual|design|layout|color|font|typograph|aesthetic|clean|modern|hierarchy/.test(
+                                  t,
+                                )
+                              )
+                                return {
+                                  label: "Visual Design",
+                                  color: "#189b97",
+                                  bg: "#f0fdfa",
+                                };
+                              if (
+                                /overall|conclusion|recommend|priorit|essential|key|addressing|strengthen|strengthens/.test(
+                                  t,
+                                )
+                              )
+                                return {
+                                  label: "Conclusion",
+                                  color: "#16a34a",
+                                  bg: "#f0fdf4",
+                                };
+                              return {
+                                label: "Analysis",
+                                color: "#64748b",
+                                bg: "#f8fafc",
+                              };
+                            };
 
-                        // ── Key takeaways ────────────────────────────────────────
-                        const allText = hciParagraphs.join(" ");
-                        const sentences = allText
-                          .split(/(?<=[.!?])\s+/)
-                          .map((s) => s.trim())
-                          .filter((s) => s.length > 50);
-                        const actionRe =
-                          /should|must|ensure|critical|significant|barrier|priorit|recommend|essential|address|improv|fix|add|provid|implement|consider/i;
-                        const takeaways = [
-                          ...new Set(sentences.filter((s) => actionRe.test(s))),
-                        ].slice(0, 5);
+                            // ── Paragraph-level sentiment ────────────────────────────
+                            const detectSentiment = (text) => {
+                              const neg = (
+                                text.match(
+                                  /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|doesn.t|inadequate|insufficient|concern/gi,
+                                ) || []
+                              ).length;
+                              const pos = (
+                                text.match(
+                                  /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|responsive|legib|effective|appropriate|strength/gi,
+                                ) || []
+                              ).length;
+                              if (neg > pos + 1)
+                                return {
+                                  label: "Issues identified",
+                                  color: "#ef4444",
+                                  bg: "#fef2f2",
+                                };
+                              if (pos > neg)
+                                return {
+                                  label: "Strengths noted",
+                                  color: "#16a34a",
+                                  bg: "#f0fdf4",
+                                };
+                              return {
+                                label: "Mixed",
+                                color: "#f59e0b",
+                                bg: "#fffbeb",
+                              };
+                            };
 
-                        // ── Related issues count per theme ───────────────────────
-                        const relatedIssues = (themeLabel) => {
-                          const criteria = THEME_CRITERIA[themeLabel] || [];
-                          if (criteria.length === 0) return [];
-                          return groups.filter((g) => {
-                            const k = getCriterionKey(g.wcagCriterion);
-                            return k && criteria.includes(k);
-                          });
-                        };
+                            // ── Sentence-level sentiment (for inline highlighting) ───
+                            const sentenceSentiment = (s) => {
+                              const neg = (
+                                s.match(
+                                  /however|lack|miss|barrier|difficult|impossible|violat|poor|fail|issue|problem|undermin|hinder|absent|without|cannot|can't|inadequate|insufficient/gi,
+                                ) || []
+                              ).length;
+                              const pos = (
+                                s.match(
+                                  /benefit|well|clear|good|strong|enhance|support|clean|modern|promote|effective|appropriate|strength/gi,
+                                ) || []
+                              ).length;
+                              if (neg > pos)
+                                return {
+                                  bg: "#fff5f5",
+                                  borderBottom: "1px solid #fca5a5",
+                                };
+                              if (pos > neg)
+                                return {
+                                  bg: "#f0fdf4",
+                                  borderBottom: "1px solid #86efac",
+                                };
+                              return {
+                                bg: "transparent",
+                                borderBottom: "none",
+                              };
+                            };
 
-                        const visibleParas = hciExpanded
-                          ? hciParagraphs
-                          : hciParagraphs.slice(0, 2);
+                            // ── Glossary: wrap known terms with underline + title ────
+                            const applyGlossary = (text) => {
+                              const sortedTerms = Object.keys(
+                                HCI_GLOSSARY,
+                              ).sort((a, b) => b.length - a.length);
+                              const escaped = sortedTerms.map((t) =>
+                                t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                              );
+                              const re = new RegExp(
+                                `\\b(${escaped.join("|")})\\b`,
+                                "gi",
+                              );
+                              return text.replace(re, (match) => {
+                                const def =
+                                  HCI_GLOSSARY[
+                                    Object.keys(HCI_GLOSSARY).find(
+                                      (k) =>
+                                        k.toLowerCase() === match.toLowerCase(),
+                                    )
+                                  ] || "";
+                                return `<span title="${def.replace(/"/g, "&quot;")}" style="border-bottom:1.5px dotted #94a3b8;cursor:help;">${match}</span>`;
+                              });
+                            };
 
-                        return (
-                          <>
-                            {/* Key Takeaways */}
-                            {takeaways.length > 0 && (
-                              <div
-                                style={{
-                                  background: "#fffbeb",
-                                  border: "1px solid #fde68a",
-                                  borderRadius: 12,
-                                  padding: "16px 20px",
-                                  marginBottom: 20,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    fontSize: 12,
-                                    color: "#92400e",
-                                    marginBottom: 10,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.6px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                  }}
-                                >
-                                  <svg
-                                    width="13"
-                                    height="13"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#92400e"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                                  </svg>
-                                  Key Takeaways
-                                </div>
-                                <ul
-                                  style={{ margin: 0, padding: "0 0 0 16px" }}
-                                >
-                                  {takeaways.map((t, i) => (
-                                    <li
-                                      key={i}
-                                      style={{
-                                        fontSize: 13.5,
-                                        color: "#78350f",
-                                        lineHeight: 1.65,
-                                        marginBottom:
-                                          i < takeaways.length - 1 ? 8 : 0,
-                                      }}
-                                    >
-                                      {t}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
+                            // ── Key takeaways ────────────────────────────────────────
+                            const allText = hciParagraphs.join(" ");
+                            const sentences = allText
+                              .split(/(?<=[.!?])\s+/)
+                              .map((s) => s.trim())
+                              .filter((s) => s.length > 50);
+                            const actionRe =
+                              /should|must|ensure|critical|significant|barrier|priorit|recommend|essential|address|improv|fix|add|provid|implement|consider/i;
+                            const takeaways = [
+                              ...new Set(
+                                sentences.filter((s) => actionRe.test(s)),
+                              ),
+                            ].slice(0, 5);
 
-                            {/* Glossary hint */}
-                            <p
-                              style={{
-                                fontSize: 11.5,
-                                color: "#94a3b8",
-                                marginBottom: 14,
-                                fontStyle: "italic",
-                              }}
-                            >
-                              Hover over underlined terms for definitions.
-                              Sentence backgrounds indicate identified issues
-                              (red) or strengths (green).
-                            </p>
+                            // ── Related issues count per theme ───────────────────────
+                            const relatedIssues = (themeLabel) => {
+                              const criteria = THEME_CRITERIA[themeLabel] || [];
+                              if (criteria.length === 0) return [];
+                              return groups.filter((g) => {
+                                const k = getCriterionKey(g.wcagCriterion);
+                                return k && criteria.includes(k);
+                              });
+                            };
 
-                            {/* Themed paragraph cards with sentence highlighting + related issues */}
-                            {visibleParas.map((para, idx) => {
-                              const theme = detectTheme(para);
-                              const sentiment = detectSentiment(para);
-                              const related = relatedIssues(theme.label);
-                              // Split into sentences for inline highlighting
-                              const paraSegs = para
-                                .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
-                                .map((s) => s.trim())
-                                .filter(Boolean);
+                            const visibleParas = hciExpanded
+                              ? hciParagraphs
+                              : hciParagraphs.slice(0, 2);
 
-                              return (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    borderLeft: `3px solid ${theme.color}`,
-                                    background: theme.bg,
-                                    borderRadius: "0 12px 12px 0",
-                                    padding: "14px 18px",
-                                    marginBottom: 10,
-                                  }}
-                                >
-                                  {/* Card header */}
+                            return (
+                              <>
+                                {/* Key Takeaways */}
+                                {takeaways.length > 0 && (
                                   <div
                                     style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                      marginBottom: 10,
+                                      background: "#fffbeb",
+                                      border: "1px solid #fde68a",
+                                      borderRadius: 12,
+                                      padding: "16px 20px",
+                                      marginBottom: 20,
                                     }}
                                   >
-                                    <span
-                                      style={{
-                                        fontSize: 11,
-                                        fontWeight: 700,
-                                        textTransform: "uppercase",
-                                        letterSpacing: "0.6px",
-                                        color: theme.color,
-                                      }}
-                                    >
-                                      {theme.label}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontSize: 11,
-                                        fontWeight: 600,
-                                        background: sentiment.bg,
-                                        color: sentiment.color,
-                                        borderRadius: 999,
-                                        padding: "2px 10px",
-                                        border: `1px solid ${sentiment.color}33`,
-                                      }}
-                                    >
-                                      {sentiment.label}
-                                    </span>
-                                  </div>
-
-                                  {/* Sentence-level highlighting with glossary */}
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: 14.5,
-                                      color: "#334155",
-                                      lineHeight: 1.8,
-                                    }}
-                                  >
-                                    {paraSegs.map((seg, si) => {
-                                      const ss = sentenceSentiment(seg);
-                                      return (
-                                        <span
-                                          key={si}
-                                          dangerouslySetInnerHTML={{
-                                            __html: applyGlossary(seg) + " ",
-                                          }}
-                                          style={{
-                                            backgroundColor: ss.bg,
-                                            borderRadius: 3,
-                                            padding:
-                                              ss.bg !== "transparent"
-                                                ? "1px 2px"
-                                                : 0,
-                                            borderBottom: ss.borderBottom,
-                                          }}
-                                        />
-                                      );
-                                    })}
-                                  </p>
-
-                                  {/* Related issues chips */}
-                                  {related.length > 0 && (
                                     <div
                                       style={{
-                                        marginTop: 12,
+                                        fontWeight: 700,
+                                        fontSize: 12,
+                                        color: "#92400e",
+                                        marginBottom: 10,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.6px",
                                         display: "flex",
-                                        flexWrap: "wrap",
-                                        gap: 6,
                                         alignItems: "center",
+                                        gap: 6,
                                       }}
                                     >
-                                      <span
+                                      <svg
+                                        width="13"
+                                        height="13"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="#92400e"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                      </svg>
+                                      Key Takeaways
+                                    </div>
+                                    <ul
+                                      style={{
+                                        margin: 0,
+                                        padding: "0 0 0 16px",
+                                      }}
+                                    >
+                                      {takeaways.map((t, i) => (
+                                        <li
+                                          key={i}
+                                          style={{
+                                            fontSize: 13.5,
+                                            color: "#78350f",
+                                            lineHeight: 1.65,
+                                            marginBottom:
+                                              i < takeaways.length - 1 ? 8 : 0,
+                                          }}
+                                        >
+                                          {t}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* Glossary hint */}
+                                <p
+                                  style={{
+                                    fontSize: 11.5,
+                                    color: "#94a3b8",
+                                    marginBottom: 14,
+                                    fontStyle: "italic",
+                                  }}
+                                >
+                                  Hover over underlined terms for definitions.
+                                  Sentence backgrounds indicate identified
+                                  issues (red) or strengths (green).
+                                </p>
+
+                                {/* Themed paragraph cards with sentence highlighting + related issues */}
+                                {visibleParas.map((para, idx) => {
+                                  const theme = detectTheme(para);
+                                  const sentiment = detectSentiment(para);
+                                  const related = relatedIssues(theme.label);
+                                  // Split into sentences for inline highlighting
+                                  const paraSegs = para
+                                    .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+                                    .map((s) => s.trim())
+                                    .filter(Boolean);
+
+                                  return (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        borderLeft: `3px solid ${theme.color}`,
+                                        background: theme.bg,
+                                        borderRadius: "0 12px 12px 0",
+                                        padding: "14px 18px",
+                                        marginBottom: 10,
+                                      }}
+                                    >
+                                      {/* Card header */}
+                                      <div
                                         style={{
-                                          fontSize: 11,
-                                          color: "#94a3b8",
-                                          fontWeight: 600,
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          alignItems: "center",
+                                          marginBottom: 10,
                                         }}
                                       >
-                                        {related.length} related issue
-                                        {related.length > 1 ? "s" : ""}:
-                                      </span>
-                                      {related.map((g, ri) => (
                                         <span
-                                          key={ri}
+                                          style={{
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            textTransform: "uppercase",
+                                            letterSpacing: "0.6px",
+                                            color: theme.color,
+                                          }}
+                                        >
+                                          {theme.label}
+                                        </span>
+                                        <span
                                           style={{
                                             fontSize: 11,
                                             fontWeight: 600,
-                                            background: "#fff",
-                                            border: `1px solid ${theme.color}55`,
-                                            color: theme.color,
+                                            background: sentiment.bg,
+                                            color: sentiment.color,
                                             borderRadius: 999,
-                                            padding: "2px 9px",
-                                            cursor: "default",
+                                            padding: "2px 10px",
+                                            border: `1px solid ${sentiment.color}33`,
                                           }}
-                                          title={g.problem}
                                         >
-                                          {getCriterionKey(g.wcagCriterion)}
+                                          {sentiment.label}
                                         </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                                      </div>
 
-                            {/* Expand/collapse */}
-                            {hciParagraphs.length > 2 && (
-                              <button
-                                onClick={() => setHciExpanded((e) => !e)}
-                                style={{
-                                  background: "none",
-                                  border: "1px solid #e2e8f0",
-                                  color: "#64748b",
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  borderRadius: 8,
-                                  padding: "8px 16px",
-                                  cursor: "pointer",
-                                  marginTop: 6,
-                                  width: "100%",
-                                  boxShadow: "none",
-                                }}
-                              >
-                                {hciExpanded
-                                  ? "Show less"
-                                  : `Show full analysis (${hciParagraphs.length - 2} more section${hciParagraphs.length - 2 > 1 ? "s" : ""})`}
-                              </button>
-                            )}
-                          </>
-                        );
-                      })()
-                    ) : (
-                      <p
-                        style={{
-                          fontSize: "15px",
-                          color: "#475569",
-                          lineHeight: 1.7,
-                        }}
-                      >
-                        {hciText}
-                      </p>
+                                      {/* Sentence-level highlighting with glossary */}
+                                      <p
+                                        style={{
+                                          margin: 0,
+                                          fontSize: 14.5,
+                                          color: "#334155",
+                                          lineHeight: 1.8,
+                                        }}
+                                      >
+                                        {paraSegs.map((seg, si) => {
+                                          const ss = sentenceSentiment(seg);
+                                          return (
+                                            <span
+                                              key={si}
+                                              dangerouslySetInnerHTML={{
+                                                __html:
+                                                  applyGlossary(seg) + " ",
+                                              }}
+                                              style={{
+                                                backgroundColor: ss.bg,
+                                                borderRadius: 3,
+                                                padding:
+                                                  ss.bg !== "transparent"
+                                                    ? "1px 2px"
+                                                    : 0,
+                                                borderBottom: ss.borderBottom,
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </p>
+
+                                      {/* Related issues chips */}
+                                      {related.length > 0 && (
+                                        <div
+                                          style={{
+                                            marginTop: 12,
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: 6,
+                                            alignItems: "center",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              fontSize: 11,
+                                              color: "#94a3b8",
+                                              fontWeight: 600,
+                                            }}
+                                          >
+                                            {related.length} related issue
+                                            {related.length > 1 ? "s" : ""}:
+                                          </span>
+                                          {related.map((g, ri) => (
+                                            <span
+                                              key={ri}
+                                              style={{
+                                                fontSize: 11,
+                                                fontWeight: 600,
+                                                background: "#fff",
+                                                border: `1px solid ${theme.color}55`,
+                                                color: theme.color,
+                                                borderRadius: 999,
+                                                padding: "2px 9px",
+                                                cursor: "default",
+                                              }}
+                                              title={g.problem}
+                                            >
+                                              {getCriterionKey(g.wcagCriterion)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+
+                                {/* Expand/collapse */}
+                                {hciParagraphs.length > 2 && (
+                                  <button
+                                    onClick={() => setHciExpanded((e) => !e)}
+                                    style={{
+                                      background: "none",
+                                      border: "1px solid #e2e8f0",
+                                      color: "#64748b",
+                                      fontSize: 13,
+                                      fontWeight: 600,
+                                      borderRadius: 8,
+                                      padding: "8px 16px",
+                                      cursor: "pointer",
+                                      marginTop: 6,
+                                      width: "100%",
+                                      boxShadow: "none",
+                                    }}
+                                  >
+                                    {hciExpanded
+                                      ? "Show less"
+                                      : `Show full analysis (${hciParagraphs.length - 2} more section${hciParagraphs.length - 2 > 1 ? "s" : ""})`}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()
+                        ) : (
+                          <p
+                            style={{
+                              fontSize: "15px",
+                              color: "#475569",
+                              lineHeight: 1.7,
+                            }}
+                          >
+                            {hciText}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -3812,8 +4083,9 @@ Return the edited screenshot with minimal localized edits only.
                           borderRadius: 18,
                           padding: "24px 28px",
                           boxShadow: "var(--shadow)",
-                          marginTop: 32,
                           border: "1px solid var(--border-light)",
+
+                          borderTop: "3px solid #0ea5e9",
                         }}
                       >
                         {/* Header */}
@@ -3822,41 +4094,88 @@ Return the edited screenshot with minimal localized edits only.
                             display: "flex",
                             alignItems: "center",
                             gap: 12,
-                            marginBottom: 20,
+
                             borderBottom: "1px solid #f1f5f9",
-                            paddingBottom: 16,
                           }}
                         >
-                          <div
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: 10,
-                              background: "#f0f9ff",
-                              border: "1px solid #bae6fd",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#0ea5e9"
-                              strokeWidth="2.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="5" y="2" width="14" height="20" rx="2" />
-                              <line x1="12" y1="18" x2="12.01" y2="18" />
-                            </svg>
-                          </div>
                           <div style={{ flex: 1 }}>
                             <h2 style={{ margin: "0 0 2px", fontSize: 18 }}>
-                              Mobile Experience
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 10,
+                                    background: "#f0f9ff",
+                                    border: "1px solid #bae6fd",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#0ea5e9"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect
+                                      x="5"
+                                      y="2"
+                                      width="14"
+                                      height="20"
+                                      rx="2"
+                                    />
+                                    <line x1="12" y1="18" x2="12.01" y2="18" />
+                                  </svg>
+                                </div>
+                                Mobile Experience
+                              </span>
+                              <button
+                                aria-label={
+                                  collapsedSections.mobileExperience
+                                    ? "Expand Mobile Experience"
+                                    : "Collapse Mobile Experience"
+                                }
+                                onClick={() =>
+                                  toggleSection("mobileExperience")
+                                }
+                                style={{
+                                  marginLeft: 12,
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: "#64748b",
+                                  transition: "transform 0.2s",
+                                  transform: collapsedSections.mobileExperience
+                                    ? "rotate(-90deg)"
+                                    : "none",
+                                }}
+                              >
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </button>
                             </h2>
                             <p
                               style={{
@@ -3867,6 +4186,19 @@ Return the edited screenshot with minimal localized edits only.
                             >
                               AI-powered mobile accessibility analysis
                             </p>
+                            <div
+                              style={{
+                                marginBottom: 12,
+                                color: "#64748b",
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Evaluates how the website performs on mobile
+                              devices. This section highlights mobile-specific
+                              accessibility issues, responsiveness, and user
+                              experience for touch devices.
+                            </div>
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
                             <div
@@ -3949,771 +4281,800 @@ Return the edited screenshot with minimal localized edits only.
                           </div>
                         </div>
 
-                        {/* Sub-score row */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 10,
-                            marginBottom: 24,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          {subScores.map((s) => (
-                            <div
-                              key={s.label}
-                              style={{
-                                flex: "1 1 120px",
-                                background:
-                                  s.score >= 80 ? "#f0fdf4" : "#f8fafc",
-                                border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
-                                borderTop: `3px solid ${scoreColor(s.score)}`,
-                                borderRadius: 10,
-                                padding: "10px 12px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "baseline",
-                                  gap: 6,
-                                  marginBottom: 4,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontSize: 22,
-                                    fontWeight: 900,
-                                    color: scoreColor(s.score),
-                                    lineHeight: 1,
-                                  }}
-                                >
-                                  {s.score}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 700,
-                                    color: "#64748b",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.4px",
-                                  }}
-                                >
-                                  {s.label}
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 10.5,
-                                  color: s.score >= 80 ? "#16a34a" : "#64748b",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {s.score >= 80 ? "✓ Good" : "Needs work"}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 28,
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          {/* ── Device mockup ── */}
-                          <div
-                            style={{
-                              flexShrink: 0,
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: 6,
-                              transition: "all 0.25s ease",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: dev.frameW,
-                                height: dev.frameH,
-                                background:
-                                  "linear-gradient(145deg,#1e293b 0%,#0f172a 100%)",
-                                borderRadius: dev.radius,
-                                padding: `10px ${dev.pad}px ${dev.homeBtn ? 14 : 8}px`,
-                                boxShadow:
-                                  "0 24px 64px rgba(0,0,0,0.38), inset 0 0 0 1.5px rgba(255,255,255,0.11), 0 0 0 7px rgba(15,23,42,0.07)",
-                                position: "relative",
-                                transition: "all 0.25s ease",
-                              }}
-                            >
-                              {/* Volume / side buttons — phones only */}
-                              {!dev.island || true ? (
-                                <>
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      left: -3,
-                                      top: 68,
-                                      width: 3,
-                                      height: 22,
-                                      background: "#334155",
-                                      borderRadius: "2px 0 0 2px",
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      left: -3,
-                                      top: 98,
-                                      width: 3,
-                                      height: 34,
-                                      background: "#334155",
-                                      borderRadius: "2px 0 0 2px",
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      left: -3,
-                                      top: 138,
-                                      width: 3,
-                                      height: 34,
-                                      background: "#334155",
-                                      borderRadius: "2px 0 0 2px",
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      right: -3,
-                                      top: 98,
-                                      width: 3,
-                                      height: 50,
-                                      background: "#334155",
-                                      borderRadius: "0 2px 2px 0",
-                                    }}
-                                  />
-                                </>
-                              ) : null}
-
-                              {/* Top chrome: Dynamic island or punch-hole dot */}
-                              {dev.island ? (
-                                <div
-                                  style={{
-                                    width: 44,
-                                    height: 8,
-                                    background: "#0f172a",
-                                    borderRadius: 999,
-                                    margin: "0 auto 6px",
-                                    boxShadow:
-                                      "inset 0 0 0 1px rgba(255,255,255,0.07)",
-                                  }}
-                                />
-                              ) : (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "center",
-                                    alignItems: "center",
-                                    height: 14,
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      width: 8,
-                                      height: 8,
-                                      background: "#1e293b",
-                                      borderRadius: "50%",
-                                      boxShadow:
-                                        "inset 0 0 0 1px rgba(255,255,255,0.1)",
-                                    }}
-                                  />
-                                </div>
-                              )}
-
-                              {/* Screen */}
-                              <div
-                                style={{
-                                  borderRadius: Math.max(dev.radius - 10, 8),
-                                  overflow: "hidden",
-                                  height: dev.screenH,
-                                  background: "#0f172a",
-                                  position: "relative",
-                                }}
-                              >
-                                {!mobileIframeError &&
-                                (mobileHtml || analysis.url) ? (
-                                  <iframe
-                                    key={mobilePreviewWidth}
-                                    {...(mobileHtml
-                                      ? { srcDoc: mobileHtml }
-                                      : { src: analysis.url })}
-                                    title="Responsive preview"
-                                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                    onError={() => setMobileIframeError(true)}
-                                    style={{
-                                      width: dev.w,
-                                      height: iframeH,
-                                      border: "none",
-                                      transform: `scale(${scale})`,
-                                      transformOrigin: "top left",
-                                      pointerEvents: "none",
-                                      display: "block",
-                                    }}
-                                  />
-                                ) : previewResult?.screenshot ||
-                                  analysis.screenshot ? (
-                                  <img
-                                    src={
-                                      previewResult?.screenshot ||
-                                      analysis.screenshot
-                                    }
-                                    alt="Desktop screenshot (responsive preview unavailable)"
-                                    style={{
-                                      width: "100%",
-                                      objectFit: "cover",
-                                      objectPosition: "top center",
-                                      display: "block",
-                                    }}
-                                  />
-                                ) : (
-                                  <div
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      color: "#475569",
-                                      fontSize: 11,
-                                    }}
-                                  >
-                                    No preview
-                                  </div>
-                                )}
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    background:
-                                      "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 40%)",
-                                    pointerEvents: "none",
-                                  }}
-                                />
-                              </div>
-
-                              {/* Bottom chrome: home bar or home button */}
-                              {dev.homeBar && (
-                                <div
-                                  style={{
-                                    width: 44,
-                                    height: 3,
-                                    background: "rgba(255,255,255,0.22)",
-                                    borderRadius: 999,
-                                    margin: "6px auto 0",
-                                  }}
-                                />
-                              )}
-                              {dev.homeBtn && (
-                                <div
-                                  style={{
-                                    width: 28,
-                                    height: 28,
-                                    borderRadius: "50%",
-                                    border: "2px solid rgba(255,255,255,0.18)",
-                                    margin: "6px auto 0",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      width: 12,
-                                      height: 12,
-                                      borderRadius: "50%",
-                                      background: "rgba(255,255,255,0.08)",
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Device label */}
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 600,
-                                color: "#94a3b8",
-                                letterSpacing: "0.3px",
-                                textAlign: "center",
-                              }}
-                            >
-                              {!mobileIframeError &&
-                              (mobileHtml || analysis.url)
-                                ? `${dev.sub} · ${dev.w}px`
-                                : "Desktop screenshot"}
-                            </span>
-                            {(mobileIframeError ||
-                              (!mobileHtml && !analysis.url)) && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  color: "#cbd5e1",
-                                  textAlign: "center",
-                                  maxWidth: dev.frameW,
-                                }}
-                              >
-                                Preview unavailable
-                              </span>
-                            )}
-
-                            {/* Device size chips */}
+                        {!collapsedSections.mobileExperience && (
+                          <>
+                            {/* Sub-score row */}
                             <div
                               style={{
                                 display: "flex",
+                                gap: 10,
+                                marginBottom: 24,
                                 flexWrap: "wrap",
-                                gap: 4,
-                                justifyContent: "center",
-                                marginTop: 4,
-                                maxWidth: Math.max(dev.frameW, 200),
                               }}
                             >
-                              {DEVICE_SIZES.map((d) => {
-                                const active = mobilePreviewWidth === d.w;
-                                return (
-                                  <button
-                                    key={d.w}
-                                    title={`${d.sub} (${d.w}px)`}
-                                    onClick={() => {
-                                      setMobilePreviewWidth(d.w);
-                                      setMobileIframeError(false);
-                                    }}
-                                    style={{
-                                      padding: "3px 8px",
-                                      fontSize: 10,
-                                      fontWeight: active ? 700 : 500,
-                                      borderRadius: 999,
-                                      border: `1px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
-                                      background: active
-                                        ? "#e0f2fe"
-                                        : "#f8fafc",
-                                      color: active ? "#0369a1" : "#64748b",
-                                      cursor: "pointer",
-                                      transition: "all 0.15s",
-                                      lineHeight: 1.4,
-                                    }}
-                                  >
-                                    {d.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {/* Right: AI-powered mobile issues */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {/* Mobile Strengths */}
-                            {mobileStrengths.length > 0 && (
-                              <>
+                              {subScores.map((s) => (
                                 <div
+                                  key={s.label}
                                   style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: "#16a34a",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.5px",
-                                    marginBottom: 10,
+                                    flex: "1 1 120px",
+                                    background:
+                                      s.score >= 80 ? "#f0fdf4" : "#f8fafc",
+                                    border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
+                                    borderTop: `3px solid ${scoreColor(s.score)}`,
+                                    borderRadius: 10,
+                                    padding: "10px 12px",
                                   }}
                                 >
-                                  Mobile Strengths ({mobileStrengths.length})
-                                </div>
-                                {mobileStrengths.map((strength, i) => (
                                   <div
-                                    key={i}
                                     style={{
                                       display: "flex",
+                                      alignItems: "baseline",
                                       gap: 6,
-                                      padding: "7px 10px",
-                                      background: "#f0fdf4",
-                                      border: "1px solid #bbf7d0",
-                                      borderLeft: "3px solid #16a34a",
-                                      borderRadius: 8,
-                                      marginBottom: 5,
+                                      marginBottom: 4,
                                     }}
                                   >
-                                    <svg
-                                      width="11"
-                                      height="11"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="#16a34a"
-                                      strokeWidth="2.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      style={{ flexShrink: 0, marginTop: 2 }}
-                                    >
-                                      <polyline points="20 6 9 17 4 12" />
-                                    </svg>
-                                    <p
+                                    <div
                                       style={{
-                                        margin: 0,
-                                        fontSize: 11.5,
-                                        color: "#15803d",
-                                        lineHeight: 1.5,
+                                        fontSize: 22,
+                                        fontWeight: 900,
+                                        color: scoreColor(s.score),
+                                        lineHeight: 1,
                                       }}
                                     >
-                                      {strength}
-                                    </p>
+                                      {s.score}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        color: "#64748b",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.4px",
+                                      }}
+                                    >
+                                      {s.label}
+                                    </div>
                                   </div>
-                                ))}
-                              </>
-                            )}
+                                  <div
+                                    style={{
+                                      fontSize: 10.5,
+                                      color:
+                                        s.score >= 80 ? "#16a34a" : "#64748b",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {s.score >= 80 ? "✓ Good" : "Needs work"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
 
-                            {/* Mobile Issues */}
-                            {mobileIssues.length > 0 && (
-                              <>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 28,
+                                alignItems: "flex-start",
+                              }}
+                            >
+                              {/* ── Device mockup ── */}
+                              <div
+                                style={{
+                                  flexShrink: 0,
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  transition: "all 0.25s ease",
+                                }}
+                              >
                                 <div
                                   style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: "#94a3b8",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.5px",
-                                    margin: "18px 0 10px",
+                                    width: dev.frameW,
+                                    height: dev.frameH,
+                                    background:
+                                      "linear-gradient(145deg,#1e293b 0%,#0f172a 100%)",
+                                    borderRadius: dev.radius,
+                                    padding: `10px ${dev.pad}px ${dev.homeBtn ? 14 : 8}px`,
+                                    boxShadow:
+                                      "0 24px 64px rgba(0,0,0,0.38), inset 0 0 0 1.5px rgba(255,255,255,0.11), 0 0 0 7px rgba(15,23,42,0.07)",
+                                    position: "relative",
+                                    transition: "all 0.25s ease",
                                   }}
                                 >
-                                  Mobile Issues ({mobileIssues.length})
-                                </div>
-                                {mobileIssues.map((issue, i) => {
-                                  const cardKey = `mobile-issue-${i}`;
-                                  const isOpen = !!expandedItems[cardKey];
+                                  {/* Volume / side buttons — phones only */}
+                                  {!dev.island || true ? (
+                                    <>
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          left: -3,
+                                          top: 68,
+                                          width: 3,
+                                          height: 22,
+                                          background: "#334155",
+                                          borderRadius: "2px 0 0 2px",
+                                        }}
+                                      />
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          left: -3,
+                                          top: 98,
+                                          width: 3,
+                                          height: 34,
+                                          background: "#334155",
+                                          borderRadius: "2px 0 0 2px",
+                                        }}
+                                      />
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          left: -3,
+                                          top: 138,
+                                          width: 3,
+                                          height: 34,
+                                          background: "#334155",
+                                          borderRadius: "2px 0 0 2px",
+                                        }}
+                                      />
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          right: -3,
+                                          top: 98,
+                                          width: 3,
+                                          height: 50,
+                                          background: "#334155",
+                                          borderRadius: "0 2px 2px 0",
+                                        }}
+                                      />
+                                    </>
+                                  ) : null}
 
-                                  return (
+                                  {/* Top chrome: Dynamic island or punch-hole dot */}
+                                  {dev.island ? (
                                     <div
-                                      key={i}
                                       style={{
-                                        borderRadius: 10,
-                                        background: sevBg(issue.severity),
-                                        border: `1px solid ${sevBorder(issue.severity)}`,
-                                        borderLeft: `3px solid ${sevColor(issue.severity)}`,
-                                        marginBottom: 8,
-                                        overflow: "hidden",
+                                        width: 44,
+                                        height: 8,
+                                        background: "#0f172a",
+                                        borderRadius: 999,
+                                        margin: "0 auto 6px",
+                                        boxShadow:
+                                          "inset 0 0 0 1px rgba(255,255,255,0.07)",
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "center",
+                                        alignItems: "center",
+                                        height: 14,
+                                        marginBottom: 4,
                                       }}
                                     >
-                                      {/* Header */}
-                                      <button
-                                        onClick={() => toggleExpanded(cardKey)}
+                                      <div
+                                        style={{
+                                          width: 8,
+                                          height: 8,
+                                          background: "#1e293b",
+                                          borderRadius: "50%",
+                                          boxShadow:
+                                            "inset 0 0 0 1px rgba(255,255,255,0.1)",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Screen */}
+                                  <div
+                                    style={{
+                                      borderRadius: Math.max(
+                                        dev.radius - 10,
+                                        8,
+                                      ),
+                                      overflow: "hidden",
+                                      height: dev.screenH,
+                                      background: "#0f172a",
+                                      position: "relative",
+                                    }}
+                                  >
+                                    {!mobileIframeError &&
+                                    (mobileHtml || analysis.url) ? (
+                                      <iframe
+                                        key={mobilePreviewWidth}
+                                        {...(mobileHtml
+                                          ? { srcDoc: mobileHtml }
+                                          : { src: analysis.url })}
+                                        title="Responsive preview"
+                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                        onError={() =>
+                                          setMobileIframeError(true)
+                                        }
+                                        style={{
+                                          width: dev.w,
+                                          height: iframeH,
+                                          border: "none",
+                                          transform: `scale(${scale})`,
+                                          transformOrigin: "top left",
+                                          pointerEvents: "none",
+                                          display: "block",
+                                        }}
+                                      />
+                                    ) : previewResult?.screenshot ||
+                                      analysis.screenshot ? (
+                                      <img
+                                        src={
+                                          previewResult?.screenshot ||
+                                          analysis.screenshot
+                                        }
+                                        alt="Desktop screenshot (responsive preview unavailable)"
                                         style={{
                                           width: "100%",
-                                          background: "transparent",
-                                          border: "none",
-                                          padding: "11px 14px",
-                                          cursor: "pointer",
+                                          objectFit: "cover",
+                                          objectPosition: "top center",
+                                          display: "block",
+                                        }}
+                                      />
+                                    ) : (
+                                      <div
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
                                           display: "flex",
-                                          alignItems: "flex-start",
-                                          gap: 8,
-                                          textAlign: "left",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          color: "#475569",
+                                          fontSize: 11,
                                         }}
                                       >
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div
-                                            style={{
-                                              display: "flex",
-                                              alignItems: "center",
-                                              gap: 8,
-                                              marginBottom: 4,
-                                              flexWrap: "wrap",
-                                            }}
-                                          >
-                                            <span
-                                              style={{
-                                                fontSize: 12.5,
-                                                fontWeight: 700,
-                                                color: "#0f172a",
-                                              }}
-                                            >
-                                              {issue.category
-                                                .charAt(0)
-                                                .toUpperCase() +
-                                                issue.category.slice(1)}{" "}
-                                              Issue
-                                            </span>
-                                            <span
-                                              style={{
-                                                fontSize: 10,
-                                                fontWeight: 700,
-                                                color: sevColor(issue.severity),
-                                                background: "#fff",
-                                                border: `1px solid ${sevBorder(issue.severity)}`,
-                                                borderRadius: 999,
-                                                padding: "1px 7px",
-                                                textTransform: "uppercase",
-                                                flexShrink: 0,
-                                              }}
-                                            >
-                                              {issue.severity}
-                                            </span>
-                                            {issue.wcagCriterion && (
-                                              <span
-                                                style={{
-                                                  fontSize: 10,
-                                                  fontWeight: 600,
-                                                  color: "#7c8da0",
-                                                  background: "#f1f5f9",
-                                                  border: "1px solid #e2e8f0",
-                                                  borderRadius: 999,
-                                                  padding: "1px 7px",
-                                                  flexShrink: 0,
-                                                }}
-                                              >
-                                                WCAG {issue.wcagCriterion}
-                                              </span>
-                                            )}
-                                          </div>
-                                          <p
-                                            style={{
-                                              margin: 0,
-                                              fontSize: 12,
-                                              color: "#475569",
-                                              lineHeight: 1.5,
-                                            }}
-                                          >
-                                            {issue.problem}
-                                          </p>
-                                        </div>
+                                        No preview
+                                      </div>
+                                    )}
+                                    <div
+                                      style={{
+                                        position: "absolute",
+                                        inset: 0,
+                                        background:
+                                          "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 40%)",
+                                        pointerEvents: "none",
+                                      }}
+                                    />
+                                  </div>
+
+                                  {/* Bottom chrome: home bar or home button */}
+                                  {dev.homeBar && (
+                                    <div
+                                      style={{
+                                        width: 44,
+                                        height: 3,
+                                        background: "rgba(255,255,255,0.22)",
+                                        borderRadius: 999,
+                                        margin: "6px auto 0",
+                                      }}
+                                    />
+                                  )}
+                                  {dev.homeBtn && (
+                                    <div
+                                      style={{
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: "50%",
+                                        border:
+                                          "2px solid rgba(255,255,255,0.18)",
+                                        margin: "6px auto 0",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          width: 12,
+                                          height: 12,
+                                          borderRadius: "50%",
+                                          background: "rgba(255,255,255,0.08)",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Device label */}
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    color: "#94a3b8",
+                                    letterSpacing: "0.3px",
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  {!mobileIframeError &&
+                                  (mobileHtml || analysis.url)
+                                    ? `${dev.sub} · ${dev.w}px`
+                                    : "Desktop screenshot"}
+                                </span>
+                                {(mobileIframeError ||
+                                  (!mobileHtml && !analysis.url)) && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      color: "#cbd5e1",
+                                      textAlign: "center",
+                                      maxWidth: dev.frameW,
+                                    }}
+                                  >
+                                    Preview unavailable
+                                  </span>
+                                )}
+
+                                {/* Device size chips */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 4,
+                                    justifyContent: "center",
+                                    marginTop: 4,
+                                    maxWidth: Math.max(dev.frameW, 200),
+                                  }}
+                                >
+                                  {DEVICE_SIZES.map((d) => {
+                                    const active = mobilePreviewWidth === d.w;
+                                    return (
+                                      <button
+                                        key={d.w}
+                                        title={`${d.sub} (${d.w}px)`}
+                                        onClick={() => {
+                                          setMobilePreviewWidth(d.w);
+                                          setMobileIframeError(false);
+                                        }}
+                                        style={{
+                                          padding: "3px 8px",
+                                          fontSize: 10,
+                                          fontWeight: active ? 700 : 500,
+                                          borderRadius: 999,
+                                          border: `1px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
+                                          background: active
+                                            ? "#e0f2fe"
+                                            : "#f8fafc",
+                                          color: active ? "#0369a1" : "#64748b",
+                                          cursor: "pointer",
+                                          transition: "all 0.15s",
+                                          lineHeight: 1.4,
+                                        }}
+                                      >
+                                        {d.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Right: AI-powered mobile issues */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {/* Mobile Strengths */}
+                                {mobileStrengths.length > 0 && (
+                                  <>
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        color: "#16a34a",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.5px",
+                                        marginBottom: 10,
+                                      }}
+                                    >
+                                      Mobile Strengths ({mobileStrengths.length}
+                                      )
+                                    </div>
+                                    {mobileStrengths.map((strength, i) => (
+                                      <div
+                                        key={i}
+                                        style={{
+                                          display: "flex",
+                                          gap: 6,
+                                          padding: "7px 10px",
+                                          background: "#f0fdf4",
+                                          border: "1px solid #bbf7d0",
+                                          borderLeft: "3px solid #16a34a",
+                                          borderRadius: 8,
+                                          marginBottom: 5,
+                                        }}
+                                      >
                                         <svg
-                                          width="14"
-                                          height="14"
+                                          width="11"
+                                          height="11"
                                           viewBox="0 0 24 24"
                                           fill="none"
-                                          stroke="#94a3b8"
+                                          stroke="#16a34a"
                                           strokeWidth="2.5"
                                           strokeLinecap="round"
                                           strokeLinejoin="round"
                                           style={{
                                             flexShrink: 0,
                                             marginTop: 2,
-                                            transition: "transform 0.2s",
-                                            transform: isOpen
-                                              ? "rotate(180deg)"
-                                              : "rotate(0deg)",
                                           }}
                                         >
-                                          <polyline points="6 9 12 15 18 9" />
+                                          <polyline points="20 6 9 17 4 12" />
                                         </svg>
-                                      </button>
-
-                                      {/* Expanded details */}
-                                      {isOpen && (
-                                        <div
+                                        <p
                                           style={{
-                                            padding: "0 14px 14px 14px",
-                                            borderTop: `1px solid ${sevBorder(issue.severity)}`,
+                                            margin: 0,
+                                            fontSize: 11.5,
+                                            color: "#15803d",
+                                            lineHeight: 1.5,
                                           }}
                                         >
-                                          {/* Evidence */}
-                                          <div
-                                            style={{
-                                              marginTop: 10,
-                                              padding: "6px 10px",
-                                              background: "rgba(0,0,0,0.04)",
-                                              borderRadius: 6,
-                                              fontSize: 11,
-                                              color: "#64748b",
-                                              fontFamily: "monospace",
-                                              wordBreak: "break-all",
-                                            }}
-                                          >
-                                            🔍 {issue.evidence}
-                                          </div>
+                                          {strength}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
 
-                                          {/* Affected users */}
-                                          <div style={{ marginTop: 10 }}>
-                                            <div
-                                              style={{
-                                                fontSize: 10.5,
-                                                fontWeight: 700,
-                                                color: "#64748b",
-                                                textTransform: "uppercase",
-                                                letterSpacing: "0.4px",
-                                                marginBottom: 4,
-                                              }}
-                                            >
-                                              Affected users
-                                            </div>
-                                            <div
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 6,
-                                              }}
-                                            >
-                                              <svg
-                                                width="12"
-                                                height="12"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="#7c8da0"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                              >
-                                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                                <circle cx="9" cy="7" r="4" />
-                                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                              </svg>
-                                              <span
-                                                style={{
-                                                  fontSize: 12,
-                                                  color: "#475569",
-                                                }}
-                                              >
-                                                {issue.affectedUsers}
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          {/* Recommendation */}
-                                          <div
-                                            style={{
-                                              marginTop: 10,
-                                              padding: "10px 12px",
-                                              background: "#f0fdf4",
-                                              border: "1px solid #bbf7d0",
-                                              borderRadius: 8,
-                                            }}
-                                          >
-                                            <div
-                                              style={{
-                                                fontSize: 10.5,
-                                                fontWeight: 700,
-                                                color: "#15803d",
-                                                textTransform: "uppercase",
-                                                letterSpacing: "0.4px",
-                                                marginBottom: 4,
-                                              }}
-                                            >
-                                              Recommended fix
-                                            </div>
-                                            <p
-                                              style={{
-                                                margin: 0,
-                                                fontSize: 12,
-                                                color: "#166534",
-                                                lineHeight: 1.6,
-                                              }}
-                                            >
-                                              {issue.recommendation}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </>
-                            )}
-
-                            {/* Mobile Next Steps */}
-                            {mobileNextSteps.length > 0 && (
-                              <>
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: "#94a3b8",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.5px",
-                                    margin: "18px 0 10px",
-                                  }}
-                                >
-                                  Mobile Next Steps
-                                </div>
-                                {mobileNextSteps.map((step, i) => (
-                                  <label
-                                    key={i}
-                                    style={{
-                                      display: "flex",
-                                      gap: 8,
-                                      alignItems: "flex-start",
-                                      padding: "8px 12px",
-                                      background: "#fffbeb",
-                                      border: "1px solid #fde68a",
-                                      borderLeft: "3px solid #f59e0b",
-                                      borderRadius: 8,
-                                      marginBottom: 6,
-                                      cursor: "pointer",
-                                      userSelect: "none",
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
+                                {/* Mobile Issues */}
+                                {mobileIssues.length > 0 && (
+                                  <>
+                                    <div
                                       style={{
-                                        accentColor: "#f59e0b",
-                                        marginTop: 2,
-                                        marginRight: 4,
-                                        width: 16,
-                                        height: 16,
-                                        flexShrink: 0,
-                                      }}
-                                    />
-                                    <span
-                                      style={{
-                                        fontSize: 12,
-                                        color: "#92400e",
-                                        lineHeight: 1.55,
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        color: "#94a3b8",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.5px",
+                                        margin: "18px 0 10px",
                                       }}
                                     >
-                                      {step}
-                                    </span>
-                                  </label>
-                                ))}
-                              </>
-                            )}
+                                      Mobile Issues ({mobileIssues.length})
+                                    </div>
+                                    {mobileIssues.map((issue, i) => {
+                                      const cardKey = `mobile-issue-${i}`;
+                                      const isOpen = !!expandedItems[cardKey];
 
-                            {/* No issues case */}
-                            {mobileIssues.length === 0 && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 10,
-                                  padding: "12px 14px",
-                                  background: "#f0fdf4",
-                                  border: "1px solid #bbf7d0",
-                                  borderRadius: 10,
-                                  marginBottom: 16,
-                                }}
-                              >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#16a34a"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                                <span
-                                  style={{
-                                    fontSize: 12.5,
-                                    fontWeight: 600,
-                                    color: "#15803d",
-                                  }}
-                                >
-                                  No mobile accessibility issues detected by AI
-                                  analysis.
-                                </span>
+                                      return (
+                                        <div
+                                          key={i}
+                                          style={{
+                                            borderRadius: 10,
+                                            background: sevBg(issue.severity),
+                                            border: `1px solid ${sevBorder(issue.severity)}`,
+                                            borderLeft: `3px solid ${sevColor(issue.severity)}`,
+                                            marginBottom: 8,
+                                            overflow: "hidden",
+                                          }}
+                                        >
+                                          {/* Header */}
+                                          <button
+                                            onClick={() =>
+                                              toggleExpanded(cardKey)
+                                            }
+                                            style={{
+                                              width: "100%",
+                                              background: "transparent",
+                                              border: "none",
+                                              padding: "11px 14px",
+                                              cursor: "pointer",
+                                              display: "flex",
+                                              alignItems: "flex-start",
+                                              gap: 8,
+                                              textAlign: "left",
+                                            }}
+                                          >
+                                            <div
+                                              style={{ flex: 1, minWidth: 0 }}
+                                            >
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: 8,
+                                                  marginBottom: 4,
+                                                  flexWrap: "wrap",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    fontSize: 12.5,
+                                                    fontWeight: 700,
+                                                    color: "#0f172a",
+                                                  }}
+                                                >
+                                                  {issue.category
+                                                    .charAt(0)
+                                                    .toUpperCase() +
+                                                    issue.category.slice(
+                                                      1,
+                                                    )}{" "}
+                                                  Issue
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 700,
+                                                    color: sevColor(
+                                                      issue.severity,
+                                                    ),
+                                                    background: "#fff",
+                                                    border: `1px solid ${sevBorder(issue.severity)}`,
+                                                    borderRadius: 999,
+                                                    padding: "1px 7px",
+                                                    textTransform: "uppercase",
+                                                    flexShrink: 0,
+                                                  }}
+                                                >
+                                                  {issue.severity}
+                                                </span>
+                                                {issue.wcagCriterion && (
+                                                  <span
+                                                    style={{
+                                                      fontSize: 10,
+                                                      fontWeight: 600,
+                                                      color: "#7c8da0",
+                                                      background: "#f1f5f9",
+                                                      border:
+                                                        "1px solid #e2e8f0",
+                                                      borderRadius: 999,
+                                                      padding: "1px 7px",
+                                                      flexShrink: 0,
+                                                    }}
+                                                  >
+                                                    WCAG {issue.wcagCriterion}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <p
+                                                style={{
+                                                  margin: 0,
+                                                  fontSize: 12,
+                                                  color: "#475569",
+                                                  lineHeight: 1.5,
+                                                }}
+                                              >
+                                                {issue.problem}
+                                              </p>
+                                            </div>
+                                            <svg
+                                              width="14"
+                                              height="14"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="#94a3b8"
+                                              strokeWidth="2.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              style={{
+                                                flexShrink: 0,
+                                                marginTop: 2,
+                                                transition: "transform 0.2s",
+                                                transform: isOpen
+                                                  ? "rotate(180deg)"
+                                                  : "rotate(0deg)",
+                                              }}
+                                            >
+                                              <polyline points="6 9 12 15 18 9" />
+                                            </svg>
+                                          </button>
+
+                                          {/* Expanded details */}
+                                          {isOpen && (
+                                            <div
+                                              style={{
+                                                padding: "0 14px 14px 14px",
+                                                borderTop: `1px solid ${sevBorder(issue.severity)}`,
+                                              }}
+                                            >
+                                              {/* Evidence */}
+                                              <div
+                                                style={{
+                                                  marginTop: 10,
+                                                  padding: "6px 10px",
+                                                  background:
+                                                    "rgba(0,0,0,0.04)",
+                                                  borderRadius: 6,
+                                                  fontSize: 11,
+                                                  color: "#64748b",
+                                                  fontFamily: "monospace",
+                                                  wordBreak: "break-all",
+                                                }}
+                                              >
+                                                🔍 {issue.evidence}
+                                              </div>
+
+                                              {/* Affected users */}
+                                              <div style={{ marginTop: 10 }}>
+                                                <div
+                                                  style={{
+                                                    fontSize: 10.5,
+                                                    fontWeight: 700,
+                                                    color: "#64748b",
+                                                    textTransform: "uppercase",
+                                                    letterSpacing: "0.4px",
+                                                    marginBottom: 4,
+                                                  }}
+                                                >
+                                                  Affected users
+                                                </div>
+                                                <div
+                                                  style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 6,
+                                                  }}
+                                                >
+                                                  <svg
+                                                    width="12"
+                                                    height="12"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="#7c8da0"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                  >
+                                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                                    <circle
+                                                      cx="9"
+                                                      cy="7"
+                                                      r="4"
+                                                    />
+                                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                                  </svg>
+                                                  <span
+                                                    style={{
+                                                      fontSize: 12,
+                                                      color: "#475569",
+                                                    }}
+                                                  >
+                                                    {issue.affectedUsers}
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              {/* Recommendation */}
+                                              <div
+                                                style={{
+                                                  marginTop: 10,
+                                                  padding: "10px 12px",
+                                                  background: "#f0fdf4",
+                                                  border: "1px solid #bbf7d0",
+                                                  borderRadius: 8,
+                                                }}
+                                              >
+                                                <div
+                                                  style={{
+                                                    fontSize: 10.5,
+                                                    fontWeight: 700,
+                                                    color: "#15803d",
+                                                    textTransform: "uppercase",
+                                                    letterSpacing: "0.4px",
+                                                    marginBottom: 4,
+                                                  }}
+                                                >
+                                                  Recommended fix
+                                                </div>
+                                                <p
+                                                  style={{
+                                                    margin: 0,
+                                                    fontSize: 12,
+                                                    color: "#166534",
+                                                    lineHeight: 1.6,
+                                                  }}
+                                                >
+                                                  {issue.recommendation}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </>
+                                )}
+
+                                {/* Mobile Next Steps */}
+                                {mobileNextSteps.length > 0 && (
+                                  <>
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        color: "#94a3b8",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.5px",
+                                        margin: "18px 0 10px",
+                                      }}
+                                    >
+                                      Mobile Next Steps
+                                    </div>
+                                    {mobileNextSteps.map((step, i) => (
+                                      <label
+                                        key={i}
+                                        style={{
+                                          display: "flex",
+                                          gap: 8,
+                                          alignItems: "flex-start",
+                                          padding: "8px 12px",
+                                          background: "#fffbeb",
+                                          border: "1px solid #fde68a",
+                                          borderLeft: "3px solid #f59e0b",
+                                          borderRadius: 8,
+                                          marginBottom: 6,
+                                          cursor: "pointer",
+                                          userSelect: "none",
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          style={{
+                                            accentColor: "#f59e0b",
+                                            marginTop: 2,
+                                            marginRight: 4,
+                                            width: 16,
+                                            height: 16,
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                        <span
+                                          style={{
+                                            fontSize: 12,
+                                            color: "#92400e",
+                                            lineHeight: 1.55,
+                                          }}
+                                        >
+                                          {step}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </>
+                                )}
+
+                                {/* No issues case */}
+                                {mobileIssues.length === 0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 10,
+                                      padding: "12px 14px",
+                                      background: "#f0fdf4",
+                                      border: "1px solid #bbf7d0",
+                                      borderRadius: 10,
+                                      marginBottom: 16,
+                                    }}
+                                  >
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="#16a34a"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                    <span
+                                      style={{
+                                        fontSize: 12.5,
+                                        fontWeight: 600,
+                                        color: "#15803d",
+                                      }}
+                                    >
+                                      No mobile accessibility issues detected by
+                                      AI analysis.
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     );
                   })()}
@@ -5001,44 +5362,31 @@ Return the edited screenshot with minimal localized edits only.
                               marginBottom: 14,
                             }}
                           >
-                            <div
+                            <span
                               style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 8,
-                                background: iconBg,
-                                display: "flex",
+                                display: "inline-flex",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
+                                gap: 8,
                               }}
                             >
                               <svg
-                                width="15"
-                                height="15"
+                                width="20"
+                                height="20"
                                 viewBox="0 0 24 24"
                                 fill="none"
-                                stroke={iconStroke}
+                                stroke="#7c3aed"
                                 strokeWidth="2.2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                dangerouslySetInnerHTML={{ __html: icon }}
-                              />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  color: "#0f172a",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                }}
+                                style={{ marginRight: 6 }}
                               >
-                                {title}
-                                {infoKey && <InfoBtn infoKey={infoKey} />}
-                              </div>
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M9 12l2 2 4-4" />
+                              </svg>
+                              {title}
+                              {infoKey && <InfoBtn infoKey={infoKey} />}
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 11, color: "#94a3b8" }}>
                                 {subtitle}
                               </div>
@@ -5463,59 +5811,124 @@ Return the edited screenshot with minimal localized edits only.
                           </div>
                         )}
 
-                        <div style={{ marginTop: 32 }}>
+                        <div
+                          style={{
+                            background: "#fff",
+                            borderRadius: 18,
+                            padding: "24px 28px",
+                            boxShadow: "var(--shadow)",
+
+                            border: "1px solid var(--border-light)",
+                            borderTop: "3px solid #7c3aed",
+                          }}
+                        >
                           {/* Section header */}
                           <div
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 10,
-                              marginBottom: 16,
+
+                              borderBottom: "1px solid #f1f5f9",
                             }}
                           >
-                            <div
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 9,
-                                background: "#f5f3ff",
-                                border: "1px solid #ddd6fe",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#7c3aed"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <circle cx="11" cy="11" r="8" />
-                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                              </svg>
-                            </div>
-                            <div>
+                            <div style={{ flex: 1 }}>
                               <h2
                                 style={{
-                                  margin: 0,
-                                  fontSize: 17,
+                                  margin: "0 0 4px",
+                                  fontSize: 18,
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: 6,
+                                  gap: 8,
                                 }}
                               >
+                                <div
+                                  style={{
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 9,
+                                    background: "#f5f3ff",
+                                    border: "1px solid #ddd6fe",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#7c3aed"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line
+                                      x1="21"
+                                      y1="21"
+                                      x2="16.65"
+                                      y2="16.65"
+                                    />
+                                  </svg>
+                                </div>
                                 Specialized Audits
                                 <InfoBtn infoKey="specialized" />
+                                <button
+                                  aria-label={
+                                    collapsedSections.specializedAudits
+                                      ? "Expand Specialized Audits"
+                                      : "Collapse Specialized Audits"
+                                  }
+                                  onClick={() =>
+                                    toggleSection("specializedAudits")
+                                  }
+                                  style={{
+                                    marginLeft: 12,
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "#64748b",
+                                    transition: "transform 0.2s",
+                                    transform:
+                                      collapsedSections.specializedAudits
+                                        ? "rotate(-90deg)"
+                                        : "none",
+                                  }}
+                                >
+                                  <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polyline points="6 9 12 15 18 9" />
+                                  </svg>
+                                </button>
                               </h2>
+                              <div
+                                style={{
+                                  color: "#64748b",
+                                  fontSize: 15,
+                                  fontWeight: 500,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                Contains results from advanced or optional
+                                accessibility checks, such as color contrast,
+                                ARIA usage, or other specialized audits. Use
+                                this section for deeper technical insights.
+                              </div>
                               <p
                                 style={{
                                   margin: 0,
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: "#94a3b8",
                                 }}
                               >
@@ -5525,365 +5938,390 @@ Return the edited screenshot with minimal localized edits only.
                             </div>
                           </div>
 
-                          {/* 2×2 audit grid */}
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr 1fr",
-                              gap: 14,
-                              marginBottom: 14,
-                            }}
-                          >
-                            <AuditCard
-                              icon='<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="15" x2="16" y2="15"/>'
-                              iconBg="#fef9c3"
-                              iconStroke="#ca8a04"
-                              title="Form Accessibility"
-                              subtitle="Labels, errors, validation, autocomplete"
-                              issueGroups={formGroups}
-                              insights={formInsights}
-                              extraChecks={[]}
-                              infoKey="form"
-                            />
-                            <AuditCard
-                              icon='<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>'
-                              iconBg="#ede9fe"
-                              iconStroke="#7c3aed"
-                              title="ARIA Usage"
-                              subtitle="Roles, accessible names, landmarks"
-                              issueGroups={ariaGroups}
-                              insights={ariaInsights}
-                              extraChecks={[]}
-                              infoKey="aria"
-                            />
-                            <AuditCard
-                              icon='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
-                              iconBg="#fff7ed"
-                              iconStroke="#ea580c"
-                              title="Animation & Motion"
-                              subtitle="Flashing, autoplay, reduced-motion support"
-                              issueGroups={motionGroups}
-                              insights={motionInsights}
-                              extraChecks={[]}
-                            />
-                            <AuditCard
-                              icon='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
-                              iconBg="#ecfdf5"
-                              iconStroke="#059669"
-                              title="Language Attributes"
-                              subtitle="html[lang], lang on passages, locale"
-                              issueGroups={langGroups}
-                              insights={langInsights}
-                              extraChecks={
-                                hasLangAttr !== null
-                                  ? [
-                                      {
-                                        label: "html[lang] attribute",
-                                        pass: hasLangAttr,
-                                        detail: hasLangAttr
-                                          ? "Present"
-                                          : "Missing — screen readers cannot determine page language",
-                                      },
-                                    ]
-                                  : []
-                              }
-                            />
-                          </div>
-
-                          {/* ── Cognitive Accessibility Score (full width) ── */}
-                          <div
-                            style={{
-                              background: "#fff",
-                              borderRadius: 14,
-                              padding: "20px 24px",
-                              border: "1px solid #e2e8f0",
-                              boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: 20,
-                              }}
-                            >
-                              {/* Circular score */}
+                          {!collapsedSections.specializedAudits && (
+                            <>
+                              {/* 2×2 audit grid */}
                               <div
                                 style={{
-                                  flexShrink: 0,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  gap: 4,
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr",
+                                  gap: 14,
+                                  marginBottom: 14,
                                 }}
                               >
-                                <svg width="80" height="80" viewBox="0 0 80 80">
-                                  <circle
-                                    cx="40"
-                                    cy="40"
-                                    r="32"
-                                    fill="none"
-                                    stroke="#f1f5f9"
-                                    strokeWidth="8"
-                                  />
-                                  <circle
-                                    cx="40"
-                                    cy="40"
-                                    r="32"
-                                    fill="none"
-                                    stroke={cogColor}
-                                    strokeWidth="8"
-                                    strokeDasharray={`${(2 * Math.PI * 32 * cogScore) / 100} ${2 * Math.PI * 32 * (1 - cogScore / 100)}`}
-                                    strokeDashoffset={2 * Math.PI * 32 * 0.25}
-                                    strokeLinecap="round"
-                                  />
-                                  <text
-                                    x="40"
-                                    y="37"
-                                    textAnchor="middle"
-                                    fontSize="16"
-                                    fontWeight="800"
-                                    fill={cogColor}
-                                  >
-                                    {cogScore}
-                                  </text>
-                                  <text
-                                    x="40"
-                                    y="50"
-                                    textAnchor="middle"
-                                    fontSize="8"
-                                    fill="#94a3b8"
-                                  >
-                                    /100
-                                  </text>
-                                </svg>
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 600,
-                                    color: "#94a3b8",
-                                  }}
-                                >
-                                  Cognitive Score
-                                </span>
+                                <AuditCard
+                                  icon='<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="15" x2="16" y2="15"/>'
+                                  iconBg="#fef9c3"
+                                  iconStroke="#ca8a04"
+                                  title="Form Accessibility"
+                                  subtitle="Labels, errors, validation, autocomplete"
+                                  issueGroups={formGroups}
+                                  insights={formInsights}
+                                  extraChecks={[]}
+                                  infoKey="form"
+                                />
+                                <AuditCard
+                                  icon='<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>'
+                                  iconBg="#ede9fe"
+                                  iconStroke="#7c3aed"
+                                  title="ARIA Usage"
+                                  subtitle="Roles, accessible names, landmarks"
+                                  issueGroups={ariaGroups}
+                                  insights={ariaInsights}
+                                  extraChecks={[]}
+                                  infoKey="aria"
+                                />
+                                <AuditCard
+                                  icon='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+                                  iconBg="#fff7ed"
+                                  iconStroke="#ea580c"
+                                  title="Animation & Motion"
+                                  subtitle="Flashing, autoplay, reduced-motion support"
+                                  issueGroups={motionGroups}
+                                  insights={motionInsights}
+                                  extraChecks={[]}
+                                />
+                                <AuditCard
+                                  icon='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+                                  iconBg="#ecfdf5"
+                                  iconStroke="#059669"
+                                  title="Language Attributes"
+                                  subtitle="html[lang], lang on passages, locale"
+                                  issueGroups={langGroups}
+                                  insights={langInsights}
+                                  extraChecks={
+                                    hasLangAttr !== null
+                                      ? [
+                                          {
+                                            label: "html[lang] attribute",
+                                            pass: hasLangAttr,
+                                            detail: hasLangAttr
+                                              ? "Present"
+                                              : "Missing — screen readers cannot determine page language",
+                                          },
+                                        ]
+                                      : []
+                                  }
+                                />
                               </div>
 
-                              {/* Right content */}
-                              <div style={{ flex: 1, minWidth: 0 }}>
+                              {/* ── Cognitive Accessibility Score (full width) ── */}
+                              <div
+                                style={{
+                                  background: "#fff",
+                                  borderRadius: 14,
+                                  padding: "20px 24px",
+                                  border: "1px solid #e2e8f0",
+                                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                                }}
+                              >
                                 <div
                                   style={{
                                     display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    marginBottom: 10,
+                                    alignItems: "flex-start",
+                                    gap: 20,
                                   }}
                                 >
+                                  {/* Circular score */}
                                   <div
                                     style={{
-                                      width: 28,
-                                      height: 28,
-                                      borderRadius: 7,
-                                      background: "#f0fdf4",
-                                      border: "1px solid #bbf7d0",
+                                      flexShrink: 0,
                                       display: "flex",
+                                      flexDirection: "column",
                                       alignItems: "center",
-                                      justifyContent: "center",
+                                      gap: 4,
                                     }}
                                   >
                                     <svg
-                                      width="13"
-                                      height="13"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="#16a34a"
-                                      strokeWidth="2.2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
+                                      width="80"
+                                      height="80"
+                                      viewBox="0 0 80 80"
                                     >
-                                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                                      <line
-                                        x1="12"
-                                        y1="17"
-                                        x2="12.01"
-                                        y2="17"
+                                      <circle
+                                        cx="40"
+                                        cy="40"
+                                        r="32"
+                                        fill="none"
+                                        stroke="#f1f5f9"
+                                        strokeWidth="8"
                                       />
-                                      <circle cx="12" cy="12" r="10" />
+                                      <circle
+                                        cx="40"
+                                        cy="40"
+                                        r="32"
+                                        fill="none"
+                                        stroke={cogColor}
+                                        strokeWidth="8"
+                                        strokeDasharray={`${(2 * Math.PI * 32 * cogScore) / 100} ${2 * Math.PI * 32 * (1 - cogScore / 100)}`}
+                                        strokeDashoffset={
+                                          2 * Math.PI * 32 * 0.25
+                                        }
+                                        strokeLinecap="round"
+                                      />
+                                      <text
+                                        x="40"
+                                        y="37"
+                                        textAnchor="middle"
+                                        fontSize="16"
+                                        fontWeight="800"
+                                        fill={cogColor}
+                                      >
+                                        {cogScore}
+                                      </text>
+                                      <text
+                                        x="40"
+                                        y="50"
+                                        textAnchor="middle"
+                                        fontSize="8"
+                                        fill="#94a3b8"
+                                      >
+                                        /100
+                                      </text>
                                     </svg>
-                                  </div>
-                                  <div>
-                                    <div
+                                    <span
                                       style={{
-                                        fontSize: 13,
-                                        fontWeight: 700,
-                                        color: "#0f172a",
+                                        fontSize: 10,
+                                        fontWeight: 600,
+                                        color: "#94a3b8",
                                       }}
                                     >
-                                      Cognitive Accessibility
-                                    </div>
-                                    <div
-                                      style={{ fontSize: 11, color: "#94a3b8" }}
-                                    >
-                                      Readability, consistency, error
-                                      prevention, predictability
-                                    </div>
+                                      Cognitive Score
+                                    </span>
                                   </div>
-                                </div>
 
-                                {/* Checks grid */}
-                                <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(3,1fr)",
-                                    gap: 6,
-                                    marginBottom:
-                                      cogInsights.length > 0 ? 14 : 0,
-                                  }}
-                                >
-                                  {COG_CHECKS.map((c, i) => (
+                                  {/* Right content */}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
                                     <div
-                                      key={i}
                                       style={{
                                         display: "flex",
                                         alignItems: "center",
-                                        gap: 5,
-                                        fontSize: 10.5,
-                                        color: c.pass ? "#15803d" : "#b91c1c",
-                                        background: c.pass
-                                          ? "#f0fdf4"
-                                          : "#fef2f2",
-                                        border: `1px solid ${c.pass ? "#bbf7d0" : "#fca5a5"}`,
-                                        borderRadius: 7,
-                                        padding: "5px 8px",
+                                        gap: 8,
+                                        marginBottom: 10,
                                       }}
                                     >
-                                      {c.pass ? (
-                                        <svg
-                                          width="9"
-                                          height="9"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="#16a34a"
-                                          strokeWidth="3"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                      ) : (
-                                        <svg
-                                          width="9"
-                                          height="9"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="#dc2626"
-                                          strokeWidth="3"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <line x1="18" y1="6" x2="6" y2="18" />
-                                          <line x1="6" y1="6" x2="18" y2="18" />
-                                        </svg>
-                                      )}
-                                      <span>{c.label}</span>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {/* AI insights */}
-                                {cogInsights.length > 0 && (
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      flexDirection: "column",
-                                      gap: 5,
-                                    }}
-                                  >
-                                    {cogInsights.map((s, i) => (
                                       <div
-                                        key={i}
                                         style={{
+                                          width: 28,
+                                          height: 28,
+                                          borderRadius: 7,
+                                          background: "#f0fdf4",
+                                          border: "1px solid #bbf7d0",
                                           display: "flex",
-                                          gap: 6,
-                                          padding: "7px 10px",
-                                          background: "#fafafa",
-                                          border: "1px solid #e2e8f0",
-                                          borderLeft: "3px solid #7c3aed",
-                                          borderRadius: 8,
+                                          alignItems: "center",
+                                          justifyContent: "center",
                                         }}
                                       >
                                         <svg
-                                          width="11"
-                                          height="11"
+                                          width="13"
+                                          height="13"
                                           viewBox="0 0 24 24"
                                           fill="none"
-                                          stroke="#7c3aed"
-                                          strokeWidth="2.5"
+                                          stroke="#16a34a"
+                                          strokeWidth="2.2"
                                           strokeLinecap="round"
                                           strokeLinejoin="round"
-                                          style={{
-                                            flexShrink: 0,
-                                            marginTop: 2,
-                                          }}
                                         >
-                                          <circle cx="12" cy="12" r="10" />
+                                          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
                                           <line
                                             x1="12"
-                                            y1="8"
-                                            x2="12"
-                                            y2="12"
-                                          />
-                                          <line
-                                            x1="12"
-                                            y1="16"
+                                            y1="17"
                                             x2="12.01"
-                                            y2="16"
+                                            y2="17"
                                           />
+                                          <circle cx="12" cy="12" r="10" />
                                         </svg>
-                                        <p
+                                      </div>
+                                      <div>
+                                        <div
                                           style={{
-                                            margin: 0,
-                                            fontSize: 11,
-                                            color: "#475569",
-                                            lineHeight: 1.5,
+                                            fontSize: 13,
+                                            fontWeight: 700,
+                                            color: "#0f172a",
                                           }}
                                         >
-                                          {s}
-                                        </p>
+                                          Cognitive Accessibility
+                                        </div>
+                                        <div
+                                          style={{
+                                            fontSize: 11,
+                                            color: "#94a3b8",
+                                          }}
+                                        >
+                                          Readability, consistency, error
+                                          prevention, predictability
+                                        </div>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
+                                    </div>
 
-                                {cogInsights.length === 0 &&
-                                  cogGroups.length === 0 && (
+                                    {/* Checks grid */}
                                     <div
                                       style={{
-                                        display: "flex",
-                                        alignItems: "center",
+                                        display: "grid",
+                                        gridTemplateColumns: "repeat(3,1fr)",
                                         gap: 6,
-                                        fontSize: 11.5,
-                                        color: "#15803d",
+                                        marginBottom:
+                                          cogInsights.length > 0 ? 14 : 0,
                                       }}
                                     >
-                                      <svg
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#16a34a"
-                                        strokeWidth="2.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <polyline points="20 6 9 17 4 12" />
-                                      </svg>
-                                      No cognitive accessibility issues
-                                      detected.
+                                      {COG_CHECKS.map((c, i) => (
+                                        <div
+                                          key={i}
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 5,
+                                            fontSize: 10.5,
+                                            color: c.pass
+                                              ? "#15803d"
+                                              : "#b91c1c",
+                                            background: c.pass
+                                              ? "#f0fdf4"
+                                              : "#fef2f2",
+                                            border: `1px solid ${c.pass ? "#bbf7d0" : "#fca5a5"}`,
+                                            borderRadius: 7,
+                                            padding: "5px 8px",
+                                          }}
+                                        >
+                                          {c.pass ? (
+                                            <svg
+                                              width="9"
+                                              height="9"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="#16a34a"
+                                              strokeWidth="3"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                          ) : (
+                                            <svg
+                                              width="9"
+                                              height="9"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="#dc2626"
+                                              strokeWidth="3"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <line
+                                                x1="18"
+                                                y1="6"
+                                                x2="6"
+                                                y2="18"
+                                              />
+                                              <line
+                                                x1="6"
+                                                y1="6"
+                                                x2="18"
+                                                y2="18"
+                                              />
+                                            </svg>
+                                          )}
+                                          <span>{c.label}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
+
+                                    {/* AI insights */}
+                                    {cogInsights.length > 0 && (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          gap: 5,
+                                        }}
+                                      >
+                                        {cogInsights.map((s, i) => (
+                                          <div
+                                            key={i}
+                                            style={{
+                                              display: "flex",
+                                              gap: 6,
+                                              padding: "7px 10px",
+                                              background: "#fafafa",
+                                              border: "1px solid #e2e8f0",
+                                              borderLeft: "3px solid #7c3aed",
+                                              borderRadius: 8,
+                                            }}
+                                          >
+                                            <svg
+                                              width="11"
+                                              height="11"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="#7c3aed"
+                                              strokeWidth="2.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              style={{
+                                                flexShrink: 0,
+                                                marginTop: 2,
+                                              }}
+                                            >
+                                              <circle cx="12" cy="12" r="10" />
+                                              <line
+                                                x1="12"
+                                                y1="8"
+                                                x2="12"
+                                                y2="12"
+                                              />
+                                              <line
+                                                x1="12"
+                                                y1="16"
+                                                x2="12.01"
+                                                y2="16"
+                                              />
+                                            </svg>
+                                            <p
+                                              style={{
+                                                margin: 0,
+                                                fontSize: 11,
+                                                color: "#475569",
+                                                lineHeight: 1.5,
+                                              }}
+                                            >
+                                              {s}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {cogInsights.length === 0 &&
+                                      cogGroups.length === 0 && (
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            fontSize: 11.5,
+                                            color: "#15803d",
+                                          }}
+                                        >
+                                          <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#16a34a"
+                                            strokeWidth="2.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <polyline points="20 6 9 17 4 12" />
+                                          </svg>
+                                          No cognitive accessibility issues
+                                          detected.
+                                        </div>
+                                      )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
+                            </>
+                          )}
                         </div>
                       </>
                     );
@@ -5898,7 +6336,7 @@ Return the edited screenshot with minimal localized edits only.
                     borderRadius: "18px",
                     padding: "20px 24px",
                     boxShadow: "var(--shadow)",
-                    marginTop: "32px",
+
                     border: "1px solid var(--border-light)",
                     borderTop: "3px solid #d97706",
                   }}
@@ -5907,7 +6345,83 @@ Return the edited screenshot with minimal localized edits only.
                     if (nextSteps.length === 0) {
                       return (
                         <>
-                          <h2 className="next-steps-heading">Next Steps</h2>
+                          <h2
+                            className="next-steps-heading"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 9,
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#d97706"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </span>
+                              Next Steps
+                            </span>
+                            <button
+                              aria-label={
+                                collapsedSections.nextSteps
+                                  ? "Expand Next Steps"
+                                  : "Collapse Next Steps"
+                              }
+                              onClick={() => toggleSection("nextSteps")}
+                              style={{
+                                marginLeft: 12,
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#64748b",
+                                transition: "transform 0.2s",
+                                transform: collapsedSections.nextSteps
+                                  ? "rotate(-90deg)"
+                                  : "none",
+                              }}
+                            >
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </button>
+                          </h2>
+
                           <p style={{ color: "#64748b", fontSize: 14 }}>
                             No specific recommendations were generated.
                           </p>
@@ -6145,10 +6659,87 @@ Return the edited screenshot with minimal localized edits only.
                           <div>
                             <h2
                               className="next-steps-heading"
-                              style={{ margin: "0 0 2px" }}
+                              style={{
+                                margin: "0 0 2px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
                             >
+                              <div
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 9,
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#d97706"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </div>
                               Next Steps
+                              <button
+                                aria-label={
+                                  collapsedSections.nextSteps
+                                    ? "Expand Next Steps"
+                                    : "Collapse Next Steps"
+                                }
+                                onClick={() => toggleSection("nextSteps")}
+                                style={{
+                                  marginLeft: 12,
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  fontSize: 18,
+                                  color: "#64748b",
+                                  transition: "transform 0.2s",
+                                  transform: collapsedSections.nextSteps
+                                    ? "rotate(-90deg)"
+                                    : "none",
+                                }}
+                              >
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </button>
                             </h2>
+                            <div
+                              style={{
+                                marginBottom: 12,
+                                color: "#64748b",
+                                fontSize: 15,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Offers a prioritized list of recommended actions
+                              to improve your site’s accessibility. This section
+                              helps you plan remediation and track progress
+                              toward compliance.
+                            </div>
                             <p
                               style={{
                                 margin: 0,
@@ -6225,339 +6816,351 @@ Return the edited screenshot with minimal localized edits only.
                           </button>
                         </div>
 
-                        {/* ── Segmented progress bar ── */}
                         <div
                           style={{
-                            background: "#f8fafc",
-                            border: "1px solid #f1f5f9",
-                            borderRadius: 10,
-                            padding: "10px 14px",
-                            marginBottom: 18,
+                            display: collapsedSections.nextSteps
+                              ? "none"
+                              : "block",
                           }}
                         >
+                          {/* ── Segmented progress bar ── */}
                           <div
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: 7,
+                              background: "#f8fafc",
+                              border: "1px solid #f1f5f9",
+                              borderRadius: 10,
+                              padding: "10px 14px",
+                              marginBottom: 18,
                             }}
                           >
-                            <span
+                            <div
                               style={{
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: allDone ? "#16a34a" : "#334155",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                marginBottom: 7,
                               }}
                             >
-                              {allDone
-                                ? "All steps completed!"
-                                : `${doneCount} / ${totalCount} completed`}
-                            </span>
-                            <span
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: allDone ? "#16a34a" : "#334155",
+                                }}
+                              >
+                                {allDone
+                                  ? "All steps completed!"
+                                  : `${doneCount} / ${totalCount} completed`}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 800,
+                                  color: allDone ? "#16a34a" : "#0f172a",
+                                }}
+                              >
+                                {pct}%
+                              </span>
+                            </div>
+                            <div
                               style={{
-                                fontSize: 15,
-                                fontWeight: 800,
-                                color: allDone ? "#16a34a" : "#0f172a",
+                                display: "flex",
+                                gap: 3,
+                                height: 7,
+                                borderRadius: 999,
+                                overflow: "hidden",
+                                marginBottom: 7,
                               }}
                             >
-                              {pct}%
-                            </span>
-                          </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 3,
-                              height: 7,
-                              borderRadius: 999,
-                              overflow: "hidden",
-                              marginBottom: 7,
-                            }}
-                          >
-                            {phaseOrder
-                              .filter((p) => grouped[p].length > 0)
-                              .map((phase) => {
-                                const meta = phaseLabels[phase];
-                                const phaseDone = grouped[phase].filter((i) =>
-                                  doneSteps.has(i.idx),
-                                ).length;
-                                const phaseTotal = grouped[phase].length;
-                                const phaseWidth =
-                                  (phaseTotal / totalCount) * 100;
-                                const phaseFill =
-                                  phaseTotal > 0
-                                    ? (phaseDone / phaseTotal) * 100
-                                    : 0;
-                                return (
-                                  <div
-                                    key={phase}
-                                    style={{
-                                      width: `${phaseWidth}%`,
-                                      background: "#e2e8f0",
-                                      borderRadius: 999,
-                                      overflow: "hidden",
-                                    }}
-                                    title={`${meta.title}: ${phaseDone}/${phaseTotal}`}
-                                  >
+                              {phaseOrder
+                                .filter((p) => grouped[p].length > 0)
+                                .map((phase) => {
+                                  const meta = phaseLabels[phase];
+                                  const phaseDone = grouped[phase].filter((i) =>
+                                    doneSteps.has(i.idx),
+                                  ).length;
+                                  const phaseTotal = grouped[phase].length;
+                                  const phaseWidth =
+                                    (phaseTotal / totalCount) * 100;
+                                  const phaseFill =
+                                    phaseTotal > 0
+                                      ? (phaseDone / phaseTotal) * 100
+                                      : 0;
+                                  return (
                                     <div
+                                      key={phase}
                                       style={{
-                                        height: "100%",
-                                        width: `${phaseFill}%`,
-                                        background: meta.color,
+                                        width: `${phaseWidth}%`,
+                                        background: "#e2e8f0",
                                         borderRadius: 999,
-                                        transition: "width 0.4s ease",
+                                        overflow: "hidden",
                                       }}
-                                    />
-                                  </div>
-                                );
-                              })}
+                                      title={`${meta.title}: ${phaseDone}/${phaseTotal}`}
+                                    >
+                                      <div
+                                        style={{
+                                          height: "100%",
+                                          width: `${phaseFill}%`,
+                                          background: meta.color,
+                                          borderRadius: 999,
+                                          transition: "width 0.4s ease",
+                                        }}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 12,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              {phaseOrder
+                                .filter((p) => grouped[p].length > 0)
+                                .map((phase) => {
+                                  const meta = phaseLabels[phase];
+                                  const phaseDone = grouped[phase].filter((i) =>
+                                    doneSteps.has(i.idx),
+                                  ).length;
+                                  return (
+                                    <div
+                                      key={phase}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: 7,
+                                          height: 7,
+                                          borderRadius: 2,
+                                          background: meta.color,
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          color: "#64748b",
+                                        }}
+                                      >
+                                        {meta.title}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          color: meta.color,
+                                        }}
+                                      >
+                                        {phaseDone}/{grouped[phase].length}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                            </div>
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 12,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            {phaseOrder
-                              .filter((p) => grouped[p].length > 0)
-                              .map((phase) => {
-                                const meta = phaseLabels[phase];
-                                const phaseDone = grouped[phase].filter((i) =>
-                                  doneSteps.has(i.idx),
-                                ).length;
-                                return (
+
+                          {/* ── Phase groups ── */}
+                          {phaseOrder
+                            .filter((p) => grouped[p].length > 0)
+                            .map((phase) => {
+                              const meta = phaseLabels[phase];
+                              const phaseDone = grouped[phase].filter((i) =>
+                                doneSteps.has(i.idx),
+                              ).length;
+                              const phaseComplete =
+                                phaseDone === grouped[phase].length;
+                              return (
+                                <div key={phase} style={{ marginBottom: 16 }}>
+                                  {/* Phase banner */}
                                   <div
-                                    key={phase}
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
-                                      gap: 4,
+                                      gap: 8,
+                                      background: `${meta.color}0d`,
+                                      border: `1px solid ${meta.border}`,
+                                      borderLeft: `3px solid ${meta.color}`,
+                                      borderRadius: "0 8px 8px 0",
+                                      padding: "7px 12px",
+                                      marginBottom: 8,
                                     }}
                                   >
                                     <span
                                       style={{
-                                        width: 7,
-                                        height: 7,
-                                        borderRadius: 2,
-                                        background: meta.color,
+                                        color: meta.color,
                                         flexShrink: 0,
+                                        display: "flex",
                                       }}
-                                    />
+                                    >
+                                      {phaseIcons[phase]}
+                                    </span>
                                     <span
-                                      style={{ fontSize: 11, color: "#64748b" }}
+                                      style={{
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        color: meta.color,
+                                        flex: 1,
+                                      }}
                                     >
                                       {meta.title}
                                     </span>
                                     <span
                                       style={{
                                         fontSize: 11,
-                                        fontWeight: 700,
-                                        color: meta.color,
+                                        color: "#94a3b8",
+                                        marginRight: 8,
                                       }}
                                     >
-                                      {phaseDone}/{grouped[phase].length}
+                                      {meta.sub}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        background: phaseComplete
+                                          ? meta.color
+                                          : "#fff",
+                                        color: phaseComplete
+                                          ? "#fff"
+                                          : meta.color,
+                                        border: `1.5px solid ${meta.color}`,
+                                        borderRadius: 999,
+                                        padding: "2px 10px",
+                                        transition: "all 0.2s",
+                                      }}
+                                    >
+                                      {phaseComplete
+                                        ? "Done"
+                                        : `${phaseDone}/${grouped[phase].length}`}
                                     </span>
                                   </div>
-                                );
-                              })}
-                          </div>
-                        </div>
 
-                        {/* ── Phase groups ── */}
-                        {phaseOrder
-                          .filter((p) => grouped[p].length > 0)
-                          .map((phase) => {
-                            const meta = phaseLabels[phase];
-                            const phaseDone = grouped[phase].filter((i) =>
-                              doneSteps.has(i.idx),
-                            ).length;
-                            const phaseComplete =
-                              phaseDone === grouped[phase].length;
-                            return (
-                              <div key={phase} style={{ marginBottom: 16 }}>
-                                {/* Phase banner */}
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    background: `${meta.color}0d`,
-                                    border: `1px solid ${meta.border}`,
-                                    borderLeft: `3px solid ${meta.color}`,
-                                    borderRadius: "0 8px 8px 0",
-                                    padding: "7px 12px",
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      color: meta.color,
-                                      flexShrink: 0,
-                                      display: "flex",
-                                    }}
-                                  >
-                                    {phaseIcons[phase]}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 12,
-                                      fontWeight: 800,
-                                      color: meta.color,
-                                      flex: 1,
-                                    }}
-                                  >
-                                    {meta.title}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      color: "#94a3b8",
-                                      marginRight: 8,
-                                    }}
-                                  >
-                                    {meta.sub}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      background: phaseComplete
-                                        ? meta.color
-                                        : "#fff",
-                                      color: phaseComplete
-                                        ? "#fff"
-                                        : meta.color,
-                                      border: `1.5px solid ${meta.color}`,
-                                      borderRadius: 999,
-                                      padding: "2px 10px",
-                                      transition: "all 0.2s",
-                                    }}
-                                  >
-                                    {phaseComplete
-                                      ? "Done"
-                                      : `${phaseDone}/${grouped[phase].length}`}
-                                  </span>
-                                </div>
-
-                                {/* Step cards */}
-                                {grouped[phase].map(
-                                  ({ step, idx, criteria }) => {
-                                    const done = doneSteps.has(idx);
-                                    return (
-                                      <div
-                                        key={idx}
-                                        onClick={() => toggleDoneStep(idx)}
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: 10,
-                                          padding: "9px 12px",
-                                          borderRadius: 8,
-                                          border: `1px solid ${done ? meta.border : "#f1f5f9"}`,
-                                          borderLeft: `3px solid ${done ? meta.color : "#e2e8f0"}`,
-                                          background: done
-                                            ? `${meta.color}08`
-                                            : "#fff",
-                                          marginBottom: 5,
-                                          cursor: "pointer",
-                                          transition: "all 0.18s ease",
-                                        }}
-                                      >
-                                        {/* Checkbox circle */}
+                                  {/* Step cards */}
+                                  {grouped[phase].map(
+                                    ({ step, idx, criteria }) => {
+                                      const done = doneSteps.has(idx);
+                                      return (
                                         <div
+                                          key={idx}
+                                          onClick={() => toggleDoneStep(idx)}
                                           style={{
-                                            width: 18,
-                                            height: 18,
-                                            borderRadius: "50%",
-                                            flexShrink: 0,
-                                            border: `2px solid ${done ? meta.color : "#cbd5e1"}`,
-                                            background: done
-                                              ? meta.color
-                                              : "#fff",
                                             display: "flex",
                                             alignItems: "center",
-                                            justifyContent: "center",
+                                            gap: 10,
+                                            padding: "9px 12px",
+                                            borderRadius: 8,
+                                            border: `1px solid ${done ? meta.border : "#f1f5f9"}`,
+                                            borderLeft: `3px solid ${done ? meta.color : "#e2e8f0"}`,
+                                            background: done
+                                              ? `${meta.color}08`
+                                              : "#fff",
+                                            marginBottom: 5,
+                                            cursor: "pointer",
                                             transition: "all 0.18s ease",
                                           }}
                                         >
-                                          {done && (
-                                            <svg
-                                              width="9"
-                                              height="9"
-                                              viewBox="0 0 24 24"
-                                              fill="none"
-                                              stroke="#fff"
-                                              strokeWidth="3.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            >
-                                              <polyline points="20 6 9 17 4 12" />
-                                            </svg>
-                                          )}
-                                        </div>
-
-                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          {/* Checkbox circle */}
                                           <div
                                             style={{
+                                              width: 18,
+                                              height: 18,
+                                              borderRadius: "50%",
+                                              flexShrink: 0,
+                                              border: `2px solid ${done ? meta.color : "#cbd5e1"}`,
+                                              background: done
+                                                ? meta.color
+                                                : "#fff",
                                               display: "flex",
                                               alignItems: "center",
-                                              gap: 5,
-                                              flexWrap: "wrap",
+                                              justifyContent: "center",
+                                              transition: "all 0.18s ease",
                                             }}
                                           >
-                                            <span
+                                            {done && (
+                                              <svg
+                                                width="9"
+                                                height="9"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="#fff"
+                                                strokeWidth="3.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              >
+                                                <polyline points="20 6 9 17 4 12" />
+                                              </svg>
+                                            )}
+                                          </div>
+
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div
                                               style={{
-                                                fontSize: 11,
-                                                fontWeight: 800,
-                                                color: done
-                                                  ? meta.color
-                                                  : "#94a3b8",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 5,
+                                                flexWrap: "wrap",
                                               }}
                                             >
-                                              #{idx + 1}
-                                            </span>
-                                            {criteria.map((c) => (
                                               <span
-                                                key={c}
                                                 style={{
-                                                  fontSize: 10,
-                                                  fontWeight: 600,
-                                                  background: "#f0f9ff",
-                                                  color: "#0284c7",
-                                                  border: "1px solid #bae6fd",
-                                                  borderRadius: 999,
-                                                  padding: "0px 6px",
+                                                  fontSize: 11,
+                                                  fontWeight: 800,
+                                                  color: done
+                                                    ? meta.color
+                                                    : "#94a3b8",
                                                 }}
                                               >
-                                                {c}
+                                                #{idx + 1}
                                               </span>
-                                            ))}
-                                            <p
-                                              style={{
-                                                margin: 0,
-                                                fontSize: 13,
-                                                lineHeight: 1.5,
-                                                color: done
-                                                  ? "#94a3b8"
-                                                  : "#334155",
-                                                textDecoration: done
-                                                  ? "line-through"
-                                                  : "none",
-                                                textDecorationColor: meta.color,
-                                              }}
-                                            >
-                                              {step}
-                                            </p>
+                                              {criteria.map((c) => (
+                                                <span
+                                                  key={c}
+                                                  style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 600,
+                                                    background: "#f0f9ff",
+                                                    color: "#0284c7",
+                                                    border: "1px solid #bae6fd",
+                                                    borderRadius: 999,
+                                                    padding: "0px 6px",
+                                                  }}
+                                                >
+                                                  {c}
+                                                </span>
+                                              ))}
+                                              <p
+                                                style={{
+                                                  margin: 0,
+                                                  fontSize: 13,
+                                                  lineHeight: 1.5,
+                                                  color: done
+                                                    ? "#94a3b8"
+                                                    : "#334155",
+                                                  textDecoration: done
+                                                    ? "line-through"
+                                                    : "none",
+                                                  textDecorationColor:
+                                                    meta.color,
+                                                }}
+                                              >
+                                                {step}
+                                              </p>
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    );
-                                  },
-                                )}
-                              </div>
-                            );
-                          })}
+                                      );
+                                    },
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
                       </>
                     );
                   })()}
@@ -6573,17 +7176,6 @@ Return the edited screenshot with minimal localized edits only.
       </div>
     </div>
   );
-
-  // --- Section wrappers for scrollspy ---
-  // Place these wrappers around your main sections below:
-  // <section id="website-preview" ref={sectionRefs.current[0]}>...</section>
-  // <section id="accessibility-issues" ref={sectionRefs.current[1]}>...</section>
-  // <section id="hci-report" ref={sectionRefs.current[2]}>...</section>
-  // <section id="mobile-experience" ref={sectionRefs.current[3]}>...</section>
-  // <section id="specialized-audits" ref={sectionRefs.current[4]}>...</section>
-  // <section id="next-steps" ref={sectionRefs.current[5]}>...</section>
-  // Example: <section id="website-preview" ref={sectionRefs.current[0]}>Website preview content...</section>
-  // Wrap your actual content in these sections for scrollspy to work.
 }
 
 export default Complete;

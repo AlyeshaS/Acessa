@@ -5,7 +5,7 @@
 }
 
 :root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -115,7 +115,7 @@ button {
   font-size: 1em;
   font-weight: 600;
   font-family: inherit;
-  background-color: #189b97;
+  /* background-color: #189b97; */
   color: #ffffff;
   cursor: pointer;
   transition: all 0.2s ease;

@@ -7,43 +7,78 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isDone, setIsDone] = useState(false);
   const steps = result?.steps || [];
-  const screenshot = result?.screenshot;
+
+  // Track the best screenshot to display. We use a ref to remember the last
+  // step-specific frame so the static overview from the result event never
+  // overwrites a live Playwright frame that was already showing.
+  const lastStepScreenshotRef = useRef(result?.screenshot || null);
+  const [displayScreenshot, setDisplayScreenshot] = useState(
+    result?.screenshot || null,
+  );
+
   const imgRef = useRef(null);
 
+  // When new steps arrive, keep the ref up to date with the latest frame.
+  useEffect(() => {
+    const latest = steps[steps.length - 1];
+    if (latest?.screenshot) {
+      lastStepScreenshotRef.current = latest.screenshot;
+    }
+  }, [steps.length]);
+
+  // Advance through steps as they arrive.
   useEffect(() => {
     if (steps.length === 0) return;
-
-    // Advance through steps as they arrive
     const interval = setInterval(() => {
       setCurrentIndex((prev) => {
-        if (prev >= steps.length - 1) {
-          return prev; // wait for more steps
-        }
+        if (prev >= steps.length - 1) return prev;
         return prev + 1;
       });
-    }, 800); // slower pace to see each check
-
+    }, 800);
     return () => clearInterval(interval);
   }, [steps.length]);
 
-  // Detect when animation is complete
+  // When currentIndex advances, update displayScreenshot with the most
+  // accurate frame: this step's own screenshot → last seen step screenshot →
+  // static overview fallback.
+  useEffect(() => {
+    const step = steps[currentIndex];
+    const best =
+      step?.screenshot ||
+      lastStepScreenshotRef.current ||
+      result?.screenshot ||
+      null;
+    if (best) setDisplayScreenshot(best);
+  }, [currentIndex, steps, result?.screenshot]);
+
+  // Only update from the top-level result screenshot if no step screenshot has
+  // arrived yet — prevents the static overview overwriting a live frame.
+  useEffect(() => {
+    if (!result?.screenshot) return;
+    if (!lastStepScreenshotRef.current) {
+      setDisplayScreenshot(result.screenshot);
+    }
+  }, [result?.screenshot]);
+
+  // Detect when animation is complete.
   useEffect(() => {
     if (steps.length === 0) return;
-
     const timeout = setTimeout(() => {
       if (currentIndex >= steps.length - 1) {
         setIsDone(true);
         if (onComplete) onComplete();
       }
     }, 3000);
-
     return () => clearTimeout(timeout);
   }, [currentIndex, steps.length, onComplete]);
 
   const currentStep = steps[currentIndex];
-  const currentScreenshot = currentStep?.screenshot || screenshot;
+
+  // offsetX/Y tell us how far the page was scrolled when the screenshot was
+  // taken. We subtract them so the overlay lands correctly on the visible frame.
   const offsetX = currentStep?.offsetX || 0;
   const offsetY = currentStep?.offsetY || 0;
+
   const [scale, setScale] = useState(1);
 
   const handleImgLoad = (e) => {
@@ -61,8 +96,81 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   const scaled = (val) => Math.round((val || 0) * (scale || 1));
 
+  // Compute circle position. Clamp to [0, rendered image width/height - size]
+  // so the circle is never clipped by the container edges.
+  const getCircleStyle = (step) => {
+    if (!step || typeof step.x !== "number" || typeof step.y !== "number") {
+      return null;
+    }
+    const size = Math.round(36 * scale);
+    const radius = Math.round(18 * scale);
+    const borderW = Math.max(3, Math.round(5 * scale));
+
+    const imgW = imgRef.current ? imgRef.current.clientWidth : size * 2;
+    const imgH = imgRef.current ? imgRef.current.clientHeight : size * 2;
+
+    // Raw position: viewport-relative coords scaled to rendered size
+    const rawLeft = scaled(step.x - offsetX) - radius;
+    const rawTop = scaled(step.y - offsetY) - radius;
+
+    // Clamp so the circle stays fully inside the image
+    const left = Math.max(0, Math.min(rawLeft, imgW - size));
+    const top = Math.max(0, Math.min(rawTop, imgH - size));
+
+    return {
+      position: "absolute",
+      left,
+      top,
+      width: size,
+      height: size,
+      borderRadius: "50%",
+      border: `${borderW}px solid #E6892C`,
+      boxShadow: `0 0 ${Math.round(25 * scale)}px rgba(230,137,44,0.8)`,
+      background: "rgba(230,137,44,0.2)",
+      pointerEvents: "none",
+      zIndex: 5,
+      // Pulse animation so the circle is impossible to miss
+      animation: "wcag-click-pulse 0.7s ease-out",
+    };
+  };
+
+  // Decide what overlay to show. Always show a circle for click steps.
+  // Fall back to a centred circle if coordinates are missing or zero.
+  const circleStyle =
+    currentStep?.type === "click" ? getCircleStyle(currentStep) : null;
+
+  // Fallback centred circle when x/y are missing — ensures something always
+  // appears so the user knows Playwright is active.
+  const fallbackCircleStyle =
+    !circleStyle && !isDone && currentStep
+      ? {
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: Math.round(36 * scale),
+          height: Math.round(36 * scale),
+          borderRadius: "50%",
+          border: `${Math.max(3, Math.round(5 * scale))}px solid #E6892C`,
+          boxShadow: `0 0 ${Math.round(25 * scale)}px rgba(230,137,44,0.5)`,
+          background: "rgba(230,137,44,0.12)",
+          pointerEvents: "none",
+          zIndex: 5,
+          animation: "wcag-click-pulse 0.7s ease-out",
+        }
+      : null;
+
   return (
     <div className="analysis-player-single">
+      {/* Pulse keyframe — injected once inline so no external CSS needed */}
+      <style>{`
+        @keyframes wcag-click-pulse {
+          0%   { transform: scale(0.6); opacity: 0; }
+          40%  { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+
       {/* Live browser view */}
       <div
         className="analysis-image-wrapper"
@@ -71,7 +179,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           maxWidth: "600px",
           margin: "0 auto",
           borderRadius: "14px",
-          overflow: "auto",
+          overflow: "hidden",
           border: "2px solid var(--color-accent)",
           background: "rgba(15,23,42,0.8)",
           boxShadow: "0 4px 20px rgba(124,138,160,0.3)",
@@ -80,7 +188,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
         {/* Single screenshot with client-side overlays */}
         <img
           ref={imgRef}
-          src={currentScreenshot}
+          src={displayScreenshot}
           alt="Live Playwright browser view"
           className="analysis-screenshot"
           style={{
@@ -91,24 +199,11 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           onLoad={handleImgLoad}
         />
 
-        {/* Draw click circle overlay */}
-        {currentStep?.type === "click" && (
-          <div
-            style={{
-              position: "absolute",
-              left: scaled(currentStep.x - offsetX) - Math.round(18 * scale),
-              top: scaled(currentStep.y - offsetY) - Math.round(18 * scale),
-              width: Math.round(36 * scale),
-              height: Math.round(36 * scale),
-              borderRadius: "50%",
-              border: `${Math.max(3, Math.round(5 * scale))}px solid #E6892C`,
-              boxShadow: `0 0 ${Math.round(25 * scale)}px rgba(230,137,44,0.8)`,
-              background: "rgba(230,137,44,0.2)",
-              pointerEvents: "none",
-              zIndex: 5,
-            }}
-          />
-        )}
+        {/* Click circle — precise position when coordinates are available */}
+        {circleStyle && <div style={circleStyle} />}
+
+        {/* Fallback centred circle when coordinates are missing */}
+        {fallbackCircleStyle && <div style={fallbackCircleStyle} />}
 
         {/* Draw highlight box overlay */}
         {currentStep?.type === "highlight" && (
