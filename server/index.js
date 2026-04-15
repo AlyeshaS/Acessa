@@ -1200,6 +1200,29 @@ function sanitizeForPrompt(text) {
     .slice(0, 5000); // Limit length to prevent token overflow
 }
 
+/**
+ * Convert an axe-core violation to a human-readable WCAG criterion string.
+ * Axe tags like "wcag143" are decoded into "1.4.3" + the rule's help text.
+ * Falls back to the axe rule id if no decodable tag is found.
+ */
+function getWcagCriterionFromViolation(v) {
+  if (!v) return "Unknown";
+  const tags = v.tags || [];
+  const criterionTag = tags.find((t) => /^wcag\d{3,}$/.test(t));
+  if (criterionTag) {
+    const digits = criterionTag.replace("wcag", "");
+    if (digits.length >= 3) {
+      const principle = digits[0];
+      const guideline = digits[1];
+      const criterion = digits.slice(2);
+      const dotted = `${principle}.${guideline}.${criterion}`;
+      const label = v.help ? ` ${v.help}` : "";
+      return `${dotted}${label}`;
+    }
+  }
+  return v.help ? `${v.id}: ${v.help}` : v.id;
+}
+
 function buildPrompt(pageData) {
   const { html, text, understandableData, axeViolations } = pageData || {};
 
@@ -1951,7 +1974,7 @@ Return ONLY this JSON, nothing else:
 
     // --- MERGING LOGIC (existing) ---
     const axeGroups = axeViolations.map((v) => {
-      const wcagTag = v.tags?.find((t) => t.match(/^wcag\d/)) || v.id;
+      const wcagTag = getWcagCriterionFromViolation(v);
       const boundingBoxes = Array.isArray(v.boundingBoxes)
         ? v.boundingBoxes
         : [];
@@ -1965,11 +1988,15 @@ Return ONLY this JSON, nothing else:
         v.nodes && v.nodes[0] && v.nodes[0].aiFeedback
           ? v.nodes[0].aiFeedback
           : {};
+      const severityMap = {
+        critical: "High",
+        serious: "High",
+        moderate: "Medium",
+        minor: "Low",
+      };
       return {
         wcagCriterion: wcagTag,
-        severity: v.impact
-          ? v.impact.charAt(0).toUpperCase() + v.impact.slice(1)
-          : "High",
+        severity: severityMap[v.impact] || "Medium",
         count: v.nodes?.length || 1,
         problem:
           aiFeedback.summary ||
@@ -3066,7 +3093,7 @@ Return ONLY this JSON (no markdown, no extra text):
 
     // Merge Axe automated groups with AI groups as the JSON endpoint does
     const axeGroups = axeResults.violations.map((v) => {
-      const wcagTag = v.tags?.find((t) => t.match(/^wcag\d/)) || v.id;
+      const wcagTag = getWcagCriterionFromViolation(v);
       const severityMap = {
         critical: "High",
         serious: "High",

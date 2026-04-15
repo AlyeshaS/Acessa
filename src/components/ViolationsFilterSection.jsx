@@ -7,6 +7,7 @@ import {
 import CodeSuggestionPanel from "./CodeSuggestionPanel";
 import "../styles/App.css";
 import "../styles/index.css";
+import InfoTooltip from "./InfoTooltip";
 
 // --- Accessibility Violations Filter UI ---
 function severityColor(severity) {
@@ -40,6 +41,28 @@ function ViolationsFilterSection({
   siteUrl = "",
 }) {
   // --- Grouped by Principle Section ---
+  const POUR_INFO = {
+    Perceivable: {
+      label: "Perceivable (WCAG Principle 1)",
+      description:
+        "All information and UI components must be presentable to users in ways they can perceive. Issues here include missing alt text on images, insufficient color contrast, and content that can't be read by screen readers. Violations are detected by checking image alt attributes, color contrast ratios, and whether content relies solely on visual cues.",
+    },
+    Operable: {
+      label: "Operable (WCAG Principle 2)",
+      description:
+        "All UI components and navigation must be operable by users. Issues here include interactive elements that can't be reached by keyboard, no visible focus indicator, and sessions that time out without warning. Violations are detected by checking keyboard accessibility, focus management, and whether all functionality is available without a mouse.",
+    },
+    Understandable: {
+      label: "Understandable (WCAG Principle 3)",
+      description:
+        "Information and UI operation must be understandable. Issues here include unclear error messages, missing form labels, inconsistent navigation, and pages without a language attribute. Violations are detected by checking form field labels, error identification, language declarations, and whether instructions are clear enough for all users.",
+    },
+    Robust: {
+      label: "Robust (WCAG Principle 4)",
+      description:
+        "Content must be robust enough to be interpreted by a wide variety of assistive technologies. Issues here include invalid HTML, missing ARIA roles, and elements that break screen readers. Violations are detected automatically by Axe-core, which parses the page's DOM and flags elements that don't conform to ARIA specifications or valid HTML semantics.",
+    },
+  };
   const principles = [
     { key: "Perceivable", color: "#3b82f6", bg: "#eff6ff" },
     { key: "Operable", color: "#d97706", bg: "#fffbeb" },
@@ -362,9 +385,16 @@ function ViolationsFilterSection({
                   fontWeight: 700,
                   fontSize: 16,
                   margin: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
                 {cat.key}
+                <InfoTooltip
+                  label={POUR_INFO[cat.key].label}
+                  description={POUR_INFO[cat.key].description}
+                />
               </h3>
               <span
                 style={{
