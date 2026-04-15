@@ -1,3 +1,5 @@
+// Simple info tooltip: shows a question mark icon with a circle, and a popup on hover/focus.
+// Use for short explanations or extra context.
 const InfoTooltip = ({ label, description }) => {
   return (
     <span
@@ -10,6 +12,7 @@ const InfoTooltip = ({ label, description }) => {
         cursor: "help",
         outline: "none",
       }}
+      // Show the tooltip on mouse hover or keyboard focus
       onMouseEnter={(e) =>
         (e.currentTarget.querySelector(".tooltip").style.display = "block")
       }
@@ -23,7 +26,7 @@ const InfoTooltip = ({ label, description }) => {
         (e.currentTarget.querySelector(".tooltip").style.display = "none")
       }
     >
-      {/* Info Icon */}
+      // The little info icon with a circle
       <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
         <circle
           cx="10"
@@ -45,8 +48,7 @@ const InfoTooltip = ({ label, description }) => {
           i
         </text>
       </svg>
-
-      {/* Tooltip */}
+      // The popup itself
       <div
         className="tooltip"
         role="tooltip"

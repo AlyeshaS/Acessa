@@ -1,9 +1,13 @@
+// Import React for building the arrow button component
 import React from "react";
 
+// This button lets users go to the previous or next screenshot
 function PreviewArrow({ direction, disabled, onClick }) {
+  // Check if the arrow should point left
   const isLeft = direction === "left";
 
   return (
+    // Button for navigating screenshots
     <button
       aria-label={isLeft ? "Previous screenshot" : "Next screenshot"}
       disabled={disabled}
@@ -26,16 +30,19 @@ function PreviewArrow({ direction, disabled, onClick }) {
         boxShadow: disabled ? "none" : "0 8px 24px rgba(0,0,0,0.08)",
         userSelect: "none",
       }}
+      // Change background and shadow on hover if not disabled
       onMouseEnter={(e) => {
         if (disabled) return;
         e.currentTarget.style.background = "rgba(255,255,255,0.9)";
         e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.12)";
       }}
+      // Reset background and shadow when mouse leaves
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "rgba(255,255,255,0.75)";
         e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.08)";
       }}
     >
+      {/* SVG arrow points left or right depending on direction */}
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
         <path
           d={isLeft ? "M15 18L9 12L15 6" : "M9 6L15 12L9 18"}
@@ -49,4 +56,5 @@ function PreviewArrow({ direction, disabled, onClick }) {
   );
 }
 
+// Export the PreviewArrow component for use in other files
 export default PreviewArrow;

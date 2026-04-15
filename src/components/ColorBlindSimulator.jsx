@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 
+// Color transformation matrices for different types of color blindness
 const matrices = {
   protanopia: [
     [0.152286, 1.052583, -0.204868],
@@ -26,25 +27,26 @@ const matrices = {
   ],
 };
 
+// Applies a color matrix to the image data (pixel by pixel)
 function applyMatrixToImageData(imageData, matrix) {
   const data = imageData.data;
-
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-
+    // Calculate new RGB values using the matrix
     const newR = r * matrix[0][0] + g * matrix[0][1] + b * matrix[0][2];
     const newG = r * matrix[1][0] + g * matrix[1][1] + b * matrix[1][2];
     const newB = r * matrix[2][0] + g * matrix[2][1] + b * matrix[2][2];
-
+    // Clamp values to [0, 255]
     data[i] = Math.round(Math.min(255, Math.max(0, newR)));
     data[i + 1] = Math.round(Math.min(255, Math.max(0, newG)));
     data[i + 2] = Math.round(Math.min(255, Math.max(0, newB)));
   }
-
   return imageData;
 }
+
+// Renders a canvas simulating color blindness for a given image
 const ColorBlindSimulator = ({
   imageSrc,
   type = "original",
@@ -55,6 +57,7 @@ const ColorBlindSimulator = ({
   const imgRef = useRef(null);
 
   useEffect(() => {
+    // When the image loads, draw it to the canvas and apply the color matrix if needed
     const img = imgRef.current;
     const canvas = canvasRef.current;
     if (!img || !canvas) return;
@@ -64,17 +67,20 @@ const ColorBlindSimulator = ({
       canvas.height = img.naturalHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
+      // Only apply the matrix if we're not showing the original
       if (type !== "original" && matrices[type]) {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const transformed = applyMatrixToImageData(imageData, matrices[type]);
         ctx.putImageData(transformed, 0, 0);
       }
     };
+    // If the image is already loaded (from cache), trigger onload manually
     if (img.complete) {
       img.onload();
     }
   }, [imageSrc, type]);
 
+  // Render a canvas with the simulated image, and a hidden img for loading
   return (
     <div
       className={`colorblind-sim-root ${className}`}
@@ -95,6 +101,7 @@ const ColorBlindSimulator = ({
         }}
         aria-label="Color blindness simulation preview"
       />
+      {/* Hidden image used to draw to the canvas */}
       <img
         ref={imgRef}
         src={imageSrc}

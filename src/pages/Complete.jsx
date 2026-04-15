@@ -1186,7 +1186,8 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   // null = not checked yet, "checking" = in progress, "responsive" = passed, "not-responsive" = failed, "unknown" = couldn't determine
   const [mobileResponsiveStatus, setMobileResponsiveStatus] = useState(null);
   const [mobileResponsiveDetails, setMobileResponsiveDetails] = useState([]);
-  const [auditInfoOpen, setAuditInfoOpen] = useState(null); // key of open info popup
+  const [auditInfoOpen, setAuditInfoOpen] = useState(null); // key of open specialized-audit info popup
+  const [sectionInfoOpen, setSectionInfoOpen] = useState(null); // key of open section info popup
 
   // Color blindness filter state for Lense mode
   const [colorBlindFilter, setColorBlindFilter] = useState(null); // null | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia'
@@ -1374,8 +1375,266 @@ Return the edited screenshot with minimal localized edits only.
       }
     }
   }, [location.pathname]);
+
+  // ── Section info popup content ──────────────────────────────────────────────
+  const SECTION_INFO = {
+    "website-preview": {
+      iconStroke: "#0ea5e9",
+      iconBg: "#f0f9ff",
+      iconBorder: "#bae6fd",
+      iconPath: (
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="3" />
+          <path d="M3 8h18" />
+          <circle cx="7" cy="6" r=".5" />
+          <circle cx="11" cy="6" r=".5" />
+          <circle cx="15" cy="6" r=".5" />
+        </>
+      ),
+      title: "Website Preview",
+      what: "A live visual snapshot of your website captured at the time of the scan, with accessibility issues highlighted directly on the page.",
+      why: "Seeing issues in context helps you understand exactly where and how they appear to real users, not just as abstract rule violations.",
+      how: "Switch between Highlighted (issues overlaid on screenshot), Side-by-side (AI-generated fix preview), and Lense (color blindness simulation) using the toggle above the preview.",
+      wcag: "Visual indicators map to specific WCAG 2.2 success criteria. Each highlighted element links to the relevant issue in the Accessibility Issues panel.",
+    },
+    "accessibility-issues": {
+      iconStroke: "#dc2626",
+      iconBg: "#fff0f0",
+      iconBorder: "#fca5a5",
+      iconPath: (
+        <>
+          <circle cx="12" cy="7" r="2.5" />
+          <path d="M12 9.5v7.5" />
+          <path d="M9 17h6" />
+          <path d="M7 12h10" />
+        </>
+      ),
+      title: "Accessibility Issues",
+      what: "A full list of WCAG 2.2 violations detected by the automated scan, each categorized by severity and WCAG principle.",
+      why: "Unresolved accessibility barriers prevent users with disabilities from accessing your content and may expose your organization to legal risk under laws like AODA and ADA.",
+      how: "Issues are detected using Axe and enriched with AI analysis. Each item includes a severity level (critical, serious, moderate, minor), the affected WCAG criterion, a screenshot highlight, and a recommended fix.",
+      wcag: "Covers all four POUR principles: Perceivable (1.x), Operable (2.x), Understandable (3.x), and Robust (4.x), across WCAG 2.2 Level A, AA, and AAA.",
+    },
+    "hci-report": {
+      iconStroke: "#059669",
+      iconBg: "#f0fdf9",
+      iconBorder: "#6ee7b7",
+      iconPath: (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="4" />
+          <path d="M7 7h10M7 12h10M7 17h6" />
+        </>
+      ),
+      title: "HCI Report",
+      what: "A human-computer interaction analysis written by AI, evaluating usability, cognitive load, visual design, and interaction patterns across the scanned page.",
+      why: "WCAG compliance is necessary but not sufficient. A page can pass every automated check and still be confusing, hard to navigate, or frustrating to use, especially for users with cognitive or attention-related disabilities.",
+      how: "The AI synthesizes all scan findings into a holistic narrative, identifying themes like poor discoverability, high cognitive load, or inconsistent interaction patterns. Scores are broken down by POUR principle.",
+      wcag: "Draws on WCAG 3.x (Understandable) criteria such as 3.1 Readable, 3.2 Predictable, and 3.3 Input Assistance, as well as broader usability best practices.",
+    },
+    "mobile-experience": {
+      iconStroke: "#0ea5e9",
+      iconBg: "#f0f9ff",
+      iconBorder: "#bae6fd",
+      iconPath: (
+        <>
+          <rect x="5" y="2" width="14" height="20" rx="2" />
+          <line x1="12" y1="18" x2="12.01" y2="18" />
+        </>
+      ),
+      title: "Mobile Experience",
+      what: "An assessment of how accessible and usable your site is on mobile devices, covering layout, touch interaction, readability, and navigation.",
+      why: "Over half of web traffic is mobile. Mobile users, especially those using screen readers or switch access on phones, face unique barriers that desktop scans alone will not catch.",
+      how: "Checks include: viewport meta tag presence, pinch-to-zoom support, CSS media query usage, touch target sizing, fixed-width layout detection, and font size adequacy. Each check is derived from real scan data.",
+      wcag: "WCAG 1.3.4 (Orientation), 1.4.4 (Resize Text), 1.4.10 (Reflow), 2.5.5 (Target Size), 2.5.8 (Target Size Minimum), and related mobile-specific success criteria.",
+    },
+    "next-steps": {
+      iconStroke: "#d97706",
+      iconBg: "#fffbeb",
+      iconBorder: "#fde68a",
+      iconPath: <polyline points="20 6 9 17 4 12" />,
+      title: "Next Steps",
+      what: "A prioritized, actionable remediation checklist generated from your scan results, organized by WCAG phase (Perceivable, Operable, Understandable, Robust).",
+      why: "Knowing what is wrong is only half the battle. This checklist gives you a concrete starting point so your team can begin fixing issues immediately, in the right order.",
+      how: "Each item is mapped to a specific WCAG criterion and phase. Check items off as you resolve them, progress is tracked visually. You can also copy the full checklist as Markdown for use in tickets or docs.",
+      wcag: "Items are drawn from across all WCAG 2.2 success criteria relevant to your scan findings, prioritized by severity and user impact.",
+    },
+  };
+
+  const sectionInfoData = sectionInfoOpen
+    ? SECTION_INFO[sectionInfoOpen]
+    : null;
+
   return (
     <div style={{ display: "flex" }}>
+      {/* ── Section info modal (shared across all sections) ── */}
+      {sectionInfoData && (
+        <div
+          onClick={() => setSectionInfoOpen(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.45)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 18,
+              padding: "28px 30px",
+              maxWidth: 520,
+              width: "100%",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
+              position: "relative",
+            }}
+          >
+            {/* Close */}
+            <button
+              onClick={() => setSectionInfoOpen(null)}
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 14,
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                border: "none",
+                background: "#f1f5f9",
+                color: "#64748b",
+                fontSize: 14,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
+
+            {/* Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 20,
+              }}
+            >
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  background: sectionInfoData.iconBg,
+                  border: "1px solid " + sectionInfoData.iconBorder,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={sectionInfoData.iconStroke}
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {sectionInfoData.iconPath}
+                </svg>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontWeight: 800,
+                    color: "#0f172a",
+                  }}
+                >
+                  {sectionInfoData.title}
+                </h3>
+              </div>
+            </div>
+
+            {/* Cards */}
+            {[
+              {
+                label: "What it checks",
+                text: sectionInfoData.what,
+                color: "#0ea5e9",
+                bg: "#f0f9ff",
+                border: "#bae6fd",
+              },
+              {
+                label: "Why it matters",
+                text: sectionInfoData.why,
+                color: "#d97706",
+                bg: "#fffbeb",
+                border: "#fde68a",
+              },
+              {
+                label: "How it works",
+                text: sectionInfoData.how,
+                color: "#7c3aed",
+                bg: "#f5f3ff",
+                border: "#ddd6fe",
+              },
+              {
+                label: "WCAG criteria",
+                text: sectionInfoData.wcag,
+                color: "#059669",
+                bg: "#f0fdf4",
+                border: "#bbf7d0",
+              },
+            ].map(({ label, text, color, bg, border }) => (
+              <div
+                key={label}
+                style={{
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  borderRadius: 10,
+                  padding: "11px 14px",
+                  marginBottom: 10,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    marginBottom: 4,
+                  }}
+                >
+                  {label}
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12.5,
+                    color: "#374151",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Left navbar: only show when not loading/animating and analysis is available */}
       {!loading && !animating && !error && analysis && (
         <SectionNav
@@ -1699,8 +1958,44 @@ Return the edited screenshot with minimal localized edits only.
                         <circle cx="15" cy="6" r=".5" />
                       </svg>
                     </div>
-                    <h2 className="website-preview-title" style={{ margin: 0 }}>
+                    <h2
+                      className="website-preview-title"
+                      style={{
+                        margin: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
                       Website Preview
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSectionInfoOpen("website-preview");
+                        }}
+                        title="Learn more about this section"
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: "50%",
+                          border: "1.5px solid #94a3b8",
+                          background: "transparent",
+                          color: "#94a3b8",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: 0,
+                          lineHeight: 1,
+                          flexShrink: 0,
+                          transition: "all 0.15s",
+                          outline: "none",
+                        }}
+                      >
+                        ?
+                      </button>
                     </h2>
                     <button
                       aria-label={
@@ -2837,6 +3132,34 @@ Return the edited screenshot with minimal localized edits only.
                             </svg>
                           </div>
                           Accessibility Issues
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSectionInfoOpen("accessibility-issues");
+                            }}
+                            title="Learn more about this section"
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: "50%",
+                              border: "1.5px solid #94a3b8",
+                              background: "transparent",
+                              color: "#94a3b8",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: 0,
+                              lineHeight: 1,
+                              flexShrink: 0,
+                              transition: "all 0.15s",
+                              outline: "none",
+                            }}
+                          >
+                            ?
+                          </button>
                         </span>
                         <button
                           aria-label={
@@ -3335,6 +3658,34 @@ Return the edited screenshot with minimal localized edits only.
                             </svg>
                           </div>
                           HCI Report
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSectionInfoOpen("hci-report");
+                            }}
+                            title="Learn more about this section"
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: "50%",
+                              border: "1.5px solid #94a3b8",
+                              background: "transparent",
+                              color: "#94a3b8",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: 0,
+                              lineHeight: 1,
+                              flexShrink: 0,
+                              transition: "all 0.15s",
+                              outline: "none",
+                            }}
+                          >
+                            ?
+                          </button>
                         </span>
                         <button
                           aria-label={
@@ -4141,6 +4492,34 @@ Return the edited screenshot with minimal localized edits only.
                                   </svg>
                                 </div>
                                 Mobile Experience
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSectionInfoOpen("mobile-experience");
+                                  }}
+                                  title="Learn more about this section"
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: "50%",
+                                    border: "1.5px solid #94a3b8",
+                                    background: "transparent",
+                                    color: "#94a3b8",
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: 0,
+                                    lineHeight: 1,
+                                    flexShrink: 0,
+                                    transition: "all 0.15s",
+                                    outline: "none",
+                                  }}
+                                >
+                                  ?
+                                </button>
                               </span>
                               <button
                                 aria-label={
@@ -5712,9 +6091,38 @@ Return the edited screenshot with minimal localized edits only.
                                   marginBottom: 20,
                                 }}
                               >
-                                <span style={{ fontSize: 26 }}>
-                                  {info.icon}
-                                </span>
+                                <div
+                                  style={{
+                                    width: 42,
+                                    height: 42,
+                                    borderRadius: 10,
+                                    background: "#f5f3ff",
+                                    border: "1px solid #ddd6fe",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#7c3aed"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line
+                                      x1="21"
+                                      y1="21"
+                                      x2="16.65"
+                                      y2="16.65"
+                                    />
+                                  </svg>
+                                </div>
                                 <div>
                                   <h3
                                     style={{
@@ -5726,19 +6134,6 @@ Return the edited screenshot with minimal localized edits only.
                                   >
                                     {info.title}
                                   </h3>
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      fontWeight: 600,
-                                      color: "#7c3aed",
-                                      background: "#f5f3ff",
-                                      border: "1px solid #ddd6fe",
-                                      borderRadius: 999,
-                                      padding: "1px 8px",
-                                    }}
-                                  >
-                                    Accessibility Audit
-                                  </span>
                                 </div>
                               </div>
 
@@ -6387,6 +6782,34 @@ Return the edited screenshot with minimal localized edits only.
                                 </svg>
                               </span>
                               Next Steps
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSectionInfoOpen("next-steps");
+                                }}
+                                title="Learn more about this section"
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: "50%",
+                                  border: "1.5px solid #94a3b8",
+                                  background: "transparent",
+                                  color: "#94a3b8",
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: 0,
+                                  lineHeight: 1,
+                                  flexShrink: 0,
+                                  transition: "all 0.15s",
+                                  outline: "none",
+                                }}
+                              >
+                                ?
+                              </button>
                             </span>
                             <button
                               aria-label={
@@ -6693,6 +7116,34 @@ Return the edited screenshot with minimal localized edits only.
                                 </svg>
                               </div>
                               Next Steps
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSectionInfoOpen("next-steps");
+                                }}
+                                title="Learn more about this section"
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: "50%",
+                                  border: "1.5px solid #94a3b8",
+                                  background: "transparent",
+                                  color: "#94a3b8",
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: 0,
+                                  lineHeight: 1,
+                                  flexShrink: 0,
+                                  transition: "all 0.15s",
+                                  outline: "none",
+                                }}
+                              >
+                                ?
+                              </button>
                               <button
                                 aria-label={
                                   collapsedSections.nextSteps

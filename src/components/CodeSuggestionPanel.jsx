@@ -4,15 +4,19 @@ import { getCriterionKey } from "./ViolationsFilterSection";
 import "../styles/App.css";
 import "../styles/index.css";
 
-// ─── Code suggestion panel ───────────────────────────────────────────────────
+// Shows code suggestions and previews for a given WCAG criterion.
+// Lets you see before/after, copy fixes, and view test steps.
 function CodeSuggestionPanel({ criterion }) {
+  // Figure out which WCAG rule we're working with and get the right suggestion.
   const key = getCriterionKey(criterion);
   const s =
     (key && WCAG_CODE_SUGGESTIONS[key]) || WCAG_CODE_SUGGESTIONS["_default"];
-  console.log("KEY:", key);
-  console.log("SUGGESTION:", s);
+  // For debugging:
+  // console.log("KEY:", key);
+  // console.log("SUGGESTION:", s);
   const preview = key ? WCAG_PREVIEWS[key] : null;
 
+  // These are the possible tabs for different code fixes.
   const ALL_TABS = [
     { id: "before", label: "Before (broken)", color: "#dc2626", bg: "#fef2f2" },
     { id: "html", label: "HTML fix", color: "#e34c26", bg: "#fff5f2" },
@@ -21,19 +25,23 @@ function CodeSuggestionPanel({ criterion }) {
     { id: "react", label: "React fix", color: "#0ea5e9", bg: "#f0f9ff" },
   ];
 
+  // Only show tabs that actually have code for this suggestion.
   const tabs = ALL_TABS.filter((t) => s && s[t.id]);
   const [activeTab, setActiveTab] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
   const [testOpen, setTestOpen] = React.useState(false);
 
+  // Whenever the criterion changes, reset to the first available tab.
   React.useEffect(() => {
     if (tabs.length > 0) setActiveTab(tabs[0].id);
   }, [criterion]);
 
+  // If there's nothing to show, don't render anything.
   if (!s || tabs.length === 0) return null;
 
   const activeTabMeta = ALL_TABS.find((t) => t.id === activeTab);
 
+  // Copy the code in the current tab to the clipboard.
   function handleCopy() {
     const code = s[activeTab] || "";
     navigator.clipboard?.writeText(code).then(() => {
@@ -52,7 +60,7 @@ function CodeSuggestionPanel({ criterion }) {
         background: "#f8fafc",
       }}
     >
-      {/* ── Where to apply ── */}
+      {/* Where to apply the fix (if provided) */}
       {s.where && (
         <div
           style={{
@@ -86,7 +94,7 @@ function CodeSuggestionPanel({ criterion }) {
         </div>
       )}
 
-      {/* ── Before / After visual preview ── */}
+      {/* Show a before/after preview if available */}
       {preview && (
         <div
           style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0" }}
@@ -150,7 +158,7 @@ function CodeSuggestionPanel({ criterion }) {
         </div>
       )}
 
-      {/* ── Tab bar ── */}
+      {/* Tab bar for switching between code suggestions */}
       <div
         style={{
           display: "flex",
@@ -186,7 +194,7 @@ function CodeSuggestionPanel({ criterion }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        {/* Copy button */}
+        {/* Button to copy the code in the current tab */}
         <button
           onClick={handleCopy}
           style={{
@@ -241,7 +249,7 @@ function CodeSuggestionPanel({ criterion }) {
         </button>
       </div>
 
-      {/* ── Code block ── */}
+      {/* Code block for the selected tab */}
       <div
         style={{
           position: "relative",
@@ -284,7 +292,7 @@ function CodeSuggestionPanel({ criterion }) {
         </pre>
       </div>
 
-      {/* ── Effort badge + external links ── */}
+      {/* Show effort estimate and any helpful links */}
       <div
         style={{
           display: "flex",
@@ -363,7 +371,7 @@ function CodeSuggestionPanel({ criterion }) {
         ))}
       </div>
 
-      {/* ── Test steps (collapsible) ── */}
+      {/* Show test steps if available (collapsible) */}
       {s.testSteps && s.testSteps.length > 0 && (
         <div style={{ borderTop: "1px solid #e2e8f0" }}>
           <button
