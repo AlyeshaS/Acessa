@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+// List of all navigation sections, each with a label, icon, and color
 const sections = [
   {
     id: "website-preview",
@@ -127,8 +128,9 @@ const sections = [
   },
 ];
 
+// Sidebar navigation for jumping between different report sections
 function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
-  // Height: 100vh minus footer (assume footer is 56px tall)
+  // Make sure the nav doesn't overlap the footer
   const navHeight = "calc(100vh - 56px)";
 
   return (
@@ -149,7 +151,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
-      {/* Brand mark and collapse/expand arrow button (single header) */}
+      // Top bar with the app name and the collapse/expand arrow
       <div
         style={{
           height: "64px",
@@ -215,7 +217,6 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
           </span>
         )}
       </div>
-
       <ul
         style={{
           listStyle: "none",
@@ -228,7 +229,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
       >
         {sections.map((section, idx) => {
           const isActive = activeSection === section.id;
-          // Utility to get a lighter version of a hex color
+          // Lighten a hex color by a percentage (used for active background)
           function lightenColor(hex, percent) {
             hex = hex.replace(/^#/, "");
             if (hex.length === 3) {
@@ -246,7 +247,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
             b = Math.round(b + (255 - b) * percent);
             return `rgb(${r}, ${g}, ${b})`;
           }
-          // 95% lighter (very close to white, subtle tint)
+          // Give the active section a subtle background tint
           const activeBg = isActive
             ? lightenColor(section.color, 0.95)
             : "transparent";
@@ -305,7 +306,7 @@ function SectionNav({ activeSection, onNavClick, collapsed, setCollapsed }) {
                     {section.label}
                   </span>
                 )}
-                {/* Active indicator dot */}
+                // Show a colored dot next to the active section
                 {isActive && !collapsed && (
                   <div
                     style={{

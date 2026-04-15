@@ -1,12 +1,15 @@
-// src/components/UploadBar.jsx
+// UploadBar lets you enter a URL and start the accessibility check
+
 export default function UploadBar({
   value,
   onChange,
   onUploadClick,
   onAnalyzeClick,
 }) {
+  // Main row with input and analyze button
   return (
     <div className="upload-row">
+      // URL input field
       <input
         type="url"
         className="url-pill"
@@ -15,7 +18,7 @@ export default function UploadBar({
         onChange={onChange}
         aria-label="URL to analyze"
       />
-
+      // Analyze button (disabled if input is empty)
       <button
         type="button"
         className="btn-icon btn-analyze"
@@ -24,6 +27,7 @@ export default function UploadBar({
         aria-label="Analyze"
         title="Analyze"
       >
+        // Magnifying glass icon
         <svg
           width="58"
           height="55"

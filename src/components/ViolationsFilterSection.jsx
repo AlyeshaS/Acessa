@@ -244,7 +244,7 @@ function ViolationsFilterSection({
         marginTop: 20,
       }}
     >
-      {/* ── Fix progress tracker ── */}
+      // Fix progress tracker
       {totalIssueCount > 0 && (
         <div
           style={{
@@ -305,8 +305,7 @@ function ViolationsFilterSection({
           </div>
         </div>
       )}
-
-      {/* Filter Buttons */}
+      // Filter Buttons
       <div
         style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}
       >
@@ -335,8 +334,7 @@ function ViolationsFilterSection({
           Minor ({counts.minor})
         </button>
       </div>
-
-      {/* Grouped by Principle */}
+      // Grouped by Principle
       <div style={{ marginTop: 24 }}>
         {principles.map((cat) => (
           <div key={cat.key} style={{ marginBottom: 28 }}>
@@ -412,7 +410,7 @@ function ViolationsFilterSection({
                         transition: "all 0.25s ease",
                       }}
                     >
-                      {/* ── Header row ── */}
+                      // Header row
                       <div
                         style={{
                           display: "flex",
@@ -433,8 +431,7 @@ function ViolationsFilterSection({
                         >
                           {g.wcagCriterion || "Unspecified criterion"}
                         </strong>
-
-                        {/* Severity badge */}
+                        // Severity badge
                         {g.severity && !isFixed && (
                           <span
                             style={{
@@ -452,8 +449,7 @@ function ViolationsFilterSection({
                             {g.severity}
                           </span>
                         )}
-
-                        {/* Effort badge */}
+                        // Effort badge
                         {effort && !isFixed && (
                           <span
                             style={{
@@ -486,8 +482,7 @@ function ViolationsFilterSection({
                             {effort.label} · {effort.time}
                           </span>
                         )}
-
-                        {/* Occurrence count */}
+                        // Occurrence count
                         {typeof g.count === "number" && !isFixed && (
                           <span
                             style={{
@@ -499,8 +494,7 @@ function ViolationsFilterSection({
                             ~{g.count} occurrence{g.count === 1 ? "" : "s"}
                           </span>
                         )}
-
-                        {/* Why it matters button */}
+                        // Why it matters button
                         {!isFixed && (
                           <button
                             onClick={() => toggleImpact(codeKey)}
@@ -549,7 +543,7 @@ function ViolationsFilterSection({
                             Who's affected
                           </button>
                         )}
-                        {/* View Fix button */}
+                        // View Fix button
                         {hasCode && !isFixed && (
                           <button
                             onClick={() => {
@@ -594,7 +588,7 @@ function ViolationsFilterSection({
                             {codeOpen ? "Hide Fix" : "View Fix"}
                           </button>
                         )}
-                        {/* Mark as fixed checkbox */}
+                        // Mark as fixed checkbox
                         <label
                           title={
                             isFixed ? "Mark as not fixed" : "Mark as fixed"
@@ -631,8 +625,7 @@ function ViolationsFilterSection({
                           {isFixed ? "Fixed ✓" : "Mark fixed"}
                         </label>
                       </div>
-
-                      {/* Problem + recommendation — hidden when fixed */}
+                      // Problem + recommendation — hidden when fixed
                       {!isFixed && g.problem && (
                         <p className="issue-problem">
                           <strong>Problem:</strong> {g.problem}
@@ -643,7 +636,6 @@ function ViolationsFilterSection({
                           <strong>Recommendation:</strong> {g.recommendation}
                         </p>
                       )}
-
                       {isFixed &&
                         (() => {
                           const vs = verifyState[codeKey] || "idle";
@@ -806,7 +798,6 @@ function ViolationsFilterSection({
                             </div>
                           );
                         })()}
-
                       {/* Who's affected panel */}
                       {openImpactKey === codeKey &&
                         !isFixed &&
@@ -950,7 +941,6 @@ function ViolationsFilterSection({
           </div>
         ))}
       </div>
-
       {/* No issues overall */}
       {principles.every(
         (cat) =>

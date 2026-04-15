@@ -1,9 +1,7 @@
 import React from "react";
 
-/**
- * Distinct highlight colours — one per unique violation type (issueId prefix).
- * First entry is the "selected" override (red), the rest cycle through other hues.
- */
+// Each unique violation type gets its own highlight color
+// The first color (red) is always used for the selected marker
 const HIGHLIGHT_PALETTE = [
   {
     border: "#ff4d4f",
@@ -37,28 +35,14 @@ const HIGHLIGHT_PALETTE = [
   },
 ];
 
-/** Extract the violation-type prefix from an issueId like "button-name__selector" */
+// Get the prefix for a violation type from an issueId (e.g. "button-name__selector" -> "button-name")
 function violationPrefix(issueId) {
   if (!issueId) return "__none__";
   return issueId.split("__")[0];
 }
 
-/**
- * Renders a screenshot image with highlight overlays for accessibility issues.
- *
- * CHANGES vs previous version:
- * - Markers for different violation types get different colours so you can
- *   visually distinguish multiple issues on the same screenshot.
- * - The selected marker is always red (HIGHLIGHT_PALETTE[0]).
- * - A small tooltip shows the violation summary on hover so the highlight and
- *   the feedback are visually linked.
- *
- * @param {Object} props
- * @param {string} props.screenshot - Image src (URL or base64).
- * @param {Array}  props.markers    - Array of marker objects with bounding box info.
- * @param {number} [props.selectedMarkerIdx] - Index of the currently selected marker.
- * @param {function} [props.onMarkerClick]   - Called with marker index on click.
- */
+// ScreenshotWithHighlights draws a screenshot and overlays colored boxes for each accessibility issue
+// Selected and hovered markers get a thicker border and a tooltip
 function ScreenshotWithHighlights({
   screenshot,
   markers,
@@ -67,15 +51,19 @@ function ScreenshotWithHighlights({
   offsetLeft = 0, // offset in px for left margin (e.g., side panel width)
   panelState, // pass navCollapsed or similar here
 }) {
-  const imgRef = React.useRef(null); // points to the <img> element
+  // Ref to the image element so we can get its size
+  const imgRef = React.useRef(null);
+  // Track the natural and rendered size of the image
   const [imgDims, setImgDims] = React.useState({
     naturalWidth: 1,
     naturalHeight: 1,
     renderedWidth: 1,
     renderedHeight: 1,
   });
+  // Track which marker is currently hovered
   const [hoveredIdx, setHoveredIdx] = React.useState(null);
 
+  // When the image loads or resizes, update the size state
   const handleImgLoad = () => {
     if (!imgRef.current) return;
     setImgDims({
@@ -86,6 +74,7 @@ function ScreenshotWithHighlights({
     });
   };
 
+  // Listen for window resize and image resize to keep overlays in sync
   React.useEffect(() => {
     const onResize = () => handleImgLoad();
     window.addEventListener("resize", onResize);
@@ -106,11 +95,12 @@ function ScreenshotWithHighlights({
     };
   }, [panelState]);
 
+  // Calculate scale factors to map natural image size to rendered size
   const scaleX = imgDims.renderedWidth / imgDims.naturalWidth;
   const scaleY = imgDims.renderedHeight / imgDims.naturalHeight;
 
-  // Build a stable colour map: each unique violation type gets a consistent colour.
-  // The selected marker always uses palette[0] (red) to stand out.
+  // Build a color map so each violation type always gets the same color
+  // The selected marker always uses red
   const colourMap = React.useMemo(() => {
     const map = new Map();
     let paletteIdx = 1; // 0 is reserved for selected
@@ -124,6 +114,7 @@ function ScreenshotWithHighlights({
     return map;
   }, [markers]);
 
+  // Log markers for debugging
   React.useEffect(() => {
     if (markers && markers.length > 0) {
       // eslint-disable-next-line no-console
@@ -132,8 +123,7 @@ function ScreenshotWithHighlights({
   }, [markers]);
 
   return (
-    // Outer shell — fills whatever space the parent gives it and clips everything.
-    // overflow:hidden ensures no highlight overlay can bleed into the nav or footer.
+    // Outer shell: fills the parent and clips highlights so they don't bleed out
     <div
       style={{
         position: "relative",
@@ -146,13 +136,13 @@ function ScreenshotWithHighlights({
         justifyContent: "flex-start",
       }}
     >
-      {/* Inner wrapper shrinks to the actual rendered image size so all
-          absolutely-positioned highlight divs are scoped to the image pixels. */}
+      // Inner wrapper: shrinks to the image size so overlays are always in the
+      right spot
       <div
         style={{
           position: "relative",
           display: "inline-block",
-          lineHeight: 0, // collapse whitespace gap below <img>
+          lineHeight: 0, // collapse whitespace gap below the image
           maxWidth: "100%",
           maxHeight: "100%",
         }}
@@ -173,7 +163,7 @@ function ScreenshotWithHighlights({
           const isSelected = i === selectedMarkerIdx;
           const isHovered = i === hoveredIdx;
 
-          // Colour: selected → palette[0], otherwise the stable colour for this violation type
+          // Pick the color for this marker (red if selected, otherwise from the color map)
           const paletteIdx = isSelected
             ? 0
             : (colourMap.get(violationPrefix(m.issueId)) ?? 1);
@@ -209,11 +199,12 @@ function ScreenshotWithHighlights({
           const handleMouseEnter = () => setHoveredIdx(i);
           const handleMouseLeave = () => setHoveredIdx(null);
 
-          // Tooltip text = summary from the marker (set by axeRunner / index.js)
+          // Tooltip text comes from the marker summary or recommendation
           const tooltipText = m.summary || m.recommendation || null;
 
+          // Draw a highlight box for a marker or bounding box
           const renderBox = (b, key) => {
-            // Always apply offsetLeft so highlight moves with sidebar
+            // Always apply offsetLeft so highlight moves with the sidebar
             const left = b.x * scaleX + offsetLeft;
             const top = b.y * scaleY;
             const width = b.width * scaleX;
@@ -237,7 +228,7 @@ function ScreenshotWithHighlights({
                   ...stateStyle,
                 }}
               >
-                {/* Tooltip — only shown while hovered */}
+                // Tooltip: only shown while hovered
                 {tooltipText && isHovered && (
                   <div
                     style={{
@@ -273,7 +264,7 @@ function ScreenshotWithHighlights({
           return [renderBox(m, m.issueId || i)];
         })}
       </div>{" "}
-      {/* inner wrapper — scoped to image size */}
+      // End of inner wrapper
     </div>
   );
 }
