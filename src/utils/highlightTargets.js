@@ -1,25 +1,16 @@
-// Utility for mapping issues to selectors and bounding boxes
+// Helpers for finding elements and their positions for highlighting issues
 
-/**
- * Extract selectors from axe violation nodes
- * @param {object} violation - Axe violation object
- * @returns {string[]} selectors
- */
+// Get all CSS selectors from an axe violation object
 export function getSelectorsFromViolation(violation) {
   if (!violation) return [];
-  // axe-core: violation.nodes[].target is usually an array of selectors
+  // Each node in violation.nodes usually has a target array of selectors
   if (Array.isArray(violation.nodes)) {
     return violation.nodes.flatMap((node) => node.target || []);
   }
   return [];
 }
 
-/**
- * Compute bounding boxes for selectors in a given document
- * @param {string[]} selectors
- * @param {Document} doc - DOM document (iframe or main)
- * @returns {Array<{x:number, y:number, width:number, height:number, selector:string}>}
- */
+// Find the position and size of elements matching each selector in the document
 export function getBoundingBoxesForSelectors(selectors, doc) {
   if (!doc || !selectors || !selectors.length) return [];
   const boxes = [];
@@ -37,18 +28,13 @@ export function getBoundingBoxesForSelectors(selectors, doc) {
         });
       });
     } catch (e) {
-      // ignore invalid selectors
+      // Ignore selectors that don't work
     }
   });
   return boxes;
 }
 
-/**
- * Safe fallback: if selector fails, try text-based matching
- * @param {string[]} textSnippets
- * @param {Document} doc
- * @returns {Array<{x:number, y:number, width:number, height:number, selector:string}>}
- */
+// If selectors don't work, try to find elements by matching text content
 export function getBoundingBoxesByText(textSnippets, doc) {
   if (!doc || !textSnippets || !textSnippets.length) return [];
   const boxes = [];
@@ -62,7 +48,7 @@ export function getBoundingBoxesByText(textSnippets, doc) {
         doc,
         null,
         XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
-        null
+        null,
       );
       for (let i = 0; i < result.snapshotLength; i++) {
         const el = result.snapshotItem(i);
@@ -78,24 +64,19 @@ export function getBoundingBoxesByText(textSnippets, doc) {
         }
       }
     } catch (e) {
-      // ignore errors
+      // Ignore errors from bad XPath or DOM
     }
   });
   return boxes;
 }
 
-/**
- * Main pipeline: get highlight targets for an issue
- * @param {object} issue - { selectors, fallbackTextAnchors }
- * @param {Document} doc
- * @returns {Array<{x, y, width, height, selector}>}
- */
+// Main function: get all highlight targets for an issue using selectors or text
 export function getHighlightTargets(issue, doc) {
   let boxes = [];
   if (issue.selectors && issue.selectors.length) {
     boxes = getBoundingBoxesForSelectors(issue.selectors, doc);
   }
-  // Fallback: try text anchors
+  // If no boxes found, try using fallback text anchors
   if (
     (!boxes || boxes.length === 0) &&
     issue.fallbackTextAnchors?.textSnippets

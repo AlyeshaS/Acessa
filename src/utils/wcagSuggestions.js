@@ -1,6 +1,6 @@
-// --- WCAG Code Suggestions lookup ---
-// Generic fixes that apply to any website — keyed by criterion number (e.g. "2.4.4")
-// Each entry: effort, where, before (broken), after tabs (html/css/js/react), testSteps, links
+// WCAG code suggestions for common accessibility issues
+// Each entry is a fix or example for a specific WCAG criterion number, like "2.4.4"
+// Includes effort, where to fix, before/after code, test steps, and helpful links
 const WCAG_CODE_SUGGESTIONS = {
   // Fallback for any missing WCAG criterion
   _default: {
@@ -1042,7 +1042,7 @@ auditAccessibleNames();`,
   },
 };
 
-// ─── Per-criterion plain-English user impact stories ─────────────────────────
+// User impact stories for each WCAG criterion, written in plain English
 export const WCAG_USER_IMPACT = {
   "1.1.1": {
     users: ["Blind users", "Users with images disabled", "Screen reader users"],
@@ -1162,7 +1162,7 @@ export const getGenericUserImpact = (severity) => {
   return "This issue reduces the accessibility quality for users with disabilities. Addressing it improves the overall experience for screen reader users, keyboard navigators, and users with cognitive or visual impairments.";
 };
 
-// ─── Visual before/after previews (self-contained srcdoc HTML) ───────────────
+// HTML/CSS for visual before-and-after previews of fixes
 const BASE = `<style>*{box-sizing:border-box}body{margin:12px;font-family:system-ui,sans-serif;font-size:13px;line-height:1.45;color:#334155}</style>`;
 export const WCAG_PREVIEWS = {
   "1.1.1": {

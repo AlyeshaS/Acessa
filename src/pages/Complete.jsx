@@ -10,14 +10,16 @@ import "../styles/index.css";
 import ViolationsFilterSection from "../components/ViolationsFilterSection";
 import InfoTooltip from "../components/InfoTooltip";
 
+// Extracts the WCAG criterion number from a string, like "1.4.3" from "1.4.3 Contrast"
 function getCriterionKey(criterion) {
   if (!criterion) return null;
   const m = String(criterion).match(/(\d+\.\d+\.\d+)/);
   return m ? m[1] : null;
 }
 
+// Main results page for the accessibility audit
 function Complete() {
-  // Section IDs for scrollspy
+  // List of section IDs for navigation and scrollspy
   const sectionIds = [
     "website-preview",
     "accessibility-issues",
@@ -26,13 +28,16 @@ function Complete() {
     "specialized-audits",
     "next-steps",
   ];
+  // Refs for each section to track scroll position
   const sectionRefs = useRef(sectionIds.map(() => React.createRef()));
+  // Tracks which section is currently active in the nav
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
-  // Nav collapse state (lifted from SectionNav)
+  // Controls whether the navigation sidebar is collapsed
   const [navCollapsed, setNavCollapsed] = useState(false);
 
-  // Scrollspy: update active section on scroll, but ignore scroll events briefly after nav click
+  // Keeps track of whether a scroll event was triggered by clicking the nav
   const scrollLockRef = useRef(false);
+  // Updates the active section as the user scrolls the page
   useEffect(() => {
     const NAVBAR_HEIGHT = 64;
     const handleScroll = () => {
@@ -49,8 +54,8 @@ function Complete() {
           currentIdx = idx;
         }
       });
-      // Special case: if near bottom, always activate last section
-      const bottomThreshold = 120; // px from bottom
+      // If user is near the bottom, always highlight the last section
+      const bottomThreshold = 120;
       if (
         window.innerHeight + window.scrollY >=
         document.body.offsetHeight - bottomThreshold
@@ -64,7 +69,7 @@ function Complete() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [sectionIds]);
 
-  // Scroll to section on nav click
+  // Scrolls smoothly to a section when a nav link is clicked
   const handleNavClick = (id) => {
     const idx = sectionIds.indexOf(id);
     const ref = sectionRefs.current[idx];
@@ -78,10 +83,10 @@ function Complete() {
         top: absoluteY - NAVBAR_HEIGHT,
         behavior: "smooth",
       });
-      setActiveSection(sectionIds[idx]); // highlight immediately
+      setActiveSection(sectionIds[idx]);
       setTimeout(() => {
         scrollLockRef.current = false;
-      }, 500); // lock scrollspy for 500ms after nav click
+      }, 500);
     }
   };
   // Optionally, add scrollMarginTop to each section for native CSS offset (if supported)
@@ -110,9 +115,9 @@ function Complete() {
       document.head.appendChild(style);
     }
   }, []);
-  // --- Add state for highlighted screenshot navigation ---
+  // Tracks which screenshot is currently shown in the preview
   const [currentScreenshotIdx, setCurrentScreenshotIdx] = useState(0);
-  // Which marker/violation is selected within the current screenshot
+  // Tracks which marker or violation is selected in the current screenshot
   const [selectedMarkerIdx, setSelectedMarkerIdx] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
@@ -131,27 +136,28 @@ function Complete() {
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0);
   const [animationDone, setAnimationDone] = useState(false);
 
-  // "animation" state – we show AnalysisPlayer while this is true
+  // Shows the animation player while this is true
   const [animating, setAnimating] = useState(false);
   const [previewResult, setPreviewResult] = useState(null); // { screenshot, steps }
   const [imageLoaded, setImageLoaded] = useState(false);
   const [pendingResult, setPendingResult] = useState(null);
 
-  // Visual segments with images and comments
+  // Stores visual segments with images and comments
   const [segments, setSegments] = useState([]);
   const [pendingSegments, setPendingSegments] = useState([]);
 
-  // Violation screenshots with interactive feedback
+  // Stores screenshots of violations for interactive feedback
   const [violationScreenshots, setViolationScreenshots] = useState([]);
   const [selectedViolation, setSelectedViolation] = useState(null);
 
-  const [lightbox, setLightbox] = useState(null); // fullscreen view of a screenshot + issue panel
+  // Shows a fullscreen view of a screenshot and its issue panel
+  const [lightbox, setLightbox] = useState(null);
 
-  // Per-violation AI preview state
-  const [aiModResults, setAiModResults] = useState({}); // { [idx]: result }
-  const [aiModLoading, setAiModLoading] = useState({}); // { [idx]: boolean }
+  // Stores AI preview results and loading state for each violation
+  const [aiModResults, setAiModResults] = useState({});
+  const [aiModLoading, setAiModLoading] = useState({});
 
-  // Which categories are expanded in the UI
+  // Tracks which accessibility categories are expanded in the UI
   const [expandedCategories, setExpandedCategories] = useState({
     Perceivable: false,
     Operable: false,
@@ -164,16 +170,16 @@ function Complete() {
   const [sortBy, setSortBy] = useState("priority"); // priority | name
   const [expandedItems, setExpandedItems] = useState({});
 
-  // AbortController stored in a ref so we can cancel on Back
+  // Stores the AbortController so we can cancel API calls when navigating back
   const abortRef = useRef(null);
 
-  // Reset currentScreenshotIdx to 0 whenever violationScreenshots changes
+  // When the list of violation screenshots changes, reset the screenshot index
   useEffect(() => {
     setCurrentScreenshotIdx(0);
     setSelectedMarkerIdx(0);
   }, [violationScreenshots]);
 
-  // Reset selectedMarkerIdx when navigating between screenshots
+  // When the screenshot index changes, reset the selected marker index
   useEffect(() => {
     setSelectedMarkerIdx(0);
   }, [currentScreenshotIdx]);
@@ -483,7 +489,7 @@ function Complete() {
     };
   }, [url]);
 
-  // Animate loading progress while loading/animating
+  // Animates the loading progress bar while loading or animating
   useEffect(() => {
     let interval = null;
 
@@ -530,7 +536,7 @@ function Complete() {
     };
   }, [loading, animating, imageLoaded, animationDone, analysis]);
 
-  // Animate screenshot fetching progress before the first image arrives
+  // Animates the screenshot progress bar before the first image loads
   useEffect(() => {
     let interval = null;
 
@@ -555,7 +561,7 @@ function Complete() {
     };
   }, [loading, imageLoaded]);
 
-  // Once animation is done, if a pending result arrived earlier, apply it
+  // When animation is done, apply any pending result that arrived early
   useEffect(() => {
     if (animationDone && pendingResult) {
       const payload = pendingResult;
@@ -577,7 +583,7 @@ function Complete() {
     }
   }, [animationDone, pendingResult, pendingSegments]);
 
-  // When animation is done and analysis is available, finish progress and exit loading
+  // When animation and analysis are both done, finish progress and stop loading
   useEffect(() => {
     if (animationDone && analysis && loading) {
       setProgress(100);
@@ -586,8 +592,7 @@ function Complete() {
     }
   }, [animationDone, analysis, loading]);
 
-  // ── Mobile responsiveness probe ──
-  // When analysis becomes available, check real responsiveness signals from the scanned HTML/data.
+  // Checks mobile responsiveness using real scan data when analysis is available
   useEffect(() => {
     if (!analysis) return;
 
@@ -728,7 +733,7 @@ function Complete() {
     navigate("/");
   };
 
-  // Safely unwrap aiAnalysis JSON (fallback to root if needed)
+  // Use aiAnalysis if available, otherwise fall back to the root analysis object
   const ai = analysis?.aiAnalysis ?? analysis ?? {};
 
   const score = typeof ai.score === "number" ? ai.score : null;
@@ -737,12 +742,12 @@ function Complete() {
   const overallSummary = ai.overallSummary || "";
   const hciText = ai.hciSummary || overallSummary;
 
-  // Category scores from Gemini
+  // Category scores for each POUR principle
   const categoryScores = ai.categoryScores || {};
   const categoryExplanations = ai.categoryExplanations || {};
   const scoreBreakdown = ai.scoreBreakdown || {};
 
-  // Score details state
+  // Controls whether the score details modal is shown
   const [showScoreDetails, setShowScoreDetails] = useState(false);
 
   const perceivableScore =
@@ -763,7 +768,7 @@ function Complete() {
   const robustScore =
     typeof categoryScores.Robust === "number" ? categoryScores.Robust : null;
 
-  // Conformance level scores
+  // Stores conformance level scores for A, AA, AAA
   const levelScores = ai.levelScores || {};
 
   const levelAScore = typeof levelScores.A === "number" ? levelScores.A : null;
@@ -772,7 +777,7 @@ function Complete() {
   const levelAAAScore =
     typeof levelScores.AAA === "number" ? levelScores.AAA : null;
 
-  // Sort groups by WCAG criterion number (1.4.3, 2.1.1, etc.)
+  // Sorts groups by WCAG criterion number (like 1.4.3, 2.1.1)
   groups = groups.slice().sort((a, b) => {
     const getNum = (str) => {
       if (!str) return "";
@@ -797,7 +802,7 @@ function Complete() {
     return 0;
   });
 
-  // Split HCI text into paragraphs instead of one big wall
+  // Splits the HCI summary into readable paragraphs
   const hciParagraphs =
     typeof hciText === "string"
       ? hciText
@@ -806,7 +811,7 @@ function Complete() {
           .filter(Boolean)
       : [];
 
-  // ── HCI glossary: term → plain-English definition ──────────────────────────
+  // Glossary of HCI and accessibility terms for tooltips and explanations
   const HCI_GLOSSARY = {
     WCAG: "Web Content Accessibility Guidelines — the international standard for web accessibility published by W3C.",
     ARIA: "Accessible Rich Internet Applications — HTML attributes that make content accessible to assistive technologies.",
@@ -841,7 +846,7 @@ function Complete() {
       "How quickly new users can learn to use the interface effectively.",
   };
 
-  // ── Theme → WCAG criteria mapping (for linked issues feature) ───────────────
+  // Maps UI themes to related WCAG criteria for linking issues
   const THEME_CRITERIA = {
     "Visual Design": ["1.1.1", "1.4.1", "1.4.3", "1.4.11"],
     Interaction: ["2.1.1", "2.4.1", "2.4.4", "2.4.7", "2.5.3"],
@@ -851,7 +856,7 @@ function Complete() {
     Analysis: [],
   };
 
-  // Map WCAG criterion to principle
+  // Returns the POUR principle for a given WCAG criterion
   const getPrincipleFromCriterion = (criterion) => {
     if (!criterion) return null;
     // Extract the leading digit from "x.x.x" anywhere in the string —
@@ -873,7 +878,7 @@ function Complete() {
     }
   };
 
-  // Helper: Toggle expanded state for issue cards
+  // Expands or collapses an issue card in the UI
   const toggleExpanded = (key) => {
     setExpandedItems((prev) => ({
       ...prev,
@@ -881,7 +886,7 @@ function Complete() {
     }));
   };
 
-  // Helper: Calculate severity counts from violations
+  // Counts the number of violations by severity
   const calculateSeverityCounts = () => {
     const counts = { critical: 0, serious: 0, moderate: 0, minor: 0 };
     if (!analysis?.violations) return counts;
@@ -896,7 +901,7 @@ function Complete() {
     return counts;
   };
 
-  // Helper: Filter and sort violations
+  // Filters and sorts the list of violations based on user settings
   const getFilteredAndSortedViolations = () => {
     if (!analysis?.violations) return [];
 
@@ -1004,7 +1009,7 @@ function Complete() {
     { key: "Robust", score: robustScore },
   ];
 
-  // Map WCAG criterion IDs to friendly, non-technical titles for end-users
+  // Maps WCAG rule IDs to friendly, non-technical titles for users
   const friendlyTitles = {
     "scrollable-region-focusable": "Keyboard Navigation",
     "button-name": "Button Labels",
@@ -1033,11 +1038,11 @@ function Complete() {
     list: "List Structure or Markup",
   };
 
-  // AI-generated title cache: { [key]: string }
+  // Stores AI-generated friendly titles for issues
   const [aiFriendlyTitles, setAiFriendlyTitles] = useState({});
   const aiFriendlyTitlesPending = useRef(new Set());
 
-  // AI-generated mobile issue detail cache: { [key]: { whyItMatters, affectedUsers, fix } }
+  // Stores AI-generated details for mobile issues
   const [mobileIssueDetails, setMobileIssueDetails] = useState({});
   const mobileIssueDetailsPending = useRef(new Set());
 
@@ -1086,9 +1091,7 @@ function Complete() {
     return criterion || id || "Accessibility Issue";
   };
 
-  // ── AI-powered mobile issue detail generator ──
-  // Called when a user first expands an issue card. Fires once per key, caches result.
-  // Passes real scan evidence so the AI explanation is grounded in actual findings.
+  // Fetches and caches AI-generated details for a mobile issue when a card is expanded
   const getMobileIssueDetail = (key, issueType, wcag, evidence, severity) => {
     if (mobileIssueDetails[key]) return; // already loaded
     if (mobileIssueDetailsPending.current.has(key)) return; // already in flight
@@ -1146,7 +1149,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
     })();
   };
 
-  // --- Next Steps done tracking + copy state ---
+  // Tracks which "Next Steps" checklist items are marked done and if the list was copied
   const [doneSteps, setDoneSteps] = useState(new Set());
   const [checklistCopied, setChecklistCopied] = useState(false);
   const toggleDoneStep = (i) =>
@@ -1155,7 +1158,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
     });
-  // --- Collapsible section states ---
+  // Tracks which report sections are collapsed or expanded
   const [collapsedSections, setCollapsedSections] = useState({
     websitePreview: false,
     accessibilityIssues: true,
@@ -1168,37 +1171,36 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   const toggleSection = (key) => {
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
-  // --- Pie chart slice hover state ---
+  // Tracks which pie chart slice is hovered
   const [hoveredSlice, setHoveredSlice] = useState(null);
-  // --- Donut hover state for HCI keyword donut ---
+  // Tracks hover state for the HCI keyword donut chart
   const [donutHover, setDonutHover] = useState(null); // { label, percent, x, y }
-  // --- HCI report expanded state ---
+  // Tracks whether the HCI report is expanded
   const [hciExpanded, setHciExpanded] = useState(false);
-  // Website Preview toggle state
+  // Tracks which preview mode is active (highlighted, side-by-side, lense)
   const [previewMode, setPreviewMode] = useState("highlighted");
-  // Side-by-side AI image state
+  // Stores the AI-generated side-by-side image and loading state
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
   const [mobileIframeLoaded, setMobileIframeLoaded] = useState(false);
   const [mobilePreviewWidth, setMobilePreviewWidth] = useState(390);
 
-  // ── Mobile responsiveness probe ──
-  // null = not checked yet, "checking" = in progress, "responsive" = passed, "not-responsive" = failed, "unknown" = couldn't determine
+  // Tracks mobile responsiveness status and details
   const [mobileResponsiveStatus, setMobileResponsiveStatus] = useState(null);
   const [mobileResponsiveDetails, setMobileResponsiveDetails] = useState([]);
   const [auditInfoOpen, setAuditInfoOpen] = useState(null); // key of open specialized-audit info popup
   const [sectionInfoOpen, setSectionInfoOpen] = useState(null); // key of open section info popup
 
-  // Color blindness filter state for Lense mode
+  // Tracks which color blindness filter is active and its loading state
   const [colorBlindFilter, setColorBlindFilter] = useState(null); // null | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia'
   const [colorBlindLoading, setColorBlindLoading] = useState(false);
   const [colorBlindImage, setColorBlindImage] = useState(null);
 
-  // Helper for color blindness cache key
+  // Returns a cache key for color blindness images
   function getColorBlindKey(url, type) {
     return `aiColorBlindCache_${url}_${type}`;
   }
-  // Color blindness prompts
+  // Prompts for simulating different types of color blindness
   const colorBlindPrompts = {
     protanopia:
       "Simulate this screenshot as it would appear to a person with Protanopia (red-blind color vision deficiency). Apply a realistic Protanopia color perception transformation so that reds are significantly reduced or shifted toward brown/gray tones and red–green distinctions become difficult to perceive. Preserve the exact layout, spacing, typography, icons, UI components, and text content. Do NOT move, resize, remove, or redesign any elements. Do NOT change brightness, contrast, or styling except where required to simulate Protanopia color perception. Only modify color values to reflect how a user with Protanopia would perceive the interface.",
@@ -1213,7 +1215,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
       "Simulate this screenshot as it would appear to a person with Achromatopsia (complete color blindness). Convert the image to a realistic grayscale representation based on luminance perception while preserving all layout, typography, icons, UI components, and text exactly as in the original screenshot. Do NOT change spacing, structure, brightness, contrast, or styling except for the removal of color. The output should appear identical to the original interface but entirely in grayscale as perceived by someone with Achromatopsia.",
   };
 
-  // Handle color blindness filter button click
+  // Handles clicking a color blindness filter button
   const handleColorBlindClick = async (type) => {
     // Log filter usage server-side (non-blocking)
     try {
@@ -1264,12 +1266,12 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
     }
   };
 
-  // Helper for cache key
+  // Returns a cache key for AI-generated images
   function getAIImageKey(url, idx) {
     return `aiImageCache_${url}_${idx}`;
   }
 
-  // When switching to sidebyside, send screenshot to AI generator or use cache
+  // When switching to side-by-side mode, fetch or use cached AI-generated image
   useEffect(() => {
     if (
       previewMode !== "sidebyside" ||
@@ -1363,7 +1365,7 @@ Return the edited screenshot with minimal localized edits only.
     sideBySideLoading,
   ]);
 
-  // Clear AI image cache when returning to home page
+  // Clears cached AI images when returning to the home page
   useEffect(() => {
     // Only clear cache if on home page
     if (location.pathname === "/") {
@@ -1376,7 +1378,7 @@ Return the edited screenshot with minimal localized edits only.
     }
   }, [location.pathname]);
 
-  // ── Section info popup content ──────────────────────────────────────────────
+  // Section info popup content for each report section
   const SECTION_INFO = {
     "website-preview": {
       iconStroke: "#0ea5e9",

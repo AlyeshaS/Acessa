@@ -3,13 +3,19 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
 
+// Plays back the step-by-step analysis visually for the user
 function AnalysisPlayer({ result, onComplete, onImageLoad }) {
+  // Tracks which step is currently shown
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Steps and screenshot from the analysis result
   const steps = result?.steps || [];
   const screenshot = result?.screenshot;
+  // Ref for the image element
   const imgRef = useRef(null);
+  // Scale factor for drawing highlights and clicks
   const [scale, setScale] = useState(1);
 
+  // Automatically play through each step, then call onComplete
   useEffect(() => {
     if (!steps.length) {
       if (onComplete) onComplete();
@@ -34,9 +40,10 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
 
   const currentStep = steps[currentIndex];
 
-  // compute scaled coordinates for display
+  // Scales coordinates for highlights and click markers
   const scaled = (val) => Math.round((val || 0) * (scale || 1));
 
+  // When the image loads, update the scale and notify parent
   const handleImgLoad = (e) => {
     try {
       const img = e.target;
@@ -44,7 +51,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
       const clientW = img.clientWidth || natural;
       const s = clientW / natural;
       setScale(s || 1);
-      // notify parent that image has loaded so progress can start
+      // Notify parent that image has loaded so progress can start
       try {
         if (typeof onImageLoad === "function") onImageLoad();
       } catch (err) {}
@@ -53,6 +60,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
     }
   };
 
+  // Render the analysis player UI
   return (
     <div className="analysis-player-single">
       <div
@@ -67,6 +75,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           background: "rgba(15,23,42,0.8)",
         }}
       >
+        {/* Show the screenshot being analyzed */}
         {screenshot && (
           <img
             ref={imgRef}
@@ -78,6 +87,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           />
         )}
 
+        {/* Draw a circle for simulated clicks */}
         {currentStep?.type === "click" && (
           <div
             style={{
@@ -96,6 +106,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           />
         )}
 
+        {/* Draw a rectangle for highlighted issues */}
         {currentStep?.type === "highlight" && (
           <div
             style={{
@@ -117,6 +128,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           />
         )}
 
+        {/* Step counter in the top right */}
         <div
           style={{
             position: "absolute",
@@ -134,6 +146,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
           Step {Math.min(currentIndex + 1, steps.length)} of {steps.length || 1}
         </div>
 
+        {/* Step description at the bottom */}
         <div
           style={{
             position: "absolute",
@@ -171,6 +184,7 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
         </div>
       </div>
 
+      {/* Message below the player */}
       <p
         style={{
           marginTop: 8,
@@ -186,23 +200,32 @@ function AnalysisPlayer({ result, onComplete, onImageLoad }) {
   );
 }
 
+// Main page for visual step-by-step accessibility analysis
 function Visual() {
   const location = useLocation();
   const navigate = useNavigate();
+  // URL to analyze, passed from previous page
   const url = location.state?.url;
 
+  // Loading and error state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [preview, setPreview] = useState(null); // {screenshot, steps}
+  // Preview holds the screenshot and steps for the animation
+  const [preview, setPreview] = useState(null);
+  // Final analysis data
   const [analysis, setAnalysis] = useState(null);
+  // Progress bar state
   const [progress, setProgress] = useState(0);
   const [targetProgress, setTargetProgress] = useState(0);
   const progressRef = useRef(0);
+  // Stats for the analysis
   const [pagesViewed, setPagesViewed] = useState(0);
   const [violationsFound, setViolationsFound] = useState(0);
   const [duplicatesFound, setDuplicatesFound] = useState(0);
+  // Visual segments and pending analysis
   const [segments, setSegments] = useState([]);
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
+  // Tracks if the main image is loaded and if animation is running
   const [imageLoaded, setImageLoaded] = useState(false);
   const [animating, setAnimating] = useState(false);
 
