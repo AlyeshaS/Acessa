@@ -1,22 +1,17 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { WCAG_CODE_SUGGESTIONS, WCAG_PREVIEWS } from "../utils/wcagSuggestions";
 import { getCriterionKey } from "./ViolationsFilterSection";
 import "../styles/App.css";
 import "../styles/index.css";
+import "../styles/components.css";
 
 // Shows code suggestions and previews for a given WCAG criterion.
-// Lets you see before/after, copy fixes, and view test steps.
 function CodeSuggestionPanel({ criterion }) {
-  // Figure out which WCAG rule we're working with and get the right suggestion.
   const key = getCriterionKey(criterion);
   const s =
     (key && WCAG_CODE_SUGGESTIONS[key]) || WCAG_CODE_SUGGESTIONS["_default"];
-  // For debugging:
-  // console.log("KEY:", key);
-  // console.log("SUGGESTION:", s);
   const preview = key ? WCAG_PREVIEWS[key] : null;
 
-  // These are the possible tabs for different code fixes.
   const ALL_TABS = [
     { id: "before", label: "Before (broken)", color: "#dc2626", bg: "#fef2f2" },
     { id: "html", label: "HTML fix", color: "#e34c26", bg: "#fff5f2" },
@@ -25,23 +20,17 @@ function CodeSuggestionPanel({ criterion }) {
     { id: "react", label: "React fix", color: "#0ea5e9", bg: "#f0f9ff" },
   ];
 
-  // Only show tabs that actually have code for this suggestion.
   const tabs = ALL_TABS.filter((t) => s && s[t.id]);
   const [activeTab, setActiveTab] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
   const [testOpen, setTestOpen] = React.useState(false);
 
-  // Whenever the criterion changes, reset to the first available tab.
   React.useEffect(() => {
     if (tabs.length > 0) setActiveTab(tabs[0].id);
   }, [criterion]);
 
-  // If there's nothing to show, don't render anything.
   if (!s || tabs.length === 0) return null;
 
-  const activeTabMeta = ALL_TABS.find((t) => t.id === activeTab);
-
-  // Copy the code in the current tab to the clipboard.
   function handleCopy() {
     const code = s[activeTab] || "";
     navigator.clipboard?.writeText(code).then(() => {
@@ -51,27 +40,10 @@ function CodeSuggestionPanel({ criterion }) {
   }
 
   return (
-    <div
-      style={{
-        marginTop: 14,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        overflow: "visible",
-        background: "#f8fafc",
-      }}
-    >
-      {/* Where to apply the fix (if provided) */}
+    <div className="csp-root">
+      {/* Where to apply the fix */}
       {s.where && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
-            padding: "10px 14px",
-            background: "#f0f9ff",
-            borderBottom: "1px solid #bae6fd",
-          }}
-        >
+        <div className="csp-where-banner">
           <svg
             style={{ flexShrink: 0, marginTop: 1 }}
             width="14"
@@ -87,69 +59,35 @@ function CodeSuggestionPanel({ criterion }) {
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span style={{ fontSize: 12, color: "#0369a1", lineHeight: 1.5 }}>
+          <span className="csp-where-text">
             <strong>Where to apply: </strong>
             {s.where}
           </span>
         </div>
       )}
 
-      {/* Show a before/after preview if available */}
+      {/* Before/after preview */}
       {preview && (
-        <div
-          style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0" }}
-        >
-          <div style={{ flex: 1, borderRight: "1px solid #e2e8f0" }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: "#dc2626",
-                background: "#fef2f2",
-                padding: "4px 10px",
-                borderBottom: "1px solid #fca5a5",
-              }}
-            >
+        <div className="csp-preview-row">
+          <div className="csp-preview-col">
+            <div className="csp-preview-label csp-preview-label--broken">
               Before — broken
             </div>
             <iframe
               srcDoc={preview.broken}
-              style={{
-                width: "100%",
-                height: 130,
-                border: "none",
-                display: "block",
-              }}
+              className="csp-preview-iframe"
               scrolling="no"
               title="Broken example"
               sandbox="allow-same-origin"
             />
           </div>
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: "#16a34a",
-                background: "#f0fdf4",
-                padding: "4px 10px",
-                borderBottom: "1px solid #86efac",
-              }}
-            >
+          <div className="csp-preview-col">
+            <div className="csp-preview-label csp-preview-label--fixed">
               After — fixed
             </div>
             <iframe
               srcDoc={preview.fixed}
-              style={{
-                width: "100%",
-                height: 130,
-                border: "none",
-                display: "block",
-              }}
+              className="csp-preview-iframe"
               scrolling="no"
               title="Fixed example"
               sandbox="allow-same-origin"
@@ -158,16 +96,8 @@ function CodeSuggestionPanel({ criterion }) {
         </div>
       )}
 
-      {/* Tab bar for switching between code suggestions */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          borderBottom: "1px solid #e2e8f0",
-          background: "#f1f5f9",
-          overflowX: "auto",
-        }}
-      >
+      {/* Tab bar */}
+      <div className="csp-tab-bar">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -194,23 +124,9 @@ function CodeSuggestionPanel({ criterion }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        {/* Button to copy the code in the current tab */}
         <button
           onClick={handleCopy}
-          style={{
-            padding: "6px 14px",
-            fontSize: 11,
-            fontWeight: 700,
-            border: "none",
-            background: "transparent",
-            color: copied ? "#16a34a" : "#64748b",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            transition: "color 0.2s",
-            whiteSpace: "nowrap",
-          }}
+          className={`csp-copy-btn${copied ? " csp-copy-btn--copied" : ""}`}
         >
           {copied ? (
             <>
@@ -249,74 +165,29 @@ function CodeSuggestionPanel({ criterion }) {
         </button>
       </div>
 
-      {/* Code block for the selected tab */}
+      {/* Code block */}
       <div
-        style={{
-          position: "relative",
-          background: activeTab === "before" ? "#fef2f2" : "#ffffff",
-        }}
+        className={`csp-code-area${activeTab === "before" ? " csp-code-area--before" : ""}`}
       >
         {activeTab === "before" && (
-          <div
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 10,
-              fontSize: 10,
-              fontWeight: 700,
-              color: "#dc2626",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              opacity: 0.7,
-            }}
-          >
-            ❌ Broken — do not use
-          </div>
+          <div className="csp-broken-label">❌ Broken — do not use</div>
         )}
         <pre
-          style={{
-            margin: 0,
-            padding: "16px",
-            fontSize: 12.5,
-            lineHeight: 1.7,
-            fontFamily:
-              "'SFMono-Regular','Consolas','Liberation Mono',monospace",
-            color: activeTab === "before" ? "#7f1d1d" : "#1e293b",
-            overflowX: "auto",
-            whiteSpace: "pre",
-            maxHeight: 340,
-            overflowY: "auto",
-          }}
+          className={`csp-pre${activeTab === "before" ? " csp-pre--before" : " csp-pre--after"}`}
         >
           <code>{s[activeTab]}</code>
         </pre>
       </div>
 
-      {/* Show effort estimate and any helpful links */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "10px 14px",
-          borderTop: "1px solid #e2e8f0",
-          background: "#f8fafc",
-          flexWrap: "wrap",
-        }}
-      >
+      {/* Footer: effort + links */}
+      <div className="csp-footer">
         {s.effort && (
           <span
+            className="csp-effort-badge"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              fontSize: 11,
-              fontWeight: 700,
               color: s.effort.color,
               background: `${s.effort.color}15`,
               border: `1px solid ${s.effort.color}44`,
-              borderRadius: 999,
-              padding: "3px 10px",
             }}
           >
             <svg
@@ -342,15 +213,7 @@ function CodeSuggestionPanel({ criterion }) {
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#0284c7",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 3,
-            }}
+            className="csp-link"
           >
             {link.label}
             <svg
@@ -371,27 +234,12 @@ function CodeSuggestionPanel({ criterion }) {
         ))}
       </div>
 
-      {/* Show test steps if available (collapsible) */}
+      {/* Test steps */}
       {s.testSteps && s.testSteps.length > 0 && (
         <div style={{ borderTop: "1px solid #e2e8f0" }}>
           <button
             onClick={() => setTestOpen((o) => !o)}
-            style={{
-              width: "100%",
-              padding: "9px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: testOpen ? "#f0fdf4" : "#f8fafc",
-              border: "none",
-              borderTop: testOpen ? "none" : undefined,
-              cursor: "pointer",
-              textAlign: "left",
-              fontSize: 12,
-              fontWeight: 700,
-              color: testOpen ? "#15803d" : "#475569",
-              transition: "background 0.15s",
-            }}
+            className={`csp-test-toggle${testOpen ? " csp-test-toggle--open" : " csp-test-toggle--closed"}`}
           >
             <svg
               width="13"
@@ -411,24 +259,9 @@ function CodeSuggestionPanel({ criterion }) {
             {s.testSteps.length} steps)
           </button>
           {testOpen && (
-            <ol
-              style={{
-                margin: 0,
-                padding: "12px 14px 14px 34px",
-                listStyle: "decimal",
-                background: "#f0fdf4",
-              }}
-            >
+            <ol className="csp-test-steps">
               {s.testSteps.map((step, i) => (
-                <li
-                  key={i}
-                  style={{
-                    fontSize: 12.5,
-                    color: "#166534",
-                    lineHeight: 1.65,
-                    marginBottom: 6,
-                  }}
-                >
+                <li key={i} className="csp-test-step">
                   {step}
                 </li>
               ))}
