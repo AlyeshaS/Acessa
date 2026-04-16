@@ -3178,6 +3178,82 @@ Return ONLY this JSON (no markdown, no extra text):
   }
 });
 
+/**
+ * Mobile responsive preview endpoint.
+ * Launches Playwright at the exact requested viewport width so the site
+ * renders its true responsive/mobile layout — media queries fire correctly
+ * and the result looks exactly like a real device, not a scaled-down desktop.
+ *
+ * GET /api/mobile-preview?url=https://example.com&width=390&height=844
+ */
+app.get("/api/mobile-preview", async (req, res) => {
+  const { url, width, height } = req.query;
+
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "Missing url query param" });
+  }
+
+  const viewportWidth = Math.min(
+    Math.max(parseInt(width, 10) || 390, 320),
+    1024,
+  );
+  const viewportHeight = Math.min(
+    Math.max(parseInt(height, 10) || 844, 480),
+    1366,
+  );
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      // Set viewport to exact device dimensions so responsive CSS fires correctly
+      viewport: { width: viewportWidth, height: viewportHeight },
+      // Spoof user agent as mobile Chrome so sites serve mobile layouts
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+      // Report device as mobile so JS media queries work too
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 2,
+      geolocation: { latitude: 43.7, longitude: -79.42 },
+      permissions: ["geolocation"],
+    });
+
+    const page = await context.newPage();
+    page.on("dialog", (dialog) => dialog.dismiss().catch(() => {}));
+
+    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
+
+    // Wait a moment for any JS-driven layout changes to settle
+    await page.waitForTimeout(800);
+
+    // Take a screenshot at the full page height or cap at 3x viewport height
+    // to avoid enormous screenshots on infinite-scroll pages
+    const screenshotBuf = await page.screenshot({
+      type: "jpeg",
+      quality: 80,
+      fullPage: false, // viewport only — shows the above-fold mobile view
+    });
+
+    const base64 = screenshotBuf.toString("base64");
+    res.json({
+      screenshot: `data:image/jpeg;base64,${base64}`,
+      width: viewportWidth,
+      height: viewportHeight,
+    });
+  } catch (err) {
+    console.error("[MOBILE PREVIEW] Error:", err.message);
+    res
+      .status(500)
+      .json({
+        error: "Failed to capture mobile preview",
+        details: err.message,
+      });
+  } finally {
+    if (browser) await browser.close();
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`WCAG AI server listening on port ${PORT}`);
 });

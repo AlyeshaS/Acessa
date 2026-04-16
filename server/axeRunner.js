@@ -2,30 +2,103 @@ import { chromium } from "playwright";
 import axe from "axe-core";
 const axeSource = axe.source;
 
+/**
+ * Injected before page JS runs. Prevents popups and intercepts dialogs
+ * that appear when the user (or axe) interacts with certain elements.
+ */
+const ANTI_POPUP_SCRIPT = `
+(function () {
+  // Swallow window.open calls (popup windows)
+  window.open = function () { return null; };
+
+  // Auto-hide any dialog/modal injected into the DOM
+  const _MO = window.MutationObserver;
+  window.MutationObserver = class extends _MO {
+    constructor(cb) {
+      super((mutations, obs) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            const role = node.getAttribute && node.getAttribute("role");
+            const modal = node.getAttribute && node.getAttribute("aria-modal");
+            if (role === "dialog" || modal === "true") {
+              node.style.setProperty("display", "none", "important");
+            }
+            if (node.querySelectorAll) {
+              node.querySelectorAll('[role="dialog"],[aria-modal="true"]').forEach(el => {
+                el.style.setProperty("display", "none", "important");
+              });
+            }
+          }
+        }
+        cb(mutations, obs);
+      });
+    }
+  };
+})();
+`;
+
 async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+
+  const context = await browser.newContext({
+    geolocation: { latitude: 43.7, longitude: -79.42 },
+    permissions: ["geolocation"],
+  });
+
+  await context.addInitScript({ content: ANTI_POPUP_SCRIPT });
+
+  const page = await context.newPage();
+  page.on("dialog", (dialog) => dialog.dismiss().catch(() => {}));
+
+  // Block any navigation away from the original page.
+  // This prevents links (like Craigslist's subarea links) from opening
+  // the location-picker modal or navigating to a different page mid-scan.
+  page.on("framenavigated", async (frame) => {
+    if (frame !== page.mainFrame()) return; // allow subframes
+    const current = frame.url();
+    if (current !== "about:blank" && current !== url && current !== url + "/") {
+      console.log(`[NAV] Blocked navigation to: ${current}`);
+      await page
+        .goto(url, { waitUntil: "networkidle", timeout: 45000 })
+        .catch(() => {});
+    }
+  });
 
   try {
-    // Set consistent viewport
     await page.setViewportSize(viewportSize);
 
-    // Go to the page and capture the response and final URL
     const response = await page.goto(url, {
       waitUntil: "networkidle",
       timeout: 45000,
     });
     const finalUrl = page.url();
 
+    // After load, patch all links and click handlers that could trigger popups.
+    // We stop <a> clicks from navigating and stop any element from triggering
+    // a location picker by intercepting the most common pattern.
+    await page.evaluate(() => {
+      // Intercept all anchor clicks — prevent navigation, allow axe to inspect
+      document.addEventListener(
+        "click",
+        (e) => {
+          const a = e.target.closest("a");
+          if (a && a.href && !a.href.startsWith("javascript")) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+    });
+
     await page.addScriptTag({ content: axeSource });
 
-    // Run axe in the page context
     const axeResults = await page.evaluate(async () => {
       // @ts-ignore
       return await window.axe.run();
     });
 
-    // Get current scroll position and page dimensions
     const pageInfo = await page.evaluate(() => ({
       scrollX: window.scrollX || window.pageXOffset,
       scrollY: window.scrollY || window.pageYOffset,
@@ -35,7 +108,6 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
       pageHeight: document.documentElement.scrollHeight,
     }));
 
-    // For each violation node, extract all selectors and bounding boxes
     for (const violation of axeResults.violations) {
       for (const node of violation.nodes) {
         const selectors = Array.isArray(node.target)
@@ -48,14 +120,11 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
 
         for (const sel of selectors) {
           try {
-            // Get bounding box WITHOUT scrolling
             const box = await page.evaluate((sel) => {
               const el = document.querySelector(sel);
               if (!el) return null;
-
               const rect = el.getBoundingClientRect();
               return {
-                // viewport-relative coordinates
                 x: rect.x,
                 y: rect.y,
                 width: rect.width,
@@ -65,7 +134,6 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
             }, sel);
 
             if (box) {
-              // Add scroll offset to convert viewport coords to page coords
               box.pageX = box.x + pageInfo.scrollX;
               box.pageY = box.y + pageInfo.scrollY;
               node.boundingBoxes.push(box);
@@ -75,13 +143,11 @@ async function runAxeOnUrl(url, viewportSize = { width: 1280, height: 720 }) {
           }
         }
 
-        // For backward compatibility
         node.boundingBox = node.boundingBoxes[0] || null;
         node.selector = selectors[0] || null;
       }
     }
 
-    // Attach page info to results
     axeResults.pageInfo = pageInfo;
     axeResults.viewportSize = viewportSize;
     axeResults.finalUrl = finalUrl;
@@ -103,10 +169,7 @@ export async function runAxeOnUrlSafe(url, retries = 1, viewportSize) {
     } catch (err) {
       lastError = err;
       console.warn(`[AXE] Scan failed on attempt ${attempt + 1}:`, err.message);
-
-      if (attempt === retries) {
-        throw lastError;
-      }
+      if (attempt === retries) throw lastError;
     }
   }
 

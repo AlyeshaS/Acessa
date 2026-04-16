@@ -10,6 +10,7 @@
     "@axe-core/playwright": "^4.11.0",
     "@google/genai": "^1.30.0",
     "axe-core": "^4.9.0",
+    "canvas": "^3.2.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",

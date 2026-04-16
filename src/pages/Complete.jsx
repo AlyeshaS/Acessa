@@ -1184,6 +1184,8 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
   const [mobileIframeLoaded, setMobileIframeLoaded] = useState(false);
   const [mobilePreviewWidth, setMobilePreviewWidth] = useState(390);
+  const [mobilePreviewScreenshot, setMobilePreviewScreenshot] = useState(null);
+  const [mobilePreviewLoading, setMobilePreviewLoading] = useState(false);
 
   // Tracks mobile responsiveness status and details
   const [mobileResponsiveStatus, setMobileResponsiveStatus] = useState(null);
@@ -1317,7 +1319,7 @@ ${feedback ? `- User feedback: ${feedback}` : ""}
 ${
   violations?.length
     ? `Accessibility issues to address (do not change unrelated areas):
-${violations.map((v, i) => `  ${i + 1}) ${typeof v === "string" ? v : v.message || JSON.stringify(v)}`).join("\n")}`
+${violations.map((v, i) => `  ${i + 1}) ${typeof v === "string" ? v : v.help || v.description || v.id || "Accessibility violation"}`).join("\n")}`
     : ""
 }
 
@@ -1364,6 +1366,36 @@ Return the edited screenshot with minimal localized edits only.
     sideBySideAIImage,
     sideBySideLoading,
   ]);
+
+  // Fetches a real Playwright screenshot at the selected mobile viewport width.
+  // This shows the true responsive layout — media queries fire at the correct width.
+  useEffect(() => {
+    if (!analysis || !url) return;
+    setMobilePreviewScreenshot(null);
+    setMobilePreviewLoading(true);
+
+    const dev = [
+      { label: "SE", w: 375, h: 667 },
+      { label: "14", w: 390, h: 844 },
+      { label: "Pro Max", w: 430, h: 932 },
+      { label: "Galaxy", w: 360, h: 800 },
+      { label: "Pixel", w: 412, h: 915 },
+      { label: "iPad", w: 768, h: 1024 },
+    ].find((d) => d.w === mobilePreviewWidth) || {
+      w: mobilePreviewWidth,
+      h: 844,
+    };
+
+    fetch(
+      `http://localhost:4000/api/mobile-preview?url=${encodeURIComponent(url)}&width=${dev.w}&height=${dev.h}`,
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.screenshot) setMobilePreviewScreenshot(data.screenshot);
+      })
+      .catch(() => {})
+      .finally(() => setMobilePreviewLoading(false));
+  }, [mobilePreviewWidth, url, analysis]);
 
   // Clears cached AI images when returning to the home page
   useEffect(() => {
@@ -2229,48 +2261,6 @@ Return the edited screenshot with minimal localized edits only.
                                         setSelectedMarkerIdx(idx)
                                       }
                                     />
-                                    {/* Marker selector dots — shown when there are multiple markers */}
-                                    {markerCount > 1 && (
-                                      <div
-                                        style={{
-                                          position: "absolute",
-                                          bottom: 8,
-                                          left: "50%",
-                                          transform: "translateX(-50%)",
-                                          display: "flex",
-                                          gap: 6,
-                                          zIndex: 10,
-                                        }}
-                                      >
-                                        {Array.from({
-                                          length: markerCount,
-                                        }).map((_, i) => (
-                                          <button
-                                            key={i}
-                                            onClick={() =>
-                                              setSelectedMarkerIdx(i)
-                                            }
-                                            title={`Issue ${i + 1}`}
-                                            style={{
-                                              width:
-                                                i === selectedMarkerIdx
-                                                  ? 20
-                                                  : 8,
-                                              height: 8,
-                                              borderRadius: 999,
-                                              border: "none",
-                                              background:
-                                                i === selectedMarkerIdx
-                                                  ? "#ff4d4f"
-                                                  : "rgba(255,77,79,0.35)",
-                                              cursor: "pointer",
-                                              padding: 0,
-                                              transition: "all 0.2s ease",
-                                            }}
-                                          />
-                                        ))}
-                                      </div>
-                                    )}
                                   </div>
 
                                   {/* Feedback panel */}
@@ -3356,248 +3346,6 @@ Return the edited screenshot with minimal localized edits only.
                           </div>
                         </div>
                       </div>
-                      {/* Issue Breakdown Pie Chart and Legend */}
-                      {(() => {
-                        // Pie chart data and slices
-                        const principleColors = {
-                          Perceivable: "#3b82f6",
-                          Operable: "#d97706",
-                          Understandable: "#189b97",
-                          Robust: "#7c3aed",
-                        };
-                        const principleCounts = {
-                          Perceivable: 0,
-                          Operable: 0,
-                          Understandable: 0,
-                          Robust: 0,
-                        };
-                        groups.forEach((g) => {
-                          const p = getPrincipleFromCriterion(g.wcagCriterion);
-                          if (p && principleCounts[p] !== undefined) {
-                            principleCounts[p] += g.count || 1;
-                          }
-                        });
-                        const pieData = Object.entries(principleCounts)
-                          .filter(([, v]) => v > 0)
-                          .map(([label, value]) => ({
-                            label,
-                            value,
-                            color: principleColors[label],
-                          }));
-                        const pieTotal = pieData.reduce(
-                          (s, d) => s + d.value,
-                          0,
-                        );
-                        const buildPieSlices = (data, total, cx, cy, r) => {
-                          let angle = -90;
-                          return data.map((d) => {
-                            const sweep = (d.value / total) * 360;
-                            const startRad = (angle * Math.PI) / 180;
-                            const endRad = ((angle + sweep) * Math.PI) / 180;
-                            const x1 = cx + r * Math.cos(startRad);
-                            const y1 = cy + r * Math.sin(startRad);
-                            const x2 = cx + r * Math.cos(endRad);
-                            const y2 = cy + r * Math.sin(endRad);
-                            const large = sweep > 180 ? 1 : 0;
-                            const path =
-                              sweep >= 359.99
-                                ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
-                                : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
-                            angle += sweep;
-                            return {
-                              ...d,
-                              path,
-                              pct: Math.round((d.value / total) * 100),
-                            };
-                          });
-                        };
-                        const slices =
-                          pieTotal > 0
-                            ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
-                            : [];
-                        return (
-                          <>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#94a3b8",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.6px",
-
-                                padding: "20px 24px",
-                              }}
-                            >
-                              Issue Breakdown
-                            </div>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 16,
-                                alignItems: "center",
-                                padding: "20px 24px",
-                              }}
-                            >
-                              <svg
-                                width="120"
-                                height="120"
-                                viewBox="0 0 120 120"
-                                style={{ flexShrink: 0 }}
-                              >
-                                {slices.map((s) => (
-                                  <path
-                                    key={s.label}
-                                    d={s.path}
-                                    fill={s.color}
-                                    opacity={
-                                      hoveredSlice && hoveredSlice !== s.label
-                                        ? 0.4
-                                        : 1
-                                    }
-                                    style={{
-                                      cursor: "pointer",
-                                      transition: "opacity 0.15s ease",
-                                    }}
-                                    onMouseEnter={() =>
-                                      setHoveredSlice(s.label)
-                                    }
-                                    onMouseLeave={() => setHoveredSlice(null)}
-                                  />
-                                ))}
-                                {slices.map((s) => (
-                                  <path
-                                    key={s.label + "-sep"}
-                                    d={s.path}
-                                    fill="none"
-                                    stroke="#fff"
-                                    strokeWidth="2"
-                                  />
-                                ))}
-                                <circle cx="60" cy="60" r="28" fill="#fff" />
-                                <text
-                                  x="60"
-                                  y="57"
-                                  textAnchor="middle"
-                                  dominantBaseline="middle"
-                                  fontSize="15"
-                                  fontWeight="800"
-                                  fill="#0f172a"
-                                >
-                                  {hoveredSlice
-                                    ? principleCounts[hoveredSlice]
-                                    : pieTotal}
-                                </text>
-                                <text
-                                  x="60"
-                                  y="70"
-                                  textAnchor="middle"
-                                  fontSize="8"
-                                  fill="#94a3b8"
-                                >
-                                  {hoveredSlice
-                                    ? hoveredSlice.split(" ")[0]
-                                    : "total"}
-                                </text>
-                              </svg>
-                              <div style={{ flex: 1 }}>
-                                {pieData.map((s) => (
-                                  <div
-                                    key={s.label}
-                                    onMouseEnter={() =>
-                                      setHoveredSlice(s.label)
-                                    }
-                                    onMouseLeave={() => setHoveredSlice(null)}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 7,
-                                      marginBottom: 6,
-                                      cursor: "default",
-                                      opacity:
-                                        hoveredSlice && hoveredSlice !== s.label
-                                          ? 0.4
-                                          : 1,
-                                      transition: "opacity 0.15s ease",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        width: 9,
-                                        height: 9,
-                                        borderRadius: 2,
-                                        background: s.color,
-                                        flexShrink: 0,
-                                      }}
-                                    />
-                                    <span
-                                      style={{
-                                        fontSize: 11.5,
-                                        fontWeight: 600,
-                                        color: "#334155",
-                                        flex: 1,
-                                      }}
-                                    >
-                                      {s.label}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontSize: 11.5,
-                                        fontWeight: 700,
-                                        color: s.color,
-                                      }}
-                                    >
-                                      {Math.round((s.value / pieTotal) * 100)}%
-                                    </span>
-                                  </div>
-                                ))}
-                                {Object.entries(principleCounts)
-                                  .filter(([, v]) => v === 0)
-                                  .map(([label]) => (
-                                    <div
-                                      key={label}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 7,
-                                        marginBottom: 6,
-                                        opacity: 0.3,
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          width: 9,
-                                          height: 9,
-                                          borderRadius: 2,
-                                          background: "#e2e8f0",
-                                          flexShrink: 0,
-                                        }}
-                                      />
-                                      <span
-                                        style={{
-                                          fontSize: 11.5,
-                                          fontWeight: 600,
-                                          color: "#94a3b8",
-                                          flex: 1,
-                                        }}
-                                      >
-                                        {label}
-                                      </span>
-                                      <span
-                                        style={{
-                                          fontSize: 11.5,
-                                          fontWeight: 700,
-                                          color: "#cbd5e1",
-                                        }}
-                                      >
-                                        0%
-                                      </span>
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                          </>
-                        );
-                      })()}
 
                       <ViolationsFilterSection
                         violations={analysis?.violations || []}
@@ -4861,25 +4609,47 @@ Return the edited screenshot with minimal localized edits only.
                                       position: "relative",
                                     }}
                                   >
-                                    {!mobileIframeError &&
-                                    (mobileHtml || analysis.url) ? (
-                                      <iframe
-                                        key={mobilePreviewWidth}
-                                        {...(mobileHtml
-                                          ? { srcDoc: mobileHtml }
-                                          : { src: analysis.url })}
-                                        title="Responsive preview"
-                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                        onError={() =>
-                                          setMobileIframeError(true)
-                                        }
+                                    {mobilePreviewLoading ? (
+                                      <div
                                         style={{
-                                          width: dev.w,
-                                          height: iframeH,
-                                          border: "none",
-                                          transform: `scale(${scale})`,
-                                          transformOrigin: "top left",
-                                          pointerEvents: "none",
+                                          width: "100%",
+                                          height: "100%",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          flexDirection: "column",
+                                          gap: 8,
+                                          color: "#94a3b8",
+                                          fontSize: 11,
+                                        }}
+                                      >
+                                        <svg
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          style={{
+                                            animation:
+                                              "spin 1s linear infinite",
+                                          }}
+                                        >
+                                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                        </svg>
+                                        Loading {dev.w}px view…
+                                      </div>
+                                    ) : mobilePreviewScreenshot ? (
+                                      <img
+                                        src={mobilePreviewScreenshot}
+                                        alt={`${dev.sub} responsive preview at ${dev.w}px`}
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                          objectPosition: "top center",
                                           display: "block",
                                         }}
                                       />
@@ -4972,24 +4742,10 @@ Return the edited screenshot with minimal localized edits only.
                                     textAlign: "center",
                                   }}
                                 >
-                                  {!mobileIframeError &&
-                                  (mobileHtml || analysis.url)
+                                  {mobilePreviewScreenshot
                                     ? `${dev.sub} · ${dev.w}px`
                                     : "Desktop screenshot"}
                                 </span>
-                                {(mobileIframeError ||
-                                  (!mobileHtml && !analysis.url)) && (
-                                  <span
-                                    style={{
-                                      fontSize: 10,
-                                      color: "#cbd5e1",
-                                      textAlign: "center",
-                                      maxWidth: dev.frameW,
-                                    }}
-                                  >
-                                    Preview unavailable
-                                  </span>
-                                )}
 
                                 {/* Device size chips */}
                                 <div
@@ -5010,7 +4766,7 @@ Return the edited screenshot with minimal localized edits only.
                                         title={`${d.sub} (${d.w}px)`}
                                         onClick={() => {
                                           setMobilePreviewWidth(d.w);
-                                          setMobileIframeError(false);
+                                          setMobilePreviewScreenshot(null);
                                         }}
                                         style={{
                                           padding: "3px 8px",
