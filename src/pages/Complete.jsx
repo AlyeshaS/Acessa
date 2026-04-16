@@ -1171,6 +1171,8 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   const toggleSection = (key) => {
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+  // Tracks which pie chart slice is hovered
+  const [hoveredSlice, setHoveredSlice] = useState(null);
   // Tracks hover state for the HCI keyword donut chart
   const [donutHover, setDonutHover] = useState(null); // { label, percent, x, y }
   // Tracks whether the HCI report is expanded
@@ -3354,6 +3356,248 @@ Return the edited screenshot with minimal localized edits only.
                           </div>
                         </div>
                       </div>
+                      {/* Issue Breakdown Pie Chart and Legend */}
+                      {(() => {
+                        // Pie chart data and slices
+                        const principleColors = {
+                          Perceivable: "#3b82f6",
+                          Operable: "#d97706",
+                          Understandable: "#189b97",
+                          Robust: "#7c3aed",
+                        };
+                        const principleCounts = {
+                          Perceivable: 0,
+                          Operable: 0,
+                          Understandable: 0,
+                          Robust: 0,
+                        };
+                        groups.forEach((g) => {
+                          const p = getPrincipleFromCriterion(g.wcagCriterion);
+                          if (p && principleCounts[p] !== undefined) {
+                            principleCounts[p] += g.count || 1;
+                          }
+                        });
+                        const pieData = Object.entries(principleCounts)
+                          .filter(([, v]) => v > 0)
+                          .map(([label, value]) => ({
+                            label,
+                            value,
+                            color: principleColors[label],
+                          }));
+                        const pieTotal = pieData.reduce(
+                          (s, d) => s + d.value,
+                          0,
+                        );
+                        const buildPieSlices = (data, total, cx, cy, r) => {
+                          let angle = -90;
+                          return data.map((d) => {
+                            const sweep = (d.value / total) * 360;
+                            const startRad = (angle * Math.PI) / 180;
+                            const endRad = ((angle + sweep) * Math.PI) / 180;
+                            const x1 = cx + r * Math.cos(startRad);
+                            const y1 = cy + r * Math.sin(startRad);
+                            const x2 = cx + r * Math.cos(endRad);
+                            const y2 = cy + r * Math.sin(endRad);
+                            const large = sweep > 180 ? 1 : 0;
+                            const path =
+                              sweep >= 359.99
+                                ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
+                                : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+                            angle += sweep;
+                            return {
+                              ...d,
+                              path,
+                              pct: Math.round((d.value / total) * 100),
+                            };
+                          });
+                        };
+                        const slices =
+                          pieTotal > 0
+                            ? buildPieSlices(pieData, pieTotal, 60, 60, 52)
+                            : [];
+                        return (
+                          <>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#94a3b8",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.6px",
+
+                                padding: "20px 24px",
+                              }}
+                            >
+                              Issue Breakdown
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 16,
+                                alignItems: "center",
+                                padding: "20px 24px",
+                              }}
+                            >
+                              <svg
+                                width="120"
+                                height="120"
+                                viewBox="0 0 120 120"
+                                style={{ flexShrink: 0 }}
+                              >
+                                {slices.map((s) => (
+                                  <path
+                                    key={s.label}
+                                    d={s.path}
+                                    fill={s.color}
+                                    opacity={
+                                      hoveredSlice && hoveredSlice !== s.label
+                                        ? 0.4
+                                        : 1
+                                    }
+                                    style={{
+                                      cursor: "pointer",
+                                      transition: "opacity 0.15s ease",
+                                    }}
+                                    onMouseEnter={() =>
+                                      setHoveredSlice(s.label)
+                                    }
+                                    onMouseLeave={() => setHoveredSlice(null)}
+                                  />
+                                ))}
+                                {slices.map((s) => (
+                                  <path
+                                    key={s.label + "-sep"}
+                                    d={s.path}
+                                    fill="none"
+                                    stroke="#fff"
+                                    strokeWidth="2"
+                                  />
+                                ))}
+                                <circle cx="60" cy="60" r="28" fill="#fff" />
+                                <text
+                                  x="60"
+                                  y="57"
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fontSize="15"
+                                  fontWeight="800"
+                                  fill="#0f172a"
+                                >
+                                  {hoveredSlice
+                                    ? principleCounts[hoveredSlice]
+                                    : pieTotal}
+                                </text>
+                                <text
+                                  x="60"
+                                  y="70"
+                                  textAnchor="middle"
+                                  fontSize="8"
+                                  fill="#94a3b8"
+                                >
+                                  {hoveredSlice
+                                    ? hoveredSlice.split(" ")[0]
+                                    : "total"}
+                                </text>
+                              </svg>
+                              <div style={{ flex: 1 }}>
+                                {pieData.map((s) => (
+                                  <div
+                                    key={s.label}
+                                    onMouseEnter={() =>
+                                      setHoveredSlice(s.label)
+                                    }
+                                    onMouseLeave={() => setHoveredSlice(null)}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 7,
+                                      marginBottom: 6,
+                                      cursor: "default",
+                                      opacity:
+                                        hoveredSlice && hoveredSlice !== s.label
+                                          ? 0.4
+                                          : 1,
+                                      transition: "opacity 0.15s ease",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 9,
+                                        height: 9,
+                                        borderRadius: 2,
+                                        background: s.color,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 600,
+                                        color: "#334155",
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {s.label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: 11.5,
+                                        fontWeight: 700,
+                                        color: s.color,
+                                      }}
+                                    >
+                                      {Math.round((s.value / pieTotal) * 100)}%
+                                    </span>
+                                  </div>
+                                ))}
+                                {Object.entries(principleCounts)
+                                  .filter(([, v]) => v === 0)
+                                  .map(([label]) => (
+                                    <div
+                                      key={label}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 7,
+                                        marginBottom: 6,
+                                        opacity: 0.3,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: 9,
+                                          height: 9,
+                                          borderRadius: 2,
+                                          background: "#e2e8f0",
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      <span
+                                        style={{
+                                          fontSize: 11.5,
+                                          fontWeight: 600,
+                                          color: "#94a3b8",
+                                          flex: 1,
+                                        }}
+                                      >
+                                        {label}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 11.5,
+                                          fontWeight: 700,
+                                          color: "#cbd5e1",
+                                        }}
+                                      >
+                                        0%
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       <ViolationsFilterSection
                         violations={analysis?.violations || []}
