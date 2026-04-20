@@ -1,10 +1,21 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
 import { GoogleGenAI } from "@google/genai";
 import { AxeBuilder } from "@axe-core/playwright";
+import path from "path";
 import analyzeRouter from "./routes/analyze.js";
+
+const envCandidates = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "server/.env"),
+  path.resolve(process.cwd(), "../.env"),
+];
+
+for (const envPath of envCandidates) {
+  dotenv.config({ path: envPath });
+}
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -12,7 +23,13 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const geminiApiKey = process.env.GEMINI_API_KEY;
+
+if (!geminiApiKey) {
+  throw new Error("Missing GEMINI_API_KEY in server/.env");
+}
+
+const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
 import { openaiImageEdit } from "./openaiImageEdit.js";
 
@@ -3243,12 +3260,10 @@ app.get("/api/mobile-preview", async (req, res) => {
     });
   } catch (err) {
     console.error("[MOBILE PREVIEW] Error:", err.message);
-    res
-      .status(500)
-      .json({
-        error: "Failed to capture mobile preview",
-        details: err.message,
-      });
+    res.status(500).json({
+      error: "Failed to capture mobile preview",
+      details: err.message,
+    });
   } finally {
     if (browser) await browser.close();
   }

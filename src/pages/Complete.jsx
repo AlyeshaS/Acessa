@@ -730,6 +730,9 @@ function Complete() {
     if (abortRef.current) {
       abortRef.current.abort();
     }
+    colorBlindCacheRef.current.clear();
+    aiImageCacheRef.current.clear();
+    sessionStorage.clear();
     navigate("/");
   };
 
@@ -1199,8 +1202,9 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   const [colorBlindImage, setColorBlindImage] = useState(null);
 
   // Returns a cache key for color blindness images
+  const colorBlindCacheRef = useRef(new Map());
   function getColorBlindKey(url, type) {
-    return `aiColorBlindCache_${url}_${type}`;
+    return `${url}_${type}`;
   }
   // Prompts for simulating different types of color blindness
   const colorBlindPrompts = {
@@ -1242,7 +1246,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
     setColorBlindLoading(true);
     setColorBlindImage(null);
     const cacheKey = getColorBlindKey(url, type);
-    const cached = sessionStorage.getItem(cacheKey);
+    const cached = colorBlindCacheRef.current.get(cacheKey);
     if (cached) {
       setColorBlindImage(cached);
       setColorBlindLoading(false);
@@ -1258,7 +1262,7 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
       const data = await res.json();
       const img = data.editedImageBase64 || data.editedImageUrl || null;
       if (img) {
-        sessionStorage.setItem(cacheKey, img);
+        colorBlindCacheRef.current.set(cacheKey, img);
         setColorBlindImage(img);
       }
     } catch (err) {
@@ -1269,8 +1273,9 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   };
 
   // Returns a cache key for AI-generated images
+  const aiImageCacheRef = useRef(new Map());
   function getAIImageKey(url, idx) {
-    return `aiImageCache_${url}_${idx}`;
+    return `${url}_${idx}`;
   }
 
   // When switching to side-by-side mode, fetch or use cached AI-generated image
@@ -1333,7 +1338,7 @@ Return the edited screenshot with minimal localized edits only.
       JSON.stringify({ feedback, violations }),
     );
 
-    const cached = sessionStorage.getItem(cacheKey);
+    const cached = aiImageCacheRef.current.get(cacheKey);
     if (cached) {
       setSideBySideAIImage(cached);
       setSideBySideLoading(false);
@@ -1352,7 +1357,7 @@ Return the edited screenshot with minimal localized edits only.
       .then((data) => {
         const img = data.editedImageBase64 || data.editedImageUrl || null;
         if (img) {
-          sessionStorage.setItem(cacheKey, img);
+          aiImageCacheRef.current.set(cacheKey, img);
           setSideBySideAIImage(img);
         }
       })
@@ -1397,18 +1402,7 @@ Return the edited screenshot with minimal localized edits only.
       .finally(() => setMobilePreviewLoading(false));
   }, [mobilePreviewWidth, url, analysis]);
 
-  // Clears cached AI images when returning to the home page
-  useEffect(() => {
-    // Only clear cache if on home page
-    if (location.pathname === "/") {
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        if (key && key.startsWith("aiImageCache_")) {
-          sessionStorage.removeItem(key);
-        }
-      }
-    }
-  }, [location.pathname]);
+  // In-memory caches are cleared in handleBack — no sessionStorage cleanup needed
 
   // Section info popup content for each report section
   const SECTION_INFO = {
