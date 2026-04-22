@@ -126,7 +126,6 @@ Accessa/
 | GET | `/api/wcag-check-stream` | Streams live WCAG scan results |
 | GET | `/api/wcag-visual-stream` | Streams visual segment analysis |
 | POST | `/api/ai/image-edit` | AI-powered screenshot editing (OpenAI) |
-| POST | `/api/ai/claude` | Proxies requests to Anthropic Claude |
 | POST | `/api/wcag-visual` | Gemini visual accessibility fixes |
 | POST | `/api/ai-modify-html` | AI HTML/CSS fix suggestions |
 | GET | `/api/mobile-preview` | Responsive screenshot at device viewport |
