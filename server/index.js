@@ -1222,6 +1222,43 @@ function sanitizeForPrompt(text) {
  * Axe tags like "wcag143" are decoded into "1.4.3" + the rule's help text.
  * Falls back to the axe rule id if no decodable tag is found.
  */
+/**
+ * Merges violation groups that share the same WCAG criterion into a single
+ * entry. Occurrence counts are summed; the highest severity wins; the most
+ * detailed problem description is kept (longest string).
+ */
+function mergeGroups(groups) {
+  const map = new Map();
+  for (const g of groups) {
+    const key = String(g.wcagCriterion || "")
+      .trim()
+      .toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, { ...g, count: Number(g.count) || 1 });
+    } else {
+      const existing = map.get(key);
+      // Sum occurrence counts
+      existing.count = (existing.count || 1) + (Number(g.count) || 1);
+      // Keep highest severity: High > Medium > Low
+      const sev = { High: 3, Medium: 2, Low: 1 };
+      if ((sev[g.severity] || 0) > (sev[existing.severity] || 0)) {
+        existing.severity = g.severity;
+      }
+      // Keep the longer (more detailed) problem description
+      if ((g.problem || "").length > (existing.problem || "").length) {
+        existing.problem = g.problem;
+      }
+      // Keep the longer recommendation
+      if (
+        (g.recommendation || "").length > (existing.recommendation || "").length
+      ) {
+        existing.recommendation = g.recommendation;
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
 function getWcagCriterionFromViolation(v) {
   if (!v) return "Unknown";
   const tags = v.tags || [];
@@ -1698,12 +1735,13 @@ The JSON MUST match this schema exactly (UPDATED):
 async function callAi(prompt) {
   console.log("[WCAG] Calling Gemini AI...");
   const result = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash-lite",
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.2,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
@@ -1839,7 +1877,7 @@ async function callAiWithInlineData(
   console.log("[WCAG] Calling Gemini AI with inline image...");
 
   const result = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     contents: [
       {
         role: "user",
@@ -1849,7 +1887,10 @@ async function callAiWithInlineData(
         ],
       },
     ],
-    generationConfig: { responseMimeType: "application/json" },
+    generationConfig: {
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
 
   let text = "";
@@ -2057,7 +2098,7 @@ Return ONLY this JSON, nothing else:
       })
       .map((g) => ({ ...g, type: "ai-analysis" }));
 
-    const allGroups = [...axeGroups, ...aiGroups];
+    const allGroups = mergeGroups([...axeGroups, ...aiGroups]);
     aiResponse.groups = allGroups;
 
     if (axeViolations.length > 0) {
@@ -2656,15 +2697,54 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
     // Scroll through page and capture visible interactive targets
     try {
-      const buttons = await page.$$('button, [role="button"], a[href]');
+      // Snapshot all element data in ONE page.evaluate call BEFORE any
+      // interactions. This prevents "Execution context was destroyed" errors
+      // caused when clicking a link/button navigates the page — live
+      // elementHandle references become stale after navigation.
+      const elementSnapshots = await page.evaluate(() => {
+        const candidates = Array.from(
+          document.querySelectorAll('button, [role="button"], a[href]'),
+        );
+        return candidates.slice(0, 30).map((node) => {
+          const rect = node.getBoundingClientRect();
+          const text = (node.innerText || node.textContent || "").trim();
+          const aria =
+            node.getAttribute("aria-label") ||
+            node.getAttribute("aria-labelledby") ||
+            "";
+          return {
+            label: (text || aria || "Testing click target").slice(0, 60),
+            x: rect.left + window.scrollX,
+            y: rect.top + window.scrollY,
+            width: rect.width,
+            height: rect.height,
+          };
+        });
+      });
 
-      for (let i = 0; i < buttons.length && liveSteps.length < 10; i++) {
-        const handle = buttons[i];
+      for (
+        let i = 0;
+        i < elementSnapshots.length && liveSteps.length < 10;
+        i++
+      ) {
+        const snapshot = elementSnapshots[i];
 
         try {
-          await handle.evaluate((node) => {
-            node.scrollIntoView({ block: "center", inline: "center" });
-          });
+          if (!snapshot || snapshot.width < 4 || snapshot.height < 4) continue;
+
+          const label = snapshot.label;
+
+          // Scroll to element using coordinates — no live handle needed
+          await page.evaluate(
+            ({ x, y }) => {
+              window.scrollTo({
+                left: x - 200,
+                top: y - 200,
+                behavior: "instant",
+              });
+            },
+            { x: snapshot.x, y: snapshot.y },
+          );
           await page.waitForTimeout(140);
 
           const viewport = await page.evaluate(() => ({
@@ -2674,44 +2754,38 @@ app.get("/api/wcag-check-stream", async (req, res) => {
             height: window.innerHeight || 720,
           }));
 
-          const box = await handle.boundingBox();
-          if (!box || box.width < 4 || box.height < 4) continue;
-
-          const label = await handle.evaluate((node) => {
-            const text = (node.innerText || node.textContent || "").trim();
-            const aria =
-              node.getAttribute("aria-label") ||
-              node.getAttribute("aria-labelledby") ||
-              "";
-            return (text || aria || "Testing click target").slice(0, 60);
-          });
-
-          // Interact: hover → mousedown (for carousel dots) → click.
-          // mousedown is dispatched first because many carousels listen for
-          // mousedown/pointerdown rather than click.
-          // transitionend is raced against a 600ms cap so we never screenshot mid-slide.
+          // Coordinate-based mouse actions — no live handle so navigation
+          // cannot cause "Execution context was destroyed" errors.
+          const clickX = Math.round(
+            snapshot.x + snapshot.width / 2 - (viewport.x || 0),
+          );
+          const clickY = Math.round(
+            snapshot.y + snapshot.height / 2 - (viewport.y || 0),
+          );
           try {
-            await handle.hover({ force: true }).catch(() => {});
+            await page.mouse.move(clickX, clickY).catch(() => {});
             await page.waitForTimeout(60);
-            await handle.dispatchEvent("mousedown");
+            await page.mouse.down().catch(() => {});
             await page.waitForTimeout(30);
-            await handle.click({ force: true });
+            await page.mouse.up().catch(() => {});
             await Promise.race([
-              page.evaluate(
-                () =>
-                  new Promise((resolve) => {
-                    const handler = () => {
-                      document.removeEventListener(
-                        "transitionend",
-                        handler,
-                        true,
-                      );
-                      resolve();
-                    };
-                    document.addEventListener("transitionend", handler, true);
-                    setTimeout(resolve, 550);
-                  }),
-              ),
+              page
+                .evaluate(
+                  () =>
+                    new Promise((resolve) => {
+                      const handler = () => {
+                        document.removeEventListener(
+                          "transitionend",
+                          handler,
+                          true,
+                        );
+                        resolve();
+                      };
+                      document.addEventListener("transitionend", handler, true);
+                      setTimeout(resolve, 550);
+                    }),
+                )
+                .catch(() => {}),
               page.waitForTimeout(600),
             ]);
           } catch (clickErr) {
@@ -2734,10 +2808,10 @@ app.get("/api/wcag-check-stream", async (req, res) => {
 
           const step = {
             type: "click",
-            x: Math.round(box.x + box.width / 2),
-            y: Math.round(box.y + box.height / 2),
-            width: Math.round(box.width),
-            height: Math.round(box.height),
+            x: Math.round(snapshot.x + snapshot.width / 2),
+            y: Math.round(snapshot.y + snapshot.height / 2),
+            width: Math.round(snapshot.width),
+            height: Math.round(snapshot.height),
             label: label || "Testing click target",
             offsetX: Math.round(viewport.x || 0),
             offsetY: Math.round(viewport.y || 0),
@@ -3156,7 +3230,7 @@ Return ONLY this JSON (no markdown, no extra text):
       })
       .map((g) => ({ ...g, type: "ai-analysis" }));
 
-    const allGroups = [...axeGroups, ...aiGroups];
+    const allGroups = mergeGroups([...axeGroups, ...aiGroups]);
     if (aiResponse) aiResponse.groups = allGroups;
 
     // byCategory dedup removed — image-hash dedup already handles true
@@ -3201,10 +3275,29 @@ Return ONLY this JSON (no markdown, no extra text):
  * renders its true responsive/mobile layout — media queries fire correctly
  * and the result looks exactly like a real device, not a scaled-down desktop.
  *
- * GET /api/mobile-preview?url=https://example.com&width=390&height=844
+ * GET /api/mobile-preview?url=...&width=390&height=844
+ *   &responsiveScore=80&touchScore=45&readabilityScore=70
+ *   &navigationScore=60&mobileFormScore=90&contentAccessScore=75
+ *
+ * The frontend passes the real sub-scores from the main Gemini analysis so
+ * the visual review prompt uses the actual session values, not hardcoded ones.
  */
+
+// Cache visual confirmations by URL — one Gemini call per site per session.
+const mobileVisualConfirmCache = new Map();
+
 app.get("/api/mobile-preview", async (req, res) => {
-  const { url, width, height } = req.query;
+  const {
+    url,
+    width,
+    height,
+    responsiveScore,
+    touchScore,
+    readabilityScore,
+    navigationScore,
+    mobileFormScore,
+    contentAccessScore,
+  } = req.query;
 
   if (!url || typeof url !== "string") {
     return res.status(400).json({ error: "Missing url query param" });
@@ -3219,16 +3312,24 @@ app.get("/api/mobile-preview", async (req, res) => {
     1366,
   );
 
+  // Parse the real sub-scores sent by the frontend for this session
+  const scores = {
+    responsive: parseInt(responsiveScore, 10) || null,
+    touch: parseInt(touchScore, 10) || null,
+    readability: parseInt(readabilityScore, 10) || null,
+    navigation: parseInt(navigationScore, 10) || null,
+    forms: parseInt(mobileFormScore, 10) || null,
+    content: parseInt(contentAccessScore, 10) || null,
+  };
+  const hasScores = Object.values(scores).some((s) => s !== null);
+
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
-      // Set viewport to exact device dimensions so responsive CSS fires correctly
       viewport: { width: viewportWidth, height: viewportHeight },
-      // Spoof user agent as mobile Chrome so sites serve mobile layouts
       userAgent:
         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-      // Report device as mobile so JS media queries work too
       isMobile: true,
       hasTouch: true,
       deviceScaleFactor: 2,
@@ -3240,23 +3341,124 @@ app.get("/api/mobile-preview", async (req, res) => {
     page.on("dialog", (dialog) => dialog.dismiss().catch(() => {}));
 
     await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
-
-    // Wait a moment for any JS-driven layout changes to settle
     await page.waitForTimeout(800);
 
-    // Take a screenshot at the full page height or cap at 3x viewport height
-    // to avoid enormous screenshots on infinite-scroll pages
     const screenshotBuf = await page.screenshot({
       type: "jpeg",
       quality: 80,
-      fullPage: false, // viewport only — shows the above-fold mobile view
+      fullPage: false,
     });
-
     const base64 = screenshotBuf.toString("base64");
+
+    // ── Gemini visual confirmation ──
+    // Compares the rendered screenshot against the HTML-based scores.
+    // Runs once per URL (cached). Skipped if no scores were passed yet.
+    let visualConfirmation = null;
+
+    if (hasScores) {
+      if (mobileVisualConfirmCache.has(url)) {
+        visualConfirmation = mobileVisualConfirmCache.get(url);
+        console.log(`[MOBILE PREVIEW] Visual confirm cache hit for ${url}`);
+      } else {
+        try {
+          const scoreLines = [
+            scores.responsive !== null
+              ? `- Responsive layout: ${scores.responsive}/100`
+              : null,
+            scores.touch !== null
+              ? `- Touch targets:      ${scores.touch}/100`
+              : null,
+            scores.readability !== null
+              ? `- Readability:        ${scores.readability}/100`
+              : null,
+            scores.navigation !== null
+              ? `- Navigation:         ${scores.navigation}/100`
+              : null,
+            scores.forms !== null
+              ? `- Forms:              ${scores.forms}/100`
+              : null,
+            scores.content !== null
+              ? `- Content access:     ${scores.content}/100`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n");
+
+          const visualPrompt = `You are a mobile accessibility expert reviewing a real screenshot of a website rendered at ${viewportWidth}px viewport width.
+
+An automated HTML/CSS analysis has already scored this site's mobile accessibility. Your job is to look at the actual rendered screenshot and assess whether each score looks accurate based on what you can SEE.
+
+SCORES FROM HTML ANALYSIS (real scores for this specific site and session):
+${scoreLines}
+
+For each score, look at the screenshot and respond with:
+1. Whether what you see CONFIRMS, UNDERESTIMATES, or OVERESTIMATES the score
+   - UNDERESTIMATES = the site looks BETTER than the score suggests
+   - OVERESTIMATES  = the site looks WORSE than the score suggests
+2. ONE specific sentence describing what you visually observe
+3. A suggested score based on what you see (or null if you cannot assess)
+
+RULES:
+- Only comment on what is visually observable in the screenshot
+- Be specific — name actual elements and locations you can see
+- If you cannot assess a dimension visually, use "cannot assess"
+- Do not invent problems you cannot see
+
+Return ONLY a raw JSON object (no markdown, no backticks):
+{
+  "responsive":  { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null },
+  "touch":       { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null },
+  "readability": { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null },
+  "navigation":  { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null },
+  "forms":       { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null },
+  "content":     { "verdict": "confirms|underestimates|overestimates|cannot assess", "observation": "string", "suggestedScore": number|null }
+}`;
+
+          const geminiResult = await callAiWithInlineData(
+            visualPrompt,
+            base64,
+            "image/jpeg",
+          );
+
+          if (
+            geminiResult &&
+            typeof geminiResult === "object" &&
+            !Array.isArray(geminiResult)
+          ) {
+            const keys = [
+              "responsive",
+              "touch",
+              "readability",
+              "navigation",
+              "forms",
+              "content",
+            ];
+            const valid = keys.every(
+              (k) =>
+                !geminiResult[k] || typeof geminiResult[k].verdict === "string",
+            );
+            if (valid) {
+              visualConfirmation = geminiResult;
+              mobileVisualConfirmCache.set(url, visualConfirmation);
+              console.log(
+                `[MOBILE PREVIEW] Visual confirmation complete for ${url}`,
+              );
+            }
+          }
+        } catch (geminiErr) {
+          console.warn(
+            "[MOBILE PREVIEW] Visual confirmation failed (non-fatal):",
+            geminiErr.message,
+          );
+        }
+      }
+    }
+
     res.json({
       screenshot: `data:image/jpeg;base64,${base64}`,
       width: viewportWidth,
       height: viewportHeight,
+      visualConfirmation,
     });
   } catch (err) {
     console.error("[MOBILE PREVIEW] Error:", err.message);

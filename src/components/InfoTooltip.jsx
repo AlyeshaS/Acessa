@@ -3,6 +3,9 @@ import "../styles/components.css";
 
 const InfoTooltip = ({ label, description }) => {
   const [open, setOpen] = useState(false);
+  const normalizedDescription = String(description || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n");
 
   return (
     <>
@@ -52,7 +55,12 @@ const InfoTooltip = ({ label, description }) => {
 
             <div className="info-tooltip-body">
               <div className="info-tooltip-body-label">What it means</div>
-              <p className="info-tooltip-body-text">{description}</p>
+              <p
+                className="info-tooltip-body-text"
+                style={{ whiteSpace: "pre-line" }}
+              >
+                {normalizedDescription}
+              </p>
             </div>
           </div>
         </div>

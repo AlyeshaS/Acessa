@@ -7,6 +7,7 @@ import { aiModifyHtml } from "../api/wcagAPI";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/App.css";
 import "../styles/index.css";
+import "../styles/SubScoreCard.css";
 import ViolationsFilterSection from "../components/ViolationsFilterSection";
 import InfoTooltip from "../components/InfoTooltip";
 
@@ -1185,16 +1186,26 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   // Stores the AI-generated side-by-side image and loading state
   const [sideBySideAIImage, setSideBySideAIImage] = useState(null);
   const [sideBySideLoading, setSideBySideLoading] = useState(false);
+  const [sideBySideImgDims, setSideBySideImgDims] = useState(null);
+  const sideBySideOrigRef = useRef(null);
   const [mobileIframeLoaded, setMobileIframeLoaded] = useState(false);
   const [mobilePreviewWidth, setMobilePreviewWidth] = useState(390);
   const [mobilePreviewScreenshot, setMobilePreviewScreenshot] = useState(null);
   const [mobilePreviewLoading, setMobilePreviewLoading] = useState(false);
+  // Visual confirmation from Gemini — compares rendered screenshot against HTML scores
+  const [mobileVisualConfirmation, setMobileVisualConfirmation] =
+    useState(null);
 
   // Tracks mobile responsiveness status and details
   const [mobileResponsiveStatus, setMobileResponsiveStatus] = useState(null);
   const [mobileResponsiveDetails, setMobileResponsiveDetails] = useState([]);
   const [auditInfoOpen, setAuditInfoOpen] = useState(null); // key of open specialized-audit info popup
   const [sectionInfoOpen, setSectionInfoOpen] = useState(null); // key of open section info popup
+  const [openSubScoreTip, setOpenSubScoreTip] = useState(null); // which sub-score popup is open
+  // Tracks collapsed/expanded sections inside each sub-score popup
+  const [popupSectionOpen, setPopupSectionOpen] = useState({});
+  const togglePopupSection = (key) =>
+    setPopupSectionOpen((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Tracks which color blindness filter is active and its loading state
   const [colorBlindFilter, setColorBlindFilter] = useState(null); // null | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia'
@@ -1279,6 +1290,10 @@ Respond ONLY with the raw JSON object. No markdown, no backticks, no preamble.`,
   }
 
   // When switching to side-by-side mode, fetch or use cached AI-generated image
+  useEffect(() => {
+    setSideBySideImgDims(null);
+  }, [currentScreenshotIdx]);
+
   useEffect(() => {
     if (
       previewMode !== "sidebyside" ||
@@ -1373,7 +1388,8 @@ Return the edited screenshot with minimal localized edits only.
   ]);
 
   // Fetches a real Playwright screenshot at the selected mobile viewport width.
-  // This shows the true responsive layout — media queries fire at the correct width.
+  // Passes the real sub-scores from this session so Gemini can visually
+  // confirm them against the rendered screenshot — no hardcoded values.
   useEffect(() => {
     if (!analysis || !url) return;
     setMobilePreviewScreenshot(null);
@@ -1391,12 +1407,25 @@ Return the edited screenshot with minimal localized edits only.
       h: 844,
     };
 
+    // Pull the real scores from this session's analysis result
+    const mobileData =
+      analysis?.aiAnalysis?.mobileAccessibility ||
+      analysis?.mobileAccessibility;
+
+    const scoreParams = mobileData
+      ? `&responsiveScore=${mobileData.responsiveScore ?? ""}&touchScore=${mobileData.touchScore ?? ""}&readabilityScore=${mobileData.readabilityScore ?? ""}&navigationScore=${mobileData.navigationScore ?? ""}&mobileFormScore=${mobileData.mobileFormScore ?? ""}&contentAccessScore=${mobileData.contentAccessScore ?? ""}`
+      : "";
+
     fetch(
-      `http://localhost:4000/api/mobile-preview?url=${encodeURIComponent(url)}&width=${dev.w}&height=${dev.h}`,
+      `http://localhost:4000/api/mobile-preview?url=${encodeURIComponent(url)}&width=${dev.w}&height=${dev.h}${scoreParams}`,
     )
       .then((res) => res.json())
       .then((data) => {
         if (data.screenshot) setMobilePreviewScreenshot(data.screenshot);
+        // Store the visual confirmation from Gemini if it returned one
+        if (data.visualConfirmation) {
+          setMobileVisualConfirmation(data.visualConfirmation);
+        }
       })
       .catch(() => {})
       .finally(() => setMobilePreviewLoading(false));
@@ -2672,11 +2701,18 @@ Return the edited screenshot with minimal localized edits only.
                               }}
                             >
                               <img
+                                ref={sideBySideOrigRef}
                                 src={
                                   violationScreenshots[currentScreenshotIdx]
                                     ?.screenshot
                                 }
                                 alt="Original screenshot"
+                                onLoad={(e) => {
+                                  setSideBySideImgDims({
+                                    width: e.target.offsetWidth,
+                                    height: e.target.offsetHeight,
+                                  });
+                                }}
                                 style={{
                                   width: "auto",
                                   height: "auto",
@@ -2714,14 +2750,18 @@ Return the edited screenshot with minimal localized edits only.
                                   src={sideBySideAIImage}
                                   alt="AI-modified screenshot"
                                   style={{
-                                    width: "auto",
-                                    height: "auto",
+                                    width: sideBySideImgDims
+                                      ? sideBySideImgDims.width
+                                      : "auto",
+                                    height: sideBySideImgDims
+                                      ? sideBySideImgDims.height
+                                      : "auto",
                                     maxWidth: "95%",
                                     maxHeight: "400px",
-                                    objectFit: "contain",
+                                    objectFit: "fill",
                                     borderRadius: "8px",
                                     boxShadow:
-                                      "0 2px 8px rgba(124,138,160,0.10)", // match original
+                                      "0 2px 8px rgba(124,138,160,0.10)",
                                     border: "1px solid #e5e7eb",
                                   }}
                                 />
@@ -3290,7 +3330,7 @@ Return the edited screenshot with minimal localized edits only.
                               A: {levelAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level A"
-                                description="Level A ensures the most basic accessibility requirements are met, allowing users to access content without major barriers.\n\nShort: Basic access"
+                                description="Level A ensures the most basic accessibility requirements are met, allowing users to access content without major barriers."
                               />
                             </span>
 
@@ -3312,7 +3352,7 @@ Return the edited screenshot with minimal localized edits only.
                               AA: {levelAAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level AA"
-                                description="Level AA builds on Level A by addressing more common usability issues, making content accessible to a wider range of users and is the standard most organizations are expected to meet.\n\nShort: Standard accessibility"
+                                description="Level AA builds on Level A by addressing more common usability issues, making content accessible to a wider range of users and is the standard most organizations are expected to meet."
                               />
                             </span>
 
@@ -3334,7 +3374,7 @@ Return the edited screenshot with minimal localized edits only.
                               AAA: {levelAAAScore ?? "-"}%
                               <InfoTooltip
                                 label="Level AAA"
-                                description="Level AAA represents the highest level of accessibility, aiming to make content usable for as many people as possible, though it is not always practical to achieve fully.\n\nShort: Highest level, most inclusive"
+                                description="Level AAA represents the highest level of accessibility, aiming to make content usable for as many people as possible, though it is not always practical to achieve fully."
                               />
                             </span>
                           </div>
@@ -3941,9 +3981,13 @@ Return the edited screenshot with minimal localized edits only.
                       analysis.aiAnalysis?.mobileAccessibility ||
                       analysis.mobileAccessibility;
 
+                    // Guard: mobileData may be absent if the AI did not
+                    // return a mobileAccessibility block for this scan
+                    if (!mobileData) return null;
+
                     // Use AI-generated mobile data
                     const {
-                      overallMobileScore,
+                      overallMobileScore = 0,
                       mobileIssues = [],
                       mobileStrengths = [],
                       mobileNextSteps = [],
@@ -3955,47 +3999,105 @@ Return the edited screenshot with minimal localized edits only.
                       contentAccessScore = 0,
                     } = mobileData;
 
+                    // Map each sub-score to its key in the visualConfirmation object
                     const subScores = [
                       {
                         label: "Responsive",
                         score: responsiveScore,
                         icon: "⬡",
                         color: "#0ea5e9",
+                        confirmKey: "responsive",
+                        what: "Does the page adapt its layout to fit mobile screen widths?",
+                        looks:
+                          "CSS media queries, flexible grid/flexbox containers, absence of fixed-width layouts wider than the viewport.",
+                        how: "Checks for @media queries in stylesheets, absence of fixed pixel widths above 320px, and whether the viewport meta tag is correctly set. Score drops when fixed-width containers or missing media queries are detected.",
+                        wcag: "WCAG 1.4.10 Reflow — content must reflow to a single column at 320px without horizontal scrolling.",
                       },
                       {
                         label: "Touch",
                         score: touchScore,
                         icon: "👆",
                         color: "#f59e0b",
+                        confirmKey: "touch",
+                        what: "Are interactive elements large enough and spaced far enough apart to tap accurately on a touchscreen?",
+                        looks:
+                          "Button/link size, spacing between tappable targets, absence of hover-only interactions.",
+                        how: "Evaluates touch target dimensions against the 44×44px minimum and checks spacing between adjacent targets. Penalty applied when the axe target-size rule fires or WCAG 2.5.5/2.5.8 violations are found.",
+                        wcag: "WCAG 2.5.5 Target Size (AAA) and 2.5.8 Target Size Minimum (AA) — interactive controls must meet minimum size thresholds.",
                       },
                       {
                         label: "Readability",
                         score: readabilityScore,
                         icon: "Aa",
                         color: "#8b5cf6",
+                        confirmKey: "readability",
+                        what: "Is the text easy to read on a small screen without zooming or horizontal scrolling?",
+                        looks:
+                          "Font sizes, line-height, text contrast, absence of tiny or clipped text at mobile widths.",
+                        how: "Scans for font-size declarations below 12px, checks pinch-to-zoom is not disabled, and cross-references colour-contrast violations from the axe scan. Score reflects the combined readability risk.",
+                        wcag: "WCAG 1.4.4 Resize Text — text must be resizable up to 200% without loss of content. WCAG 1.4.3 Contrast Ratio for legibility.",
                       },
                       {
                         label: "Navigation",
                         score: navigationScore,
                         icon: "☰",
                         color: "#10b981",
+                        confirmKey: "navigation",
+                        what: "Can users navigate the site efficiently on mobile using touch, keyboard, or assistive technology?",
+                        looks:
+                          "Skip links, logical heading order, visible focus indicators, hamburger/drawer menus that work with screen readers.",
+                        how: "Checks for skip-navigation links, detects keyboard-trap violations, evaluates focus-visible failures, and reviews whether nav landmarks are present and correctly labelled for mobile screen readers.",
+                        wcag: "WCAG 2.4.1 Bypass Blocks, 2.4.3 Focus Order, 2.4.7 Focus Visible, and 1.3.1 Info and Relationships for landmark structure.",
                       },
                       {
                         label: "Forms",
                         score: mobileFormScore,
                         icon: "📝",
                         color: "#6366f1",
+                        confirmKey: "forms",
+                        what: "Are form fields usable on mobile — properly labelled, easy to tap, and triggering the right keyboard type?",
+                        looks:
+                          "Input labels, correct input[type] for email/phone/number, error messages, adequate field height.",
+                        how: "Checks for missing label associations, evaluates input type correctness (e.g. type='email' triggers the @ keyboard), and flags axe form-label violations. Fields under 44px tall are penalised.",
+                        wcag: "WCAG 1.3.1 Info and Relationships, 3.3.1 Error Identification, 3.3.2 Labels or Instructions, and 1.3.5 Identify Input Purpose.",
                       },
                       {
                         label: "Content",
                         score: contentAccessScore,
                         icon: "📄",
                         color: "#ec4899",
+                        confirmKey: "content",
+                        what: "Is all meaningful content accessible on mobile — including images, media, and dynamic content?",
+                        looks:
+                          "Alt text on images, captions on video, no content hidden only for mobile, no horizontal overflow cutting off text.",
+                        how: "Cross-references image-alt and media-caption violations from the axe scan, checks for overflow:hidden clipping content at narrow widths, and verifies orientation is not locked.",
+                        wcag: "WCAG 1.1.1 Non-text Content (alt text), 1.2.x captions/transcripts, 1.3.4 Orientation — content must not be restricted to a single display orientation.",
                       },
                     ];
 
                     const scoreColor = (s) =>
                       s >= 80 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
+
+                    // Recompute overall score using the averaged (HTML + visual) sub-scores
+                    // so the header stays in sync with the card values
+                    const computedOverallScore = (() => {
+                      const avgScores = [
+                        { raw: responsiveScore, key: "responsive" },
+                        { raw: touchScore, key: "touch" },
+                        { raw: readabilityScore, key: "readability" },
+                        { raw: navigationScore, key: "navigation" },
+                        { raw: mobileFormScore, key: "forms" },
+                        { raw: contentAccessScore, key: "content" },
+                      ].map(({ raw, key }) => {
+                        const vs =
+                          mobileVisualConfirmation?.[key]?.suggestedScore ??
+                          null;
+                        return vs !== null ? Math.round((raw + vs) / 2) : raw;
+                      });
+                      return Math.round(
+                        avgScores.reduce((a, b) => a + b, 0) / avgScores.length,
+                      );
+                    })();
                     const sevColor = (s) => {
                       const sl = (s || "").toLowerCase();
                       if (
@@ -4328,12 +4430,12 @@ Return the edited screenshot with minimal localized edits only.
                               style={{
                                 fontSize: 36,
                                 fontWeight: 900,
-                                color: scoreColor(overallMobileScore),
+                                color: scoreColor(computedOverallScore),
                                 lineHeight: 1,
                                 letterSpacing: "-1px",
                               }}
                             >
-                              {overallMobileScore}%
+                              {computedOverallScore}%
                             </div>
                             <div
                               style={{
@@ -4415,61 +4517,485 @@ Return the edited screenshot with minimal localized edits only.
                                 flexWrap: "wrap",
                               }}
                             >
-                              {subScores.map((s) => (
-                                <div
-                                  key={s.label}
-                                  style={{
-                                    flex: "1 1 120px",
-                                    background:
-                                      s.score >= 80 ? "#f0fdf4" : "#f8fafc",
-                                    border: `1px solid ${s.score >= 80 ? "#bbf7d0" : s.score >= 50 ? "#fde68a" : "#fca5a5"}`,
-                                    borderTop: `3px solid ${scoreColor(s.score)}`,
-                                    borderRadius: 10,
-                                    padding: "10px 12px",
-                                  }}
-                                >
+                              {subScores.map((s) => {
+                                const vc =
+                                  mobileVisualConfirmation?.[s.confirmKey];
+                                const hasVC = vc && vc.verdict;
+                                const popupKey = `subscore-popup-${s.label}`;
+                                const popupOpen = openSubScoreTip === s.label;
+
+                                // Verdict metadata — WCAG AA compliant colours (4.5:1+ on white)
+                                const verdictMeta = hasVC
+                                  ? {
+                                      // underestimates = HTML score underestimates quality = looks BETTER than code says
+                                      // overestimates  = HTML score overestimates quality  = looks WORSE  than code says
+                                      confirms: {
+                                        colorClass: "ssc-verdict--confirms",
+                                        icon: "✓",
+                                        label: "Visually confirmed",
+                                      },
+                                      underestimates: {
+                                        colorClass: "ssc-verdict--confirms",
+                                        icon: "↑",
+                                        label: "Looks better visually",
+                                      },
+                                      overestimates: {
+                                        colorClass:
+                                          "ssc-verdict--overestimates",
+                                        icon: "⚠",
+                                        label: "May be worse visually",
+                                      },
+                                      "cannot assess": {
+                                        colorClass: "ssc-verdict--na",
+                                        icon: "–",
+                                        label: "Visual n/a",
+                                      },
+                                    }[vc.verdict] || {
+                                      colorClass: "ssc-verdict--na",
+                                      icon: "?",
+                                      label: "Unknown",
+                                    }
+                                  : null;
+
+                                const scoreClass =
+                                  s.score >= 80
+                                    ? "ssc--good"
+                                    : s.score >= 50
+                                      ? "ssc--fair"
+                                      : "ssc--poor";
+
+                                return (
                                   <div
+                                    key={s.label}
+                                    className={`ssc ${scoreClass}`}
                                     style={{
-                                      display: "flex",
-                                      alignItems: "baseline",
-                                      gap: 6,
-                                      marginBottom: 4,
+                                      borderTop: `3px solid ${scoreColor(s.score)}`,
                                     }}
                                   >
-                                    <div
-                                      style={{
-                                        fontSize: 22,
-                                        fontWeight: 900,
-                                        color: scoreColor(s.score),
-                                        lineHeight: 1,
-                                      }}
-                                    >
-                                      {s.score}
+                                    {/* ── Icon + label row ── */}
+                                    <div className="ssc__header">
+                                      <span
+                                        className="ssc__icon"
+                                        aria-hidden="true"
+                                      >
+                                        {s.icon}
+                                      </span>
+                                      <span className="ssc__label">
+                                        {s.label}
+                                      </span>
+
+                                      {/* Info button — opens popup */}
+                                      <button
+                                        className="ssc__info-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenSubScoreTip(
+                                            popupOpen ? null : s.label,
+                                          );
+                                        }}
+                                        aria-label={`Learn more about ${s.label} score`}
+                                        aria-expanded={popupOpen}
+                                        aria-haspopup="dialog"
+                                      >
+                                        ?
+                                      </button>
                                     </div>
-                                    <div
-                                      style={{
-                                        fontSize: 10,
-                                        fontWeight: 700,
-                                        color: "#64748b",
-                                        textTransform: "uppercase",
-                                        letterSpacing: "0.4px",
-                                      }}
-                                    >
-                                      {s.label}
-                                    </div>
+
+                                    {/* ── Score + bar ── */}
+                                    {(() => {
+                                      // Average the HTML/CSS score with Gemini's visual suggested score
+                                      // when available — gives a combined assessment from both sources
+                                      const visualScore =
+                                        vc?.suggestedScore !== null &&
+                                        vc?.suggestedScore !== undefined
+                                          ? vc.suggestedScore
+                                          : null;
+                                      const displayScore =
+                                        visualScore !== null
+                                          ? Math.round(
+                                              (s.score + visualScore) / 2,
+                                            )
+                                          : s.score;
+                                      const displayColor =
+                                        scoreColor(displayScore);
+                                      return (
+                                        <>
+                                          <div className="ssc__score-row">
+                                            <span
+                                              className="ssc__score-num"
+                                              style={{ color: displayColor }}
+                                            >
+                                              {displayScore}
+                                            </span>
+                                            <span className="ssc__score-denom">
+                                              /100
+                                            </span>
+                                            {visualScore !== null && (
+                                              <span className="ssc__score-avg-label">
+                                                avg
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div
+                                            className="ssc__bar-track"
+                                            role="progressbar"
+                                            aria-valuenow={displayScore}
+                                            aria-valuemin={0}
+                                            aria-valuemax={100}
+                                            aria-label={`${s.label} score: ${displayScore} out of 100`}
+                                          >
+                                            <div
+                                              className="ssc__bar-fill"
+                                              style={{
+                                                width: `${displayScore}%`,
+                                                background: displayColor,
+                                              }}
+                                            />
+                                          </div>
+
+                                          {/* ── Status label ── */}
+                                          <p
+                                            className={`ssc__status ${displayScore >= 80 ? "ssc__status--good" : "ssc__status--needs"}`}
+                                          >
+                                            {displayScore >= 80
+                                              ? "✓ Good"
+                                              : displayScore >= 50
+                                                ? "Needs improvement"
+                                                : "Needs work"}
+                                          </p>
+                                        </>
+                                      );
+                                    })()}
+
+                                    {/* ── Visual confirmation badge (static, no dropdown) ── */}
+                                    {hasVC && (
+                                      <span
+                                        className={`ssc__verdict-badge ${verdictMeta.colorClass}`}
+                                      >
+                                        <span aria-hidden="true">
+                                          {verdictMeta.icon}
+                                        </span>
+                                        {verdictMeta.label}
+                                      </span>
+                                    )}
+
+                                    {/* ── Popup modal ── */}
+                                    {popupOpen && (
+                                      <>
+                                        {/* Backdrop */}
+                                        <div
+                                          className="ssc-popup__backdrop"
+                                          onClick={() =>
+                                            setOpenSubScoreTip(null)
+                                          }
+                                          aria-hidden="true"
+                                        />
+                                        <div
+                                          role="dialog"
+                                          aria-modal="true"
+                                          aria-labelledby={`ssc-popup-title-${s.label}`}
+                                          className="ssc-popup"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {/* Popup header */}
+                                          <div className="ssc-popup__header">
+                                            <span
+                                              className="ssc-popup__icon"
+                                              aria-hidden="true"
+                                            >
+                                              {s.icon}
+                                            </span>
+                                            <div className="ssc-popup__title-group">
+                                              <h3
+                                                id={`ssc-popup-title-${s.label}`}
+                                                className="ssc-popup__title"
+                                              >
+                                                {s.label}
+                                              </h3>
+                                              <p className="ssc-popup__subtitle">
+                                                {(() => {
+                                                  const vs =
+                                                    mobileVisualConfirmation?.[
+                                                      s.confirmKey
+                                                    ]?.suggestedScore ?? null;
+                                                  const display =
+                                                    vs !== null
+                                                      ? Math.round(
+                                                          (s.score + vs) / 2,
+                                                        )
+                                                      : s.score;
+                                                  return (
+                                                    <>
+                                                      Score:{" "}
+                                                      <strong
+                                                        style={{
+                                                          color:
+                                                            scoreColor(display),
+                                                        }}
+                                                      >
+                                                        {display}/100
+                                                      </strong>
+                                                      {vs !== null && (
+                                                        <span className="ssc-popup__subtitle-avg">
+                                                          {" "}
+                                                          (avg)
+                                                        </span>
+                                                      )}
+                                                    </>
+                                                  );
+                                                })()}
+                                              </p>
+                                            </div>
+                                            <button
+                                              className="ssc-popup__close"
+                                              onClick={() =>
+                                                setOpenSubScoreTip(null)
+                                              }
+                                              aria-label="Close"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+
+                                          {/* ── 1. Visual AI Review — shown first, open by default ── */}
+                                          {hasVC &&
+                                            (() => {
+                                              const sectionKey = `${s.label}:ai`;
+                                              // Default open — only closed if user explicitly collapsed it
+                                              const isOpen =
+                                                popupSectionOpen[sectionKey] !==
+                                                false;
+                                              const hasSuggest =
+                                                vc.suggestedScore !== null &&
+                                                vc.suggestedScore !==
+                                                  undefined &&
+                                                vc.suggestedScore !== s.score;
+                                              // underestimates = HTML underestimates quality = visual score higher = looks better
+                                              // overestimates  = HTML overestimates quality  = visual score lower  = looks worse
+                                              const visuallyBetter =
+                                                hasSuggest &&
+                                                vc.suggestedScore > s.score;
+                                              const visuallyWorse =
+                                                hasSuggest &&
+                                                vc.suggestedScore < s.score;
+                                              return (
+                                                <div
+                                                  className={`ssc-popup__section ssc-popup__section--ai ${verdictMeta.colorClass}`}
+                                                >
+                                                  <button
+                                                    className="ssc-popup__section-toggle"
+                                                    onClick={() =>
+                                                      togglePopupSection(
+                                                        sectionKey,
+                                                      )
+                                                    }
+                                                    aria-expanded={isOpen}
+                                                  >
+                                                    <span className="ssc-popup__section-label">
+                                                      <svg
+                                                        width="11"
+                                                        height="11"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        aria-hidden="true"
+                                                      >
+                                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                        <circle
+                                                          cx="12"
+                                                          cy="12"
+                                                          r="3"
+                                                        />
+                                                      </svg>
+                                                      Visual AI Review
+                                                    </span>
+                                                    <svg
+                                                      className={`ssc-popup__chevron${isOpen ? " ssc-popup__chevron--open" : ""}`}
+                                                      width="12"
+                                                      height="12"
+                                                      viewBox="0 0 24 24"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      strokeWidth="2.5"
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                      aria-hidden="true"
+                                                    >
+                                                      <polyline points="6 9 12 15 18 9" />
+                                                    </svg>
+                                                  </button>
+                                                  {isOpen && (
+                                                    <div className="ssc-popup__section-body">
+                                                      {vc.verdict ===
+                                                      "cannot assess" ? (
+                                                        <p className="ssc-popup__observation ssc-popup__observation--muted">
+                                                          Gemini could not
+                                                          assess this dimension
+                                                          from the screenshot
+                                                          alone — the score
+                                                          shown is based solely
+                                                          on the HTML/CSS
+                                                          analysis.
+                                                        </p>
+                                                      ) : (
+                                                        <>
+                                                          <span
+                                                            className={`ssc__verdict-badge ${verdictMeta.colorClass} ssc-popup__verdict-inline`}
+                                                          >
+                                                            <span aria-hidden="true">
+                                                              {verdictMeta.icon}
+                                                            </span>
+                                                            {verdictMeta.label}
+                                                          </span>
+                                                          <p className="ssc-popup__observation">
+                                                            {vc.observation}
+                                                          </p>
+                                                          {hasSuggest && (
+                                                            <p className="ssc-popup__suggested">
+                                                              HTML analysis
+                                                              scored this{" "}
+                                                              <strong
+                                                                style={{
+                                                                  color:
+                                                                    scoreColor(
+                                                                      s.score,
+                                                                    ),
+                                                                }}
+                                                              >
+                                                                {s.score}
+                                                              </strong>
+                                                              {" — "}visual
+                                                              review suggests{" "}
+                                                              <strong
+                                                                style={{
+                                                                  color:
+                                                                    scoreColor(
+                                                                      vc.suggestedScore,
+                                                                    ),
+                                                                }}
+                                                              >
+                                                                {
+                                                                  vc.suggestedScore
+                                                                }
+                                                              </strong>
+                                                              {" — "}combined
+                                                              average:{" "}
+                                                              <strong
+                                                                style={{
+                                                                  color:
+                                                                    scoreColor(
+                                                                      Math.round(
+                                                                        (s.score +
+                                                                          vc.suggestedScore) /
+                                                                          2,
+                                                                      ),
+                                                                    ),
+                                                                }}
+                                                              >
+                                                                {Math.round(
+                                                                  (s.score +
+                                                                    vc.suggestedScore) /
+                                                                    2,
+                                                                )}
+                                                              </strong>
+                                                            </p>
+                                                          )}
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+
+                                          {/* ── 2–5. Info sections — collapsible, closed by default ── */}
+                                          {[
+                                            {
+                                              key: "what",
+                                              label: "What it checks",
+                                              text: s.what,
+                                              mod: "blue",
+                                            },
+                                            {
+                                              key: "looks",
+                                              label: "What it looks at",
+                                              text: s.looks,
+                                              mod: "purple",
+                                            },
+                                            {
+                                              key: "how",
+                                              label:
+                                                "How the score is calculated",
+                                              text: s.how,
+                                              mod: "amber",
+                                            },
+                                            {
+                                              key: "wcag",
+                                              label: "WCAG criteria",
+                                              text: s.wcag,
+                                              mod: "green",
+                                            },
+                                          ].map(({ key, label, text, mod }) => {
+                                            const sectionKey = `${s.label}:${key}`;
+                                            const isOpen =
+                                              !!popupSectionOpen[sectionKey];
+                                            return (
+                                              <div
+                                                key={key}
+                                                className={`ssc-popup__section ssc-popup__section--${mod}`}
+                                              >
+                                                <button
+                                                  className="ssc-popup__section-toggle"
+                                                  onClick={() =>
+                                                    togglePopupSection(
+                                                      sectionKey,
+                                                    )
+                                                  }
+                                                  aria-expanded={isOpen}
+                                                >
+                                                  <span className="ssc-popup__section-label">
+                                                    {label}
+                                                  </span>
+                                                  <svg
+                                                    className={`ssc-popup__chevron${isOpen ? " ssc-popup__chevron--open" : ""}`}
+                                                    width="12"
+                                                    height="12"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    aria-hidden="true"
+                                                  >
+                                                    <polyline points="6 9 12 15 18 9" />
+                                                  </svg>
+                                                </button>
+                                                {isOpen && (
+                                                  <div className="ssc-popup__section-body">
+                                                    <p className="ssc-popup__dd">
+                                                      {text}
+                                                    </p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+
+                                          <p className="ssc-popup__source">
+                                            Score from HTML/CSS analysis ·
+                                            Visual review by Gemini
+                                          </p>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
-                                  <div
-                                    style={{
-                                      fontSize: 10.5,
-                                      color:
-                                        s.score >= 80 ? "#16a34a" : "#64748b",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {s.score >= 80 ? "✓ Good" : "Needs work"}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
 
                             <div
@@ -5420,17 +5946,32 @@ Return the edited screenshot with minimal localized edits only.
                         (k && COG_CRIT.has(k)) || cogRe.test(g.problem || "")
                       );
                     });
+
+                    // Count unique failing WCAG criteria, not total violation groups.
+                    // A single criterion (e.g. 3.3.2) can match many violation groups
+                    // via the broad cogRe regex, so using cogGroups.length would
+                    // massively over-penalise a page with just one real failure.
+                    const uniqueCogCriteria = new Set(
+                      cogGroups
+                        .map((g) => getCriterionKey(g.wcagCriterion))
+                        .filter(Boolean),
+                    ).size;
+
                     const cogInsights = extractFromAll(cogRe).slice(0, 4);
                     const cogNegRe =
                       /difficult|unclear|confus|hard\s|poor|lack|missing|inconsistent|complex\s|no\s+clear|jargon/i;
                     const cogNegHits = cogInsights.filter((s) =>
                       cogNegRe.test(s),
                     ).length;
+
+                    // Formula: start at 95, deduct 12 per unique failing criterion
+                    // and 5 per negative HCI insight (capped at 4 insights).
+                    // Floor of 10 so the score never reads as zero.
                     const cogScore = Math.max(
                       10,
                       Math.min(
                         100,
-                        95 - cogGroups.length * 12 - cogNegHits * 8,
+                        95 - uniqueCogCriteria * 12 - cogNegHits * 5,
                       ),
                     );
                     const cogColor =

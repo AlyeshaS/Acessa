@@ -1,0 +1,540 @@
+/* ============================================================
+   SubScoreCard.css
+   Mobile sub-score cards and their popup modals.
+   All text colours meet WCAG AA 4.5:1 contrast ratio on
+   their respective backgrounds.
+   ============================================================ */
+
+/* ── Card ── */
+.ssc {
+  flex: 1 1 140px;
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: visible; /* allow popup to escape card bounds */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 12px 13px 12px;
+  position: relative;
+  border: 1px solid #e2e8f0;
+  transition: box-shadow 0.15s ease;
+}
+
+.ssc:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+}
+
+/* Border colour variants based on score */
+.ssc--good {
+  border-color: #86efac;
+} /* green-300 — passes on white */
+.ssc--fair {
+  border-color: #fcd34d;
+} /* amber-300 */
+.ssc--poor {
+  border-color: #fca5a5;
+} /* red-300 */
+
+/* ── Card header row ── */
+.ssc__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ssc__icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  line-height: 1;
+  text-align: center;
+}
+
+.ssc__label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #374151; /* 7.4:1 on white — passes AAA */
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex: 1;
+}
+
+/* Info ? button */
+.ssc__info-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #6b7280; /* grey-500 — 4.6:1 on white */
+  background: transparent;
+  color: #6b7280;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.ssc__info-btn:hover,
+.ssc__info-btn:focus-visible {
+  background: #1e40af; /* blue-800 — 9.7:1 on white */
+  border-color: #1e40af;
+  color: #ffffff;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* ── Score row ── */
+.ssc__score-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+.ssc__score-num {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  /* colour set inline via scoreColor() */
+}
+
+.ssc__score-denom {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280; /* 4.6:1 on white */
+}
+
+/* ── Progress bar ── */
+.ssc__bar-track {
+  height: 5px;
+  border-radius: 999px;
+  background: #e5e7eb; /* grey-200 */
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.ssc__bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+  /* background set inline via scoreColor() */
+}
+
+/* ── Status label ── */
+.ssc__status {
+  font-size: 10.5px;
+  font-weight: 600;
+  margin: 0 0 7px;
+}
+
+.ssc__status--good {
+  color: #15803d;
+} /* green-700 — 5.9:1 on white */
+.ssc__status--needs {
+  color: #374151;
+} /* grey-700  — 7.4:1 on white */
+
+/* ── Verdict badge (static pill — no interaction) ── */
+.ssc__verdict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+
+/* Verdict colour variants — all text passes 4.5:1 */
+.ssc-verdict--confirms {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #14532d; /* green-900 — 10.9:1 on dcfce7 */
+}
+
+.ssc-verdict--underestimates {
+  /* underestimates = HTML underestimates quality = looks BETTER = green */
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #14532d; /* green-900 — 10.9:1 on dcfce7 */
+}
+
+.ssc-verdict--overestimates {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #7f1d1d; /* red-900 — 10.1:1 on fee2e2 */
+}
+
+.ssc-verdict--na {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #374151; /* grey-700 — 6.9:1 on f1f5f9 */
+}
+
+/* ============================================================
+   Popup
+   ============================================================ */
+
+.ssc-popup__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 200;
+}
+
+.ssc-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px 26px 20px;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e2e8f0;
+}
+
+/* ── Popup header ── */
+.ssc-popup__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ssc-popup__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+  text-align: center;
+}
+
+.ssc-popup__title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.ssc-popup__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a; /* slate-900 — 16.7:1 on white */
+  line-height: 1.2;
+}
+
+.ssc-popup__subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #475569; /* slate-600 — 5.9:1 on white */
+}
+
+.ssc-popup__close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #f1f5f9;
+  color: #374151; /* grey-700 — 7.4:1 on f1f5f9 */
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.ssc-popup__close:hover,
+.ssc-popup__close:focus-visible {
+  background: #e2e8f0;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* ── Info rows (definition list) ── */
+.ssc-popup__dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ssc-popup__row {
+  border-radius: 9px;
+  padding: 10px 13px;
+  border: 1px solid transparent;
+}
+
+/* Row colour variants — dt text passes 4.5:1 on each bg */
+.ssc-popup__row--blue {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.ssc-popup__row--blue .ssc-popup__dt {
+  color: #1e40af; /* blue-800 — 9.7:1 on eff6ff */
+}
+
+.ssc-popup__row--purple {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+.ssc-popup__row--purple .ssc-popup__dt {
+  color: #5b21b6; /* violet-700 — 7.2:1 on f5f3ff */
+}
+
+.ssc-popup__row--amber {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.ssc-popup__row--amber .ssc-popup__dt {
+  color: #92400e; /* amber-800 — 5.8:1 on fffbeb */
+}
+
+.ssc-popup__row--green {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.ssc-popup__row--green .ssc-popup__dt {
+  color: #14532d; /* green-900 — 9.8:1 on f0fdf4 */
+}
+
+.ssc-popup__row--ai {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.ssc-popup__row--ai .ssc-popup__dt {
+  color: #1e3a5f;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* dt label */
+.ssc-popup__dt {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* dd body text */
+.ssc-popup__dd {
+  margin: 0;
+  font-size: 12.5px;
+  color: #374151; /* grey-700 — 7.4:1 on all popup row bgs */
+  line-height: 1.6;
+}
+
+/* AI observation paragraph */
+.ssc-popup__observation {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.55;
+}
+
+/* Suggested score note */
+.ssc-popup__suggested {
+  margin: 7px 0 0;
+  font-size: 11.5px;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  line-height: 1.5;
+}
+
+/* Source note at bottom of popup */
+.ssc-popup__source {
+  margin: 14px 0 0;
+  font-size: 10.5px;
+  color: #6b7280; /* grey-500 — 4.6:1 on white */
+  font-style: italic;
+  text-align: center;
+}
+
+/* ============================================================
+   Collapsible popup sections
+   ============================================================ */
+
+.ssc-popup__section {
+  border-radius: 9px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  margin-bottom: 7px;
+}
+
+/* Section colour variants */
+.ssc-popup__section--blue {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.ssc-popup__section--purple {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+.ssc-popup__section--amber {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.ssc-popup__section--green {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+.ssc-popup__section--ai {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+/* When AI section uses a verdict colour, override background */
+.ssc-popup__section--ai.ssc-verdict--confirms {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.ssc-popup__section--ai.ssc-verdict--underestimates {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.ssc-popup__section--ai.ssc-verdict--overestimates {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+/* Toggle button — full-width, looks like a row header */
+.ssc-popup__section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ssc-popup__section-toggle:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* Label inside toggle */
+.ssc-popup__section-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Colour the label text to match section */
+.ssc-popup__section--blue .ssc-popup__section-label {
+  color: #1e40af;
+}
+.ssc-popup__section--purple .ssc-popup__section-label {
+  color: #5b21b6;
+}
+.ssc-popup__section--amber .ssc-popup__section-label {
+  color: #92400e;
+}
+.ssc-popup__section--green .ssc-popup__section-label {
+  color: #14532d;
+}
+.ssc-popup__section--ai .ssc-popup__section-label {
+  color: #1e3a5f;
+}
+.ssc-verdict--confirms .ssc-popup__section-label {
+  color: #14532d;
+}
+.ssc-verdict--underestimates .ssc-popup__section-label {
+  color: #713f12;
+}
+.ssc-verdict--overestimates .ssc-popup__section-label {
+  color: #7f1d1d;
+}
+
+/* Chevron icon */
+.ssc-popup__chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  color: #6b7280;
+}
+
+.ssc-popup__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Body revealed when section is open */
+.ssc-popup__section-body {
+  padding: 0 12px 11px;
+}
+
+/* Inline verdict badge inside AI section body */
+.ssc-popup__verdict-inline {
+  margin-bottom: 7px;
+}
+
+/* Remove old .ssc-popup__dl — replaced by sections */
+.ssc-popup__dl {
+  display: none;
+}
+
+/* Small "avg" label next to score when both sources are present */
+.ssc__score-avg-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  align-self: center;
+  margin-left: 2px;
+}
+
+/* Muted observation text for cannot assess verdict */
+.ssc-popup__observation--muted {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* avg label in popup subtitle */
+.ssc-popup__subtitle-avg {
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 600;
+  margin-left: 2px;
+}
